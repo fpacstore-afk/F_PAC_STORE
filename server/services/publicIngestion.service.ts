@@ -11,7 +11,7 @@ const text = (value: unknown, max = 120) => typeof value === 'string' ? value.re
 const number = (value: unknown, max: number) => Number.isFinite(value) ? Math.max(0, Math.min(max, Math.floor(value as number))) : 0;
 const list = (value: any, limit: number, clean: (item: any) => any) => Array.isArray(value) ? [...new Set(value.slice(0, limit).map(clean).filter(Boolean))] : [];
 const slug = (value: unknown) => /^[a-zA-Z0-9_-]{1,150}$/.test(String(value)) ? String(value) : '';
-const eventTypes = new Set(['page_view', 'product_view', 'category_view', 'search', 'cart_start', 'cart_add', 'checkout_start']);
+const eventTypes = new Set(['page_view', 'product_view', 'product_color_select', 'product_size_select', 'category_view', 'search', 'cart_start', 'cart_add', 'checkout_start']);
 const credential = (body: any, prefix: string) => {
   if (!body || !new RegExp(`^${prefix}_[a-f0-9-]{36}$`).test(body.sessionId) || !/^[a-f0-9]{64}$/.test(body.sessionToken || '') || !Number.isInteger(body.sequence) || body.sequence < 1 || body.sequence > 2000) throw fail('Sessão inválida.');
   if (Buffer.byteLength(JSON.stringify(body)) > 48_000) throw fail('Dados excedem o limite.', 413);

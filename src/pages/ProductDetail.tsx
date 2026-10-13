@@ -238,6 +238,8 @@ export default function ProductDetail() {
 
   // Depoimentos Reais / Customer Reviews
   const [reviews, setReviews] = useState<any[]>([]);
+  const reviewRatings = reviews.map((review: any) => Number(review.rating)).filter((rating: number) => Number.isFinite(rating) && rating >= 1 && rating <= 5);
+  const averageReviewRating = reviewRatings.length ? reviewRatings.reduce((total: number, rating: number) => total + rating, 0) / reviewRatings.length : 0;
   const [allProducts, setAllProducts] = useState<any[]>([]);
   const [publicStampNames, setPublicStampNames] = useState<Record<string, string>>({});
   const displayProductTitle = getStorefrontProductTitle(product, publicStampNames, selectedColor);
@@ -1188,10 +1190,12 @@ export default function ProductDetail() {
               onColorChange={(colorHex) => {
                 const matchedColor = product?.colors?.find(c => c.hex.toLowerCase() === colorHex.toLowerCase());
                 if (matchedColor) {
+                  if (selectedColor !== matchedColor.name) void analyticsTracker.trackProductOptionSelect(product.slug, 'color');
                   setSelectedColor(matchedColor.name);
                 }
               }}
               onSizeChange={(size) => {
+                if (selectedSize !== size) void analyticsTracker.trackProductOptionSelect(product.slug, 'size');
                 setSelectedSize(size);
               }}
             />
@@ -1336,7 +1340,7 @@ export default function ProductDetail() {
                         <button
                           key={color.name}
                           type="button"
-                          onClick={() => { setSelectedColor(color.name); setActiveImage(0); setViewingStampUrl(null); }}
+                          onClick={() => { if (selectedColor !== color.name) void analyticsTracker.trackProductOptionSelect(product.slug, 'color'); setSelectedColor(color.name); setActiveImage(0); setViewingStampUrl(null); }}
                           className={cn(
                             "w-6.5 h-6.5 rounded-full border transition-all duration-300 relative flex items-center justify-center shrink-0 cursor-pointer hover:scale-110",
                             isChosen
@@ -1382,7 +1386,7 @@ export default function ProductDetail() {
                           key={size}
                           type="button"
                           disabled={!isStocked}
-                          onClick={() => setSelectedSize(size)}
+                          onClick={() => { if (selectedSize !== size) void analyticsTracker.trackProductOptionSelect(product.slug, 'size'); setSelectedSize(size); }}
                           className={cn(
                             "py-1.5 text-[9px] font-black h-8 flex items-center justify-center rounded-xl border transition-all cursor-pointer",
                             isChosen
@@ -2022,18 +2026,16 @@ export default function ProductDetail() {
                     {displayProductTitle}
                   </h1>
 
-                  {(product as any).rating && (product as any).reviewCount ? <div className="flex items-center gap-1.5 mt-2.5">
-                    <div className="flex items-center gap-0.5 text-[#eab308]">
-                      <Star size={12} className="fill-current text-[#eab308]" />
-                      <Star size={12} className="fill-current text-[#eab308]" />
-                      <Star size={12} className="fill-current text-[#eab308]" />
-                      <Star size={12} className="fill-current text-[#eab308]" />
-                      <Star size={12} className="fill-current text-[#eab308]" />
-                    </div>
-                    <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider font-mono select-none">
-                      ({Number((product as any).rating).toFixed(1)}/5 • {(product as any).reviewCount} avaliações)
-                    </span>
-                  </div> : null}
+                  {reviewRatings.length > 0 && (
+                    <a href="#product-reviews" aria-label={`Ver ${reviewRatings.length} opiniões enviadas sobre este produto`} className="inline-flex items-center gap-1.5 mt-2.5 rounded-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#eab308]">
+                      <span aria-hidden="true" className="inline-flex items-center gap-0.5 text-[#eab308]">
+                        {Array.from({ length: 5 }).map((_, index) => <Star key={index} size={12} className={index < Math.round(averageReviewRating) ? "fill-current text-[#eab308]" : "text-neutral-200"} />)}
+                      </span>
+                      <span className="text-[10px] text-gray-500 font-bold uppercase tracking-wider font-mono">
+                        {averageReviewRating.toFixed(1).replace(".", ",")}/5 · {reviewRatings.length} {reviewRatings.length === 1 ? "opinião" : "opiniões"}
+                      </span>
+                    </a>
+                  )}
                 </div>
 
                 {/* Curated pricing container */}
@@ -2150,7 +2152,7 @@ export default function ProductDetail() {
                       <button
                         id={`color-btn-${color.name.replace(/\s+/g, "-")}`}
                         key={color.name}
-                        onClick={() => { setSelectedColor(color.name); setActiveImage(0); setViewingStampUrl(null); }}
+                        onClick={() => { if (selectedColor !== color.name) void analyticsTracker.trackProductOptionSelect(product.slug, 'color'); setSelectedColor(color.name); setActiveImage(0); setViewingStampUrl(null); }}
                         className={cn(
                           "flex items-center gap-2.5 px-4 py-3 border text-[10px] uppercase font-black transition-all relative rounded-xl hover:scale-[1.01] cursor-pointer min-h-[44px]",
                           isSelected
@@ -2197,7 +2199,7 @@ export default function ProductDetail() {
                       <button
                         id={`size-btn-${size}`}
                         key={size}
-                        onClick={() => setSelectedSize(size)}
+                        onClick={() => { if (selectedSize !== size) void analyticsTracker.trackProductOptionSelect(product.slug, 'size'); setSelectedSize(size); }}
                         className={cn(
                           "w-12 h-12 flex items-center justify-center border text-[11px] transition-all rounded-xl font-black relative select-none cursor-pointer hover:scale-105",
                           selectedSize === size
@@ -3152,14 +3154,14 @@ export default function ProductDetail() {
           )}
 
           {/* Social Proof & Real Customer Reviews Block */}
-          <div className="mt-16 md:mt-24 border-t border-black/[0.05] pt-12 text-left">
+          <div id="product-reviews" className="mt-16 md:mt-24 scroll-mt-28 border-t border-black/[0.05] pt-12 text-left" aria-labelledby="product-reviews-heading">
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-8">
               <div>
                 <span className="text-[9px] text-[#eab308] font-black uppercase tracking-[0.35em] block mb-1">
-                  COMUNIDADE STREETWEAR
+                  AVALIAÇÕES DA PEÇA
                 </span>
-                <h3 className="text-xl md:text-2xl font-black uppercase tracking-wider text-black flex items-center gap-1.5 italic">
-                  Camisetas Reais • Quem Veste Recomenda
+                <h3 id="product-reviews-heading" className="text-xl md:text-2xl font-black uppercase tracking-wider text-black flex items-center gap-1.5 italic">
+                  O que os clientes contam
                 </h3>
               </div>
               <button
@@ -3168,7 +3170,7 @@ export default function ProductDetail() {
                 type="button"
                 className="text-[10px] font-black uppercase tracking-widest text-[#eab308] bg-zinc-950 px-4 py-2.5 rounded-xl hover:bg-neutral-850 hover:text-white transition-all cursor-pointer shadow-xs shrink-0"
               >
-                {showReviewForm ? "FECHAR FORMULÁRIO" : "ESCREVER DEPOIMENTO"}
+                {showReviewForm ? "FECHAR FORMULÁRIO" : "ESCREVER AVALIAÇÃO"}
               </button>
             </div>
 
@@ -3193,7 +3195,9 @@ export default function ProductDetail() {
                         type="button"
                         key={star}
                         onClick={() => setReviewRating(star)}
-                        className="text-[#eab308] hover:scale-110 transition-transform cursor-pointer"
+                        aria-label={`Avaliar com ${star} de 5 estrelas`}
+                        aria-pressed={star === reviewRating}
+                        className="text-[#eab308] hover:scale-110 transition-transform cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#eab308]"
                       >
                         <Star
                           size={16}
@@ -3308,7 +3312,17 @@ export default function ProductDetail() {
 
             {/* Feed list matching catalog styles */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {reviews.length === 0 && <p className="text-sm text-gray-500">Este produto ainda não recebeu avaliações.</p>}
+              {reviewRatings.length === 0 && (
+                <div role="status" className="md:col-span-2 flex flex-col sm:flex-row sm:items-center justify-between gap-4 rounded-2xl border border-neutral-200 bg-white p-5">
+                  <div>
+                    <p className="text-sm font-bold text-zinc-900">Ainda não há avaliações para este produto.</p>
+                    <p className="mt-1 text-xs leading-relaxed text-gray-500">Se você já conhece esta peça, conte sua experiência sincera para ajudar outras pessoas a escolher.</p>
+                  </div>
+                  <button id="btn-first-product-review" type="button" onClick={() => setShowReviewForm(true)} className="shrink-0 rounded-xl bg-zinc-950 px-4 py-3 text-[10px] font-black uppercase tracking-widest text-[#eab308] transition-colors hover:bg-[#eab308] hover:text-black focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#eab308]">
+                    Escrever a primeira avaliação
+                  </button>
+                </div>
+              )}
               {reviews.map((rev) => (
                 <div
                   key={rev.id}

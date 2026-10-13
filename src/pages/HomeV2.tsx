@@ -322,6 +322,37 @@ export default function HomeV2() {
         </div>
       </section>
 
+      <section data-home-community aria-labelledby="home-community-heading" className="bg-[#f7f7f5] py-12 md:py-16">
+        <div className="mx-auto max-w-7xl px-5">
+          <div className="mb-7 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+            <div className="max-w-2xl">
+              <p className="text-[9px] font-black uppercase tracking-[0.28em] text-[#9a7100]">F PAC em movimento</p>
+              <h2 id="home-community-heading" className="mt-2 text-3xl font-black uppercase italic text-black md:text-5xl">F PAC no seu estilo</h2>
+              <p className="mt-2 text-sm leading-relaxed text-black/55 md:text-base">Inspire-se em diferentes formas de vestir a marca e encontre a peça que combina com você.</p>
+            </div>
+            <Link to="/catalog/all" className="inline-flex min-h-11 items-center gap-2 self-start text-[9px] font-black uppercase tracking-[0.16em] text-black transition-colors hover:text-[#9a7100] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#eab308] sm:self-auto">
+              Encontrar minha peça <ArrowRight size={15} />
+            </Link>
+          </div>
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-3 md:gap-4">
+            {[
+              { src: '/customer-looks/01-1000036405.jpg', alt: 'Pessoa usando camiseta preta com estampa rosa da F PAC', label: 'Identidade em cada detalhe' },
+              { src: '/customer-looks/02-1000036407.jpg', alt: 'Pessoa vestindo camiseta branca com estampa azul-turquesa da F PAC', label: 'Estilo para o dia a dia' },
+              { src: '/customer-looks/03-1000023507.jpg', alt: 'Pessoa vestindo camiseta preta com estampa azul-turquesa da F PAC', label: 'Vista do seu jeito' },
+            ].map((photo) => (
+              <figure key={photo.src} className="group overflow-hidden rounded-2xl border border-black/10 bg-white shadow-sm">
+                <div className="aspect-[4/5] overflow-hidden bg-neutral-200">
+                  <img src={photo.src} alt={photo.alt} loading="lazy" decoding="async" className="h-full w-full object-cover transition-transform duration-500 motion-reduce:transition-none group-hover:scale-[1.03]" />
+                </div>
+                <figcaption className="px-3 py-3 text-[9px] font-black uppercase tracking-[0.12em] text-black/65 md:px-4 md:text-[10px]">
+                  {photo.label}
+                </figcaption>
+              </figure>
+            ))}
+          </div>
+        </div>
+      </section>
+
       <section className="py-12 md:py-14 bg-white" data-home-instagram>
         <div className="max-w-7xl mx-auto px-5">
           <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-5 mb-7">
