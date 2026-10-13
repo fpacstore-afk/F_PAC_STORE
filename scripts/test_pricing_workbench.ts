@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import express from 'express';
 import { readFileSync } from 'node:fs';
+import { packDtf, type DtfRectangle } from '../shared/dtfPacking.ts';
 import { Catalog, ItemInput, QuoteInput, calculateItem, calculateQuote, customerHtml, dtfCost, dtfPurchase, emptyCatalog, quoteExtraQuantities, validateCatalog, validateQuote } from '../shared/pricingWorkbench.ts';
 import { createPricingRouter } from '../server/controllers/pricingWorkbench.ts';
 import { createInMemoryDb } from '../server/firebase.ts';
@@ -75,7 +76,7 @@ await test('DTF aggregates matching and rotated dimensions across sizes before r
   const result = calculateQuote({ ...ready, items: [first,second] },tierCatalog);
   assert.equal(result.dtf.estimatedMeters,2);
   const multiple = { ...first, quantity: 1, prints: [first.prints[0],{ ...first.prints[0], width: 30, height: 30 }] };
-  assert.equal(dtfPurchase([multiple],tierCatalog).estimatedMeters,2);
+  assert.equal(dtfPurchase([multiple],tierCatalog).estimatedMeters,1);
   assert.equal(dtfPurchase([{ ...first, quantity: 11, prints: [first.prints[0],first.prints[0]] }],tierCatalog).estimatedMeters,2);
 });
 await test('manual purchase overrides and fixed/manual stamp costs remain distinct', () => {
@@ -110,6 +111,58 @@ await test('DTF rejects fractional overrides and malformed tiers; missing estima
   assert.equal(dtfPurchase([{ ...item, prints: [{ ...item.prints[0], width: 999 }] }],tierCatalog).estimatedMeters,null);
 });
 const packedItem: ItemInput = { ...item, quantity: 1, prints: [], extraIds: ['unit-pack','quote-pack'], manualGarmentCost: 0, margin: 0, fee: 0 };
+const fullDtf: Catalog = { ...tierCatalog, rules: { ...tierCatalog.rules, sheetWidth: 59, gap: .5, dtfCostBasis: 'purchase' } };
+const mixedPrints = [[30,40],[2,3],[6,8]].map(([width,height]) => ({ ...item.prints[0], width, height }));
+await test('mixed sizes share the same sheet and purchase is allocated once across artwork', () => {
+  const mixed = { ...ready, items: [{ ...ready.items[0], quantity: 1, prints: mixedPrints }] };
+  const result = calculateQuote(mixed,fullDtf);
+  assert.equal(result.dtf.estimatedMeters,1); assert.equal(result.dtf.purchaseCost,20);
+  assert.ok(Math.abs(result.items[0].components.slice(1).reduce((s,c)=>s+c.unitCost!,0)-20)<1e-9);
+  const four = calculateQuote({ ...mixed, items: [{ ...mixed.items[0], quantity: 4, prints: [mixedPrints[0]] }] },fullDtf);
+  assert.equal(four.dtf.estimatedMeters,2); assert.equal(four.dtf.purchaseCost,40);
+  assert.equal(four.items[0].components[1].unitCost,10);
+  const override = calculateQuote({ ...mixed, dtfPurchaseMeters: 8 },fullDtf);
+  assert.equal(override.dtf.purchaseCost,112);
+  assert.ok(Math.abs(override.items[0].components.slice(1).reduce((s,c)=>s+c.unitCost!,0)-112)<1e-9);
+  const separate = calculateQuote({ ...mixed, items: [{...mixed.items[0],prints:[mixedPrints[0]],quantity:2},{...mixed.items[0],id:'other-size',size:'P',prints:mixedPrints.slice(1),quantity:3}] },fullDtf);
+  const allocated=separate.items.reduce((sum,r,i)=>sum+r.components.slice(1).reduce((s,c)=>s+c.unitCost!,0)*[2,3][i],0);
+  assert.ok(Math.abs(allocated-separate.dtf.purchaseCost!)<1e-9);
+  assert.throws(()=>validateCatalog({...fullDtf,rules:{...fullDtf.rules,dtfCostBasis:'unknown'}}));
+});
+await test('missing production position does not hide known costs or invent missing amounts', () => {
+  const noPosition = { ...ready.items[0], quantity:1, prints:mixedPrints.map(p=>({...p,position:''})) };
+  const result = calculateItem(noPosition,fullDtf);
+  assert.ok(Math.abs(result.cost!-40)<1e-9); assert.ok(Math.abs(result.totalCost!-40)<1e-9);
+  assert.equal(result.suggested,53.33); assert.equal(result.total,53.33);
+  assert.equal(result.errors.length,3); assert.deepEqual(result.costPending,[]);
+  assert.equal(calculateQuote({...ready,items:[noPosition]},fullDtf).total,null);
+  const absent=calculateItem({...noPosition,extraIds:['labor']},fullDtf);
+  assert.equal(absent.cost,null); assert.deepEqual(absent.costPending,['Mão de obra']);
+  assert.equal(calculateItem({...noPosition,fee:null},fullDtf).suggested,null);
+});
+await test('packing is physical, respects gaps and rotation, and preserves every copy', () => {
+  const cases: DtfRectangle[][] = [mixedPrints.map(p=>({width:p.width!,height:p.height!,quantity:1})),[{width:30,height:40,quantity:4}],[{width:40,height:60,quantity:2}],[{width:59,height:100,quantity:1}],[{width:29.5,height:100,quantity:2}]];
+  let seed=73; const random=()=>((seed=(seed*1664525+1013904223)>>>0)/4294967296);
+  for(let n=0;n<30;n++) cases.push(Array.from({length:5},()=>({width:1+Math.floor(random()*40),height:1+Math.floor(random()*50),quantity:1+Math.floor(random()*8)})));
+  for(const shapes of cases) {
+    const packed=packDtf(shapes,59,100,.5)!; assert.ok(packed); assert.ok(packed.previewComplete);
+    const expected=new Map<string,number>(), actual=new Map<string,number>();
+    const key=(w:number,h:number)=>[w,h].sort((a,b)=>a-b).join('x');
+    shapes.forEach(s=>expected.set(key(s.width,s.height),(expected.get(key(s.width,s.height))||0)+s.quantity));
+    for(const layout of packed.layouts) for(const [i,r] of layout.rectangles.entries()) {
+      assert.ok(r.x>=0&&r.y>=0&&r.x+r.width<=59+1e-8&&r.y+r.height<=100+1e-8);
+      actual.set(key(r.width,r.height),(actual.get(key(r.width,r.height))||0)+layout.repeat);
+      for(const other of layout.rectangles.slice(i+1)) assert.ok(r.x+r.width+.5<=other.x+1e-8||other.x+other.width+.5<=r.x+1e-8||r.y+r.height+.5<=other.y+1e-8||other.y+other.height+.5<=r.y+1e-8);
+    }
+    assert.deepEqual([...actual].sort(),[...expected].sort());
+    assert.deepEqual(packDtf([...shapes].reverse(),59,100,.5),packed);
+  }
+  assert.equal(packDtf(cases[2],59,100,.5)!.sheets,2); // Area alone would incorrectly say one.
+  assert.equal(packDtf(cases[3],59,100,.5)!.sheets,1); // No unnecessary outer margin.
+  assert.equal(packDtf(cases[4],59,100,.5)!.sheets,2); // Gap makes two side-by-side impossible.
+  assert.equal(packDtf([{width:30,height:40,quantity:100000}],59,100,.5)!.sheets,33334);
+  assert.equal(packDtf([{width:60,height:101,quantity:1}],59,100,.5),null);
+});
 const mixedPack: QuoteInput = { ...input, items: [packedItem, { ...packedItem, id: 'second', size: 'P', quantity: 3 }] };
 await test('whole-order packaging is charged once across lines without rounding internal costs', () => {
   const result = calculateQuote(mixedPack,catalog);
@@ -205,6 +258,21 @@ try {
     const copy = await request('/quotes/dtf-copy','PUT',{ input: { ...ready, dtfPurchaseMeters: 8 }, expectedVersion: 0, catalogVersion: 4, status: 'draft' });
     assert.equal(copy.data.result.dtf.pricePerMeter,20);
     assert.equal((await request('/quotes/bad-dtf','PUT',{ input: { ...ready, dtfPurchaseMeters: 1.5 }, expectedVersion: 0, catalogVersion: 4, status: 'draft' })).status,400);
+  });
+  await test('API preserves mixed packing and full purchase allocation; missing position blocks finalization only', async () => {
+    assert.equal((await request('/catalog','PUT',{catalog:fullDtf,expectedVersion:4})).status,200);
+    const mixed = {...ready,items:[{...ready.items[0],quantity:1,prints:mixedPrints.map(p=>({...p,position:''}))}]};
+    const draft = await request('/quotes/mixed-layout','PUT',{input:mixed,expectedVersion:0,catalogVersion:5,status:'draft'});
+    assert.equal(draft.status,200); assert.equal(draft.data.result.dtf.estimatedMeters,1);
+    assert.ok(Math.abs(draft.data.result.items[0].cost-40)<1e-9);
+    assert.equal(draft.data.result.total,null);
+    assert.equal((await request('/quotes/mixed-layout','PUT',{input:mixed,expectedVersion:1,catalogVersion:5,status:'finalized'})).status,400);
+    mixed.items[0].prints=mixedPrints;
+    const final=await request('/quotes/mixed-layout','PUT',{input:mixed,expectedVersion:1,catalogVersion:5,status:'finalized'});
+    assert.equal(final.status,200); assert.equal(final.data.result.dtf.costBasis,'purchase');
+    assert.ok(final.data.result.dtf.packing.layouts.length);
+    assert.deepEqual((await request('/quotes/mixed-layout')).data.result,final.data.result);
+    assert.doesNotMatch(customerHtml(mixed,final.data.result,'MIXED'),/packing|rectangles|rateio|purchaseCost|Fornecedor interno/);
   });
 } finally { await new Promise<void>(resolve => server.close(() => resolve())); resetAuthForTesting(); }
 console.log(`${count} pricing workbench regressions passed.`);

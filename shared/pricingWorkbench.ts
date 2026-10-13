@@ -1,3 +1,4 @@
+import { packDtf, type DtfRectangle } from './dtfPacking';
 export type Kind = 'product' | 'price' | 'stamp' | 'extra' | 'supplier' | 'freight';
 export type Source = { kind: 'sheet' | 'app'; sheet?: string; range?: string; url?: string; importedAt?: string };
 export type Entry = {
@@ -13,6 +14,7 @@ export type Rules = {
   sheetWidth: number | null; sheetHeight: number | null; sheetCost: number | null; gap: number | null;
   dtfStatus: string; margin: number | null; fee: number | null; staleDays: number | null;
   productionTime: string; source: Source;
+  dtfCostBasis?: 'purchase' | 'consumed';
   dtfTiers?: { minMeters: number; pricePerMeter: number }[];
 };
 export type Catalog = { entries: Entry[]; rules: Rules; sourceTitle?: string; sourceUrl?: string };
@@ -43,7 +45,7 @@ export function dtfCost(width: number | null, height: number | null, r: Rules) {
 }
 
 export function dtfPurchase(items: Pick<ItemInput, 'quantity' | 'prints'>[], catalog: Catalog, manualMeters?: number | null) {
-  const groups = new Map<string, { count: number; quantity: number }>();
+  const rectangles: DtfRectangle[] = [];
   let hasDtf = false, complete = true;
   const r = catalog.rules;
   for (const item of items) for (const print of item.prints) {
@@ -51,14 +53,11 @@ export function dtfPurchase(items: Pick<ItemInput, 'quantity' | 'prints'>[], cat
     hasDtf = true;
     const fit = dtfCost(print.width, print.height, r);
     if (!fit || !Number.isInteger(item.quantity) || item.quantity < 1) { complete = false; continue; }
-    const key = [print.width!, print.height!].sort((a,b) => a-b).join('x');
-    const group = groups.get(key) || { count: fit.count, quantity: 0 };
-    group.quantity += item.quantity;
-    groups.set(key, group);
+    rectangles.push({ width: print.width!, height: print.height!, quantity: item.quantity });
   }
-  // Conservative homogeneous-sheet estimate: aggregate equal sizes across garments
-  // before rounding. Different sizes are not assumed to share a perfect nesting.
-  const estimatedMeters = !hasDtf ? 0 : complete ? Math.ceil([...groups.values()].reduce((sum,g) => sum + Math.ceil(g.quantity / g.count) * r.sheetHeight! / 100, 0) - 1e-9) : null;
+  const packing = hasDtf && complete ? packDtf(rectangles,r.sheetWidth!,r.sheetHeight!,r.gap!) : null;
+  const estimatedMeters = !hasDtf ? 0 : packing ? Math.ceil(packing.sheets * r.sheetHeight! / 100 - 1e-9) : null;
+  const totalPrintArea = rectangles.reduce((sum,p) => sum + p.width*p.height*p.quantity,0);
   const manual = manualMeters != null;
   const validManual = Number.isInteger(manualMeters) && manualMeters! > 0 && manualMeters! <= 100000;
   const purchaseMeters = !hasDtf ? 0 : manual ? validManual ? manualMeters! : null : estimatedMeters;
@@ -67,10 +66,18 @@ export function dtfPurchase(items: Pick<ItemInput, 'quantity' | 'prints'>[], cat
   const pricePerMeter = baseRate == null || (hasDtf && purchaseMeters == null) ? null : tier?.pricePerMeter ?? baseRate;
   const sheetCost = pricePerMeter == null || !known(r.sheetHeight) ? null : pricePerMeter * r.sheetHeight / 100;
   const warnings: string[] = [];
-  if (hasDtf && estimatedMeters == null) warnings.push('Complete medidas e quantidades para estimar a compra de DTF.');
+  if (hasDtf && estimatedMeters == null) warnings.push(complete ? 'Não foi possível concluir o encaixe automático. Confira o layout com o fornecedor e informe a compra real.' : 'Complete medidas e quantidades; cada estampa precisa caber na folha DTF.');
   if (hasDtf && manual && !validManual) warnings.push('Informe uma compra de DTF em metros inteiros positivos.');
   if (hasDtf && manual && validManual && estimatedMeters != null && manualMeters! < estimatedMeters) warnings.push('A compra informada é menor que a estimativa. Confira o encaixe das artes ou as sobras disponíveis.');
-  return { hasDtf, estimatedMeters, purchaseMeters, pricePerMeter, sheetCost, tierFromMeters: tier?.minMeters ?? null, manual, purchaseCost: purchaseMeters == null || pricePerMeter == null ? null : purchaseMeters * pricePerMeter, warnings };
+  return { hasDtf, estimatedMeters, purchaseMeters, pricePerMeter, sheetCost, totalPrintArea, costBasis: r.dtfCostBasis || 'consumed', packing, sheetWidth: r.sheetWidth, sheetHeight: r.sheetHeight, gap: r.gap, tierFromMeters: tier?.minMeters ?? null, manual, purchaseCost: purchaseMeters == null || pricePerMeter == null ? null : purchaseMeters * pricePerMeter, warnings };
+}
+
+export function dtfPrintCost(print: PrintInput, rules: Rules, purchase: ReturnType<typeof dtfPurchase>) {
+  const fit = dtfCost(print.width,print.height,{...rules,sheetCost:purchase.sheetCost});
+  if (!fit) return null;
+  if (purchase.costBasis !== 'purchase') return fit.unitCost;
+  return purchase.purchaseCost != null && purchase.totalPrintArea > 0
+    ? purchase.purchaseCost * (print.width! * print.height! / purchase.totalPrintArea) : null;
 }
 
 // Order-wide extras are shared only by the lines where the extra is selected.
@@ -86,7 +93,7 @@ export function quoteExtraQuantities(items: ItemInput[], catalog: Catalog): Reco
 }
 
 export function calculateItem(item: ItemInput, catalog: Catalog, today = new Date().toISOString().slice(0, 10), quoteQuantities: Record<string, number> = {}, purchase = dtfPurchase([item], catalog)) {
-  const errors: string[] = [], warnings: string[] = [], components: Component[] = [];
+  const errors: string[] = [], detailsPending: string[] = [], warnings: string[] = [], components: Component[] = [];
   const product = catalog.entries.find(e => e.id === item.productId && e.kind === 'product' && e.active);
   if (!Number.isInteger(item.quantity) || item.quantity < 1 || item.quantity > 100000) errors.push('Informe uma quantidade inteira entre 1 e 100.000.');
   if (!product) errors.push('Selecione um produto ativo.');
@@ -115,7 +122,7 @@ export function calculateItem(item: ItemInput, catalog: Catalog, today = new Dat
   item.prints.forEach((p, index) => {
     const stamp = catalog.entries.find(e => e.id === p.stampId && e.kind === 'stamp' && e.active);
     let cost: number | null = null, source = 'Regra não cadastrada';
-    if (!p.position.trim()) errors.push(`Informe a posição da estampa ${index + 1}.`);
+    if (!p.position.trim()) detailsPending.push(`Informe a posição da estampa ${index + 1}.`);
     if (known(p.manualCost)) { cost = p.manualCost; source = 'Custo manual'; }
     else if (stamp) {
       source = origin(stamp.source);
@@ -123,8 +130,11 @@ export function calculateItem(item: ItemInput, catalog: Catalog, today = new Dat
       if (stamp.method === 'fixed') cost = known(stamp.cost) ? stamp.cost : null;
       if (stamp.method === 'dtf') {
         const fit = dtfCost(p.width, p.height, { ...catalog.rules, sheetCost: purchase.sheetCost });
-        cost = fit?.unitCost ?? null;
-        source += fit ? ` · ${fit.count} estampas/folha · compra ${purchase.purchaseMeters ?? '?'} m · ${money(purchase.pricePerMeter)}/m` : ' · dimensões/parâmetros ausentes ou estampa não cabe';
+        cost = dtfPrintCost(p,catalog.rules,purchase);
+        source += cost != null ? purchase.costBasis === 'purchase'
+          ? ` · ${p.width} × ${p.height} cm · rateio por área da compra inteira (${purchase.purchaseMeters} m · ${money(purchase.purchaseCost)})`
+          : ` · ${fit?.count} estampas/folha · compra conjunta ${purchase.purchaseMeters} m · ${money(purchase.pricePerMeter)}/m`
+          : ' · confira medidas, parâmetros e metragem da compra';
         warnings.push(...purchase.warnings);
         if (catalog.rules.dtfStatus !== 'Confirmado') warnings.push(`Folha DTF: ${catalog.rules.dtfStatus}.`);
       }
@@ -145,7 +155,7 @@ export function calculateItem(item: ItemInput, catalog: Catalog, today = new Dat
   else if (item.margin + item.fee >= 1) errors.push('A soma de margem e taxa precisa ser menor que 100%.');
   const sale = known(item.manualSalePrice) ? round(item.manualSalePrice) : suggested;
   const margin = cost != null && sale != null && sale > 0 && known(item.fee) ? (sale * (1 - item.fee) - cost) / sale : null;
-  return { product, price, components, errors, warnings: [...new Set(warnings)], knownSubtotal, cost, totalCost: cost == null ? null : cost * item.quantity, suggested, sale, total: sale == null || errors.length ? null : round(sale * item.quantity), margin, saleSource: item.manualSalePrice != null ? 'Preço manual' : 'Regra de margem cadastrada' };
+  return { product, price, components, errors: [...errors,...detailsPending], costPending: components.filter(c => c.unitCost == null).map(c => c.name), warnings: [...new Set(warnings)], knownSubtotal, cost, totalCost: cost == null ? null : cost * item.quantity, suggested, sale, total: sale == null || errors.length ? null : round(sale * item.quantity), margin, saleSource: item.manualSalePrice != null ? 'Preço manual' : 'Regra de margem cadastrada' };
 }
 
 export function calculateQuote(input: QuoteInput, catalog: Catalog) {
@@ -187,6 +197,7 @@ export function validateCatalog(value: any): asserts value is Catalog {
   }
   for (const key of ['dtfStatus','productionTime']) if (typeof value.rules[key] !== 'string') throw new Error('Parâmetro de texto inválido.');
   for (const key of ['sheetWidth','sheetHeight','sheetCost','gap','margin','fee','staleDays']) if (value.rules[key] != null && !known(value.rules[key])) throw new Error(`Parâmetro inválido: ${key}.`);
+  if (value.rules.dtfCostBasis != null && !['purchase','consumed'].includes(value.rules.dtfCostBasis)) throw new Error('Regra de rateio do DTF inválida.');
   if (value.rules.dtfTiers != null) {
     if (!Array.isArray(value.rules.dtfTiers) || value.rules.dtfTiers.length > 20) throw new Error('Faixas de DTF inválidas.');
     const starts = new Set<number>();
