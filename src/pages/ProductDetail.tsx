@@ -1190,12 +1190,12 @@ export default function ProductDetail() {
               onColorChange={(colorHex) => {
                 const matchedColor = product?.colors?.find(c => c.hex.toLowerCase() === colorHex.toLowerCase());
                 if (matchedColor) {
-                  if (selectedColor !== matchedColor.name) void analyticsTracker.trackProductOptionSelect(product.slug);
+                  if (selectedColor !== matchedColor.name) void analyticsTracker.trackProductOptionSelect(product.slug, 'color');
                   setSelectedColor(matchedColor.name);
                 }
               }}
               onSizeChange={(size) => {
-                if (selectedSize !== size) void analyticsTracker.trackProductOptionSelect(product.slug);
+                if (selectedSize !== size) void analyticsTracker.trackProductOptionSelect(product.slug, 'size');
                 setSelectedSize(size);
               }}
             />
@@ -1340,7 +1340,7 @@ export default function ProductDetail() {
                         <button
                           key={color.name}
                           type="button"
-                          onClick={() => { if (selectedColor !== color.name) void analyticsTracker.trackProductOptionSelect(product.slug); setSelectedColor(color.name); setActiveImage(0); setViewingStampUrl(null); }}
+                          onClick={() => { if (selectedColor !== color.name) void analyticsTracker.trackProductOptionSelect(product.slug, 'color'); setSelectedColor(color.name); setActiveImage(0); setViewingStampUrl(null); }}
                           className={cn(
                             "w-6.5 h-6.5 rounded-full border transition-all duration-300 relative flex items-center justify-center shrink-0 cursor-pointer hover:scale-110",
                             isChosen
@@ -1386,7 +1386,7 @@ export default function ProductDetail() {
                           key={size}
                           type="button"
                           disabled={!isStocked}
-                          onClick={() => { if (selectedSize !== size) void analyticsTracker.trackProductOptionSelect(product.slug); setSelectedSize(size); }}
+                          onClick={() => { if (selectedSize !== size) void analyticsTracker.trackProductOptionSelect(product.slug, 'size'); setSelectedSize(size); }}
                           className={cn(
                             "py-1.5 text-[9px] font-black h-8 flex items-center justify-center rounded-xl border transition-all cursor-pointer",
                             isChosen
@@ -2152,7 +2152,7 @@ export default function ProductDetail() {
                       <button
                         id={`color-btn-${color.name.replace(/\s+/g, "-")}`}
                         key={color.name}
-                        onClick={() => { if (selectedColor !== color.name) void analyticsTracker.trackProductOptionSelect(product.slug); setSelectedColor(color.name); setActiveImage(0); setViewingStampUrl(null); }}
+                        onClick={() => { if (selectedColor !== color.name) void analyticsTracker.trackProductOptionSelect(product.slug, 'color'); setSelectedColor(color.name); setActiveImage(0); setViewingStampUrl(null); }}
                         className={cn(
                           "flex items-center gap-2.5 px-4 py-3 border text-[10px] uppercase font-black transition-all relative rounded-xl hover:scale-[1.01] cursor-pointer min-h-[44px]",
                           isSelected
@@ -2199,7 +2199,7 @@ export default function ProductDetail() {
                       <button
                         id={`size-btn-${size}`}
                         key={size}
-                        onClick={() => { if (selectedSize !== size) void analyticsTracker.trackProductOptionSelect(product.slug); setSelectedSize(size); }}
+                        onClick={() => { if (selectedSize !== size) void analyticsTracker.trackProductOptionSelect(product.slug, 'size'); setSelectedSize(size); }}
                         className={cn(
                           "w-12 h-12 flex items-center justify-center border text-[11px] transition-all rounded-xl font-black relative select-none cursor-pointer hover:scale-105",
                           selectedSize === size
