@@ -31,13 +31,17 @@ await check('server discards identity, private routes, forged purchases, money a
   assert.notEqual(record.accessTokenHash, visitor.sessionToken);
 });
 const optionSession = session('s');
-await check('product option selections are counted without retaining selected values', async () => {
+await check('color and size selections are counted without retaining selected values', async () => {
   await service.analytics({ ...optionSession, data: { events: [
-    { type: 'product_option_select', path: '/product/fpac-basic?color=private&size=G', timestamp: Date.now(), metadata: { color: 'private', size: 'G' } },
-    { type: 'product_option_select', path: '/checkout', timestamp: Date.now() },
+    { type: 'product_color_select', path: '/product/fpac-basic?color=private&size=G', timestamp: Date.now(), metadata: { color: 'private', size: 'G' } },
+    { type: 'product_size_select', path: '/product/fpac-basic', timestamp: Date.now(), metadata: { size: 'G' } },
+    { type: 'product_size_select', path: '/checkout', timestamp: Date.now() },
   ] } });
   const optionRecord = (await db.collection('visitor_sessions').doc(optionSession.sessionId).get()).data();
-  assert.deepEqual(optionRecord.events.map(({ type, path }: any) => ({ type, path })), [{ type: 'product_option_select', path: '/product/fpac-basic' }]);
+  assert.deepEqual(optionRecord.events.map(({ type, path }: any) => ({ type, path })), [
+    { type: 'product_color_select', path: '/product/fpac-basic' },
+    { type: 'product_size_select', path: '/product/fpac-basic' },
+  ]);
   assert.equal('metadata' in optionRecord.events[0], false);
 });
 await check('a different secret and older updates cannot overwrite a visitor session', async () => {
