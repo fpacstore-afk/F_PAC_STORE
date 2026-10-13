@@ -322,7 +322,7 @@ export const OrderProductionDrawer: React.FC<OrderProductionDrawerProps> = ({
         location: entry.location || '',
         color: stamp?.printColor || stamp?.color || '',
         printSize: entry.printSize || '',
-        artSize: entry.artSize || entry.printSize || '',
+        artSize: entry.artSize || '',
         image: stamp?.thumbnailUrl || stamp?.mockupUrl || stamp?.pngUrl || '',
         source: 'catalog',
       };
@@ -953,7 +953,7 @@ export const OrderProductionDrawer: React.FC<OrderProductionDrawerProps> = ({
                               const recipe = product?.productFinish === 'printed' ? resolveProductStampRecipeEntries(product, color) : [];
                               const artworks = recipe.map((entry: any) => {
                                 const stamp = stamps.find((candidate) => candidate.id === entry.stampId);
-                                return { stampId: entry.stampId, name: stamp?.name || stamp?.code || entry.stampId, code: stamp?.code || stamp?.sku || '', location: entry.location || '', color: stamp?.printColor || stamp?.color || '', printSize: entry.printSize || '', artSize: entry.artSize || entry.printSize || '', image: stamp?.thumbnailUrl || stamp?.mockupUrl || stamp?.pngUrl || '', source: 'catalog' };
+                                return { stampId: entry.stampId, name: stamp?.name || stamp?.code || entry.stampId, code: stamp?.code || stamp?.sku || '', location: entry.location || '', color: stamp?.printColor || stamp?.color || '', printSize: entry.printSize || '', artSize: entry.artSize || '', image: stamp?.thumbnailUrl || stamp?.mockupUrl || stamp?.pngUrl || '', source: 'catalog' };
                               });
                               updateEditingItem(index, { color, ...(product?.productFinish === 'printed' ? { artworks } : {}) });
                             }} disabled={isSavingOrderDetails} className="mt-1 min-h-10 block w-full border border-black/15 bg-white p-2">

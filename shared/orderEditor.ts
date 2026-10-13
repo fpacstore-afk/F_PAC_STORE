@@ -43,7 +43,7 @@ export function getOrderEditArtworks(item: any): OrderEditArtwork[] {
     location: String(print?.location || '').trim(),
     color: String(print?.color || '').trim(),
     printSize: String(print?.printSize || print?.stockPrintSize || print?.size || '').trim(),
-    artSize: String(print?.artSize || print?.artworkSize || print?.printSize || print?.stockPrintSize || '').trim(),
+    artSize: String(print?.artSize || print?.artworkSize || '').trim(),
     image: String(print?.image || print?.thumbnailUrl || print?.mockupUrl || print?.pngUrl || '').trim(),
     ...(print?.source ? { source: String(print.source) } : {}),
     ...(print?.status ? { status: String(print.status) } : {}),

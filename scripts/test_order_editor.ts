@@ -39,9 +39,10 @@ assert.equal(saved.printConfigs[0].printSize, '12x12', 'production print dimensi
 assert.equal(saved.stampRecipe[0].printSize, '12x12', 'stock print size snapshot follows the editor');
 assert.equal(saved.printConfigs[1].printSize, '28x20', 'other artwork remains unchanged');
 
-const legacyStamp = getOrderEditArtworks({ stampId: 'legacy-art', stampName: 'Logo', printSize: '8x8', artSize: '8x8 cm' });
+const legacyStamp = getOrderEditArtworks({ stampId: 'legacy-art', stampName: 'Logo', printSize: '8x8' });
 assert.equal(legacyStamp.length, 1, 'single-stamp legacy orders remain editable');
 assert.equal(legacyStamp[0].printSize, '8x8');
+assert.equal(legacyStamp[0].artSize, '', 'stock measurement is not guessed as the production artwork dimension');
 
 assert.deepEqual(calculateOrderEditTotals([
   { name: 'A', price: 20, quantity: 2 },
