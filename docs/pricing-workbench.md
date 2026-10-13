@@ -7,7 +7,7 @@ Acesse `/gestao?tab=pricing` com uma conta administradora.
 - **Visão geral:** busca por produto, material, fornecedor e cotação; atalhos e pendências.
 - **Cadastros:** produtos/fichas, preços por fornecedor/linha/quantidade, estampas, insumos, fornecedores e fretes. Edite ou desative sem apagar o histórico. Custos podem ser específicos por cor e tamanho.
 - **Calcular peça:** escolha ficha, linha, cor, tamanho e quantidade. Adicione estampas e custos aplicáveis; confira a memória de cálculo e adicione ao orçamento. A quantidade da faixa comercial é a deste item, não a soma de produtos diferentes.
-- **Calcular estampa:** calcula custo por encaixe DTF, valor fixo ou manual. Adicionais podem ser por unidade ou por lote do item. A projeção de venda exige margem e taxa conhecidas.
+- **Calcular estampa:** calcula custo por encaixe DTF, valor fixo ou manual. Adicionais podem ser por unidade, por lote do item ou uma vez por pedido inteiro. Na consulta de estampas, a quantidade informada representa o pedido completo. A projeção de venda exige margem e taxa conhecidas.
 - **Orçamento atual:** cliente, itens, frete/retirada, desconto, acréscimo, condições, prazo, validade e observações. Salve rascunhos incompletos; finalize somente com preços e frete definidos. Finalizados são imutáveis; duplique para preparar outra proposta.
 - **Versão cliente / PDF:** prévia comercial com botão de impressão/salvar PDF. Custos, fornecedores, fontes e margens não entram nesse documento. Nada é enviado automaticamente.
 - **Orçamentos salvos:** pesquisa por cliente/produto, data e situação. Carregue registros anteriores para pesquisar além da primeira página. Abrir preserva os valores históricos; duplicar recalcula pelos cadastros atuais.
@@ -33,3 +33,7 @@ Os arquivos reais da planilha e os valores comerciais importados não são publi
 ## Validação
 
 `npm run test:pricing-workbench` verifica encaixe/rotação, faixas, valores ausentes versus zero, restrições, preços manuais, duplicação, validações, HTML seguro, acesso administrativo, importação única, conflitos de versão, snapshots e finalização. A suíte de regras inclui as quatro novas coleções. Execute também lint, build, regressões completas e preflight antes de publicar.
+
+## Custos por pedido inteiro
+
+Use essa aplicação para sacola, panfleto ou brinde compartilhado pelo pedido. O custo é dividido pelo total de peças das linhas em que o adicional está marcado e somado uma única vez; incluir, duplicar, remover ou editar linhas refaz o rateio. A prévia de uma peça considera as outras linhas do orçamento atual. Desmarcar em todas as linhas remove o adicional. A opção antiga Por lote deste item preserva sua semântica, sem migrar cadastros existentes. Custos internos mantêm todas as casas decimais; o preço final de venda continua arredondado em centavos. Propostas preservadas mantêm o resultado salvo.

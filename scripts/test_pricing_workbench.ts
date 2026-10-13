@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import express from 'express';
 import { readFileSync } from 'node:fs';
-import { Catalog, ItemInput, QuoteInput, calculateItem, calculateQuote, customerHtml, dtfCost, emptyCatalog, validateCatalog, validateQuote } from '../shared/pricingWorkbench.ts';
+import { Catalog, ItemInput, QuoteInput, calculateItem, calculateQuote, customerHtml, dtfCost, emptyCatalog, quoteExtraQuantities, validateCatalog, validateQuote } from '../shared/pricingWorkbench.ts';
 import { createPricingRouter } from '../server/controllers/pricingWorkbench.ts';
 import { createInMemoryDb } from '../server/firebase.ts';
 import { authenticateAdmin, resetAuthForTesting, setAuthDbForTesting, setAuthTokenVerifierForTesting } from '../server/middleware/auth.middleware.ts';
@@ -12,7 +12,9 @@ const catalog: Catalog = { ...emptyCatalog(), entries: [
   ...[1,10].map((minQty, i) => ({ id: `price${i}`, kind: 'price' as const, name: 'Cotação', product: 'Peça teste', supplier: 'Fornecedor interno', minQty, cost: i ? 14 : 20, date: '2025-01-01', status: 'Confirmado', active: true, source })),
   { id: 'dtf', kind: 'stamp', name: 'DTF', width: 10, height: 20, method: 'dtf', active: true, status: 'Confirmado', source },
   { id: 'labor', kind: 'extra', name: 'Mão de obra', cost: null, basis: 'unit', active: true, status: 'Preencher', source },
-  { id: 'setup', kind: 'extra', name: 'Preparação', cost: 10, basis: 'order', active: true, status: 'Confirmado', source }
+  { id: 'setup', kind: 'extra', name: 'Preparação', cost: 10, basis: 'order', active: true, status: 'Confirmado', source },
+  { id: 'unit-pack', kind: 'extra', name: 'Material sintético por peça', cost: .125, basis: 'unit', active: true, status: 'Confirmado', source },
+  { id: 'quote-pack', kind: 'extra', name: 'Material sintético por pedido', cost: 4.375, basis: 'quote', active: true, status: 'Confirmado', source }
 ], rules: { ...emptyCatalog().rules, sheetWidth: 40, sheetHeight: 60, sheetCost: 12, gap: 0, margin: .2, fee: .05, staleDays: 30, dtfStatus: 'Confirmado' } };
 const item: ItemInput = { id: 'i', productId: 'p', line: '', color: 'Preto', size: 'M', quantity: 10, prints: [{ stampId: 'dtf', width: 10, height: 20, position: 'Peito', manualCost: null }], extraIds: ['labor'], margin: .2, fee: .05, manualGarmentCost: null, manualSalePrice: null, description: '' };
 const input: QuoteInput = { customer: 'Cliente teste', contact: '', items: [item], discount: 0, surcharge: 0, shipping: 0, shippingLabel: 'Retirada', payment: '', deadline: '', validUntil: '', notes: '' };
@@ -52,6 +54,29 @@ await test('schema rejects malformed values and missing discount; dates warn', (
   assert.ok(calculateItem(item,catalog,'2026-01-01').warnings.some(w => w.includes('atualizada')));
 });
 const ready: QuoteInput = { ...input, items: [{ ...item, extraIds: [] }], shipping: 5, discount: 3, surcharge: 2 };
+const packedItem: ItemInput = { ...item, quantity: 1, prints: [], extraIds: ['unit-pack','quote-pack'], manualGarmentCost: 0, margin: 0, fee: 0 };
+const mixedPack: QuoteInput = { ...input, items: [packedItem, { ...packedItem, id: 'second', size: 'P', quantity: 3 }] };
+await test('whole-order packaging is charged once across lines without rounding internal costs', () => {
+  const result = calculateQuote(mixedPack,catalog);
+  assert.equal(result.items.reduce((n,r) => n + r.totalCost!,0),4.875);
+  assert.equal(result.items[0].cost,1.21875);
+  assert.equal(result.items[1].cost,1.21875);
+  assert.equal(result.items[0].suggested,1.22);
+  assert.match(result.items[0].components[2].source,/rateado em 4 peças/);
+  const preview = calculateItem(packedItem,catalog,undefined,quoteExtraQuantities(mixedPack.items,catalog));
+  assert.equal(preview.cost,result.items[0].cost);
+  const duplicated = calculateQuote({ ...mixedPack, items: [...mixedPack.items, { ...packedItem, id: 'third', quantity: 4 }] },catalog);
+  assert.equal(duplicated.items.reduce((n,r) => n + r.totalCost!,0),5.375);
+  assert.equal(calculateQuote({ ...mixedPack, items: [packedItem] },catalog).items[0].cost,4.5);
+  const unselected = calculateQuote({ ...mixedPack, items: mixedPack.items.map(i => ({ ...i, extraIds: ['unit-pack'] })) },catalog);
+  assert.equal(unselected.items.reduce((n,r) => n + r.totalCost!,0),.5);
+  const oneSelected = calculateQuote({ ...mixedPack, items: [packedItem, { ...mixedPack.items[1], extraIds: ['unit-pack'] }] },catalog);
+  assert.equal(oneSelected.items.reduce((n,r) => n + r.totalCost!,0),4.875);
+  const pending = structuredClone(catalog); pending.entries.find(e => e.id === 'quote-pack')!.cost = null;
+  assert.ok(calculateQuote(mixedPack,pending).items.every(i => i.cost === null));
+  assert.equal(calculateItem({ ...packedItem, extraIds: ['setup'], quantity: 2 },catalog).cost,5);
+  validateCatalog(catalog);
+});
 await test('quote arithmetic and public projection do not expose internal data or HTML', () => {
   const r = calculateQuote(ready,catalog); assert.equal(r.total,204);
   assert.equal(calculateQuote({ ...ready, shipping: null },catalog).total,null);
@@ -105,6 +130,13 @@ try {
     const original = events.find((e: any) => e.type === 'quote' && e.version === 1 && e.quoteId === 'q'); assert.ok(original);
     assert.equal((await request(`/history/${original.id}`)).data.result.total,null);
     assert.equal((await request()).data.quotes.length,2);
+  });
+  await test('API preserves the once-per-order result across mixed sizes', async () => {
+    const saved = await request('/quotes/packaging','PUT',{ input: mixedPack, expectedVersion: 0, catalogVersion: 2, status: 'draft' });
+    assert.equal(saved.status,200);
+    assert.equal(saved.data.result.items.reduce((n: number,r: any) => n + r.totalCost,0),4.875);
+    const persisted = await request('/quotes/packaging');
+    assert.deepEqual(persisted.data.result,saved.data.result);
   });
 } finally { await new Promise<void>(resolve => server.close(() => resolve())); resetAuthForTesting(); }
 console.log(`${count} pricing workbench regressions passed.`);
