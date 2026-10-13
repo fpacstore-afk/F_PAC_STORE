@@ -18,7 +18,7 @@ import { getOrderPaidAmount as getOrderAmountPaid, getOrderPendingAmount as getO
 import toast from 'react-hot-toast';
 import { cn } from '../lib/utils';
 import { parseCurrencyInput } from '../../shared/currencyInput';
-import { applyOrderEditArtworks, calculateOrderEditTotals, getOrderEditArtworks, validateOrderEditDraft } from '../../shared/orderEditor';
+import { applyOrderEditArtworks, calculateOrderEditTotals, createOrderEditArtworkFromCatalogStamp, getOrderEditArtworks, getOrderEditProductOptionLabel, validateOrderEditDraft } from '../../shared/orderEditor';
 import { resolveProductStampRecipeEntries } from '../../shared/productStampRecipe';
 
 interface OrderProductionDrawerProps {
@@ -941,7 +941,7 @@ export const OrderProductionDrawer: React.FC<OrderProductionDrawerProps> = ({
                             <select value={item.productId || ''} onChange={(event) => selectEditingProduct(index, event.target.value)} disabled={isSavingOrderDetails} className="mt-1 min-h-10 block w-full border border-black/15 bg-white p-2">
                               <option value="">Produto personalizado / sem vínculo</option>
                               {item.productId && !products.some((candidate) => candidate.id === item.productId || candidate.slug === item.productId) && <option value={item.productId}>Produto atual: {item.name || item.productId}</option>}
-                              {products.map((candidate) => <option key={candidate.id} value={candidate.id}>{candidate.name}</option>)}
+                              {products.map((candidate) => <option key={candidate.id} value={candidate.id}>{getOrderEditProductOptionLabel(candidate)}</option>)}
                             </select>
                           </label>
                           <label className="block text-xs font-bold sm:col-span-2">Nome/descrição do produto
@@ -984,17 +984,9 @@ export const OrderProductionDrawer: React.FC<OrderProductionDrawerProps> = ({
                               <select value={art.stampId || ''} onChange={(event) => {
                                 const stamp = stamps.find((candidate) => candidate.id === event.target.value);
                                 const artworks = [...(item.artworks || [])];
-                                artworks[artIndex] = stamp ? {
-                                  ...art,
-                                  stampId: stamp.id,
-                                  name: stamp.name || stamp.code || stamp.id,
-                                  code: stamp.code || stamp.sku || '',
-                                  color: stamp.printColor || stamp.color || art.color || '',
-                                  printSize: art.printSize || (stamp.availableSizes?.length === 1 ? stamp.availableSizes[0] : ''),
-                                  artSize: art.artSize || art.printSize || (stamp.availableSizes?.length === 1 ? stamp.availableSizes[0] : ''),
-                                  image: stamp.thumbnailUrl || stamp.mockupUrl || stamp.pngUrl || art.image || '',
-                                  source: 'catalog',
-                                } : { ...art, stampId: '', source: 'customer' };
+                                artworks[artIndex] = stamp
+                                  ? createOrderEditArtworkFromCatalogStamp(stamp, art.location)
+                                  : { stampId: '', name: '', code: '', location: art.location || '', color: '', printSize: '', artSize: '', image: '', source: 'customer' };
                                 updateEditingItem(index, { artworks });
                               }} disabled={isSavingOrderDetails} className="mt-1 min-h-10 block w-full border border-black/15 bg-white p-2">
                                 <option value="">Arte própria / sem baixa de estampa</option>
@@ -1014,11 +1006,11 @@ export const OrderProductionDrawer: React.FC<OrderProductionDrawerProps> = ({
                             <label className="block text-xs font-bold">Cor da estampa
                               <input value={art.color || ''} onChange={(event) => { const artworks = [...(item.artworks || [])]; artworks[artIndex] = { ...art, color: event.target.value }; updateEditingItem(index, { artworks }); }} maxLength={100} disabled={isSavingOrderDetails} className="mt-1 min-h-10 block w-full border border-black/15 bg-white p-2" />
                             </label>
-                            <label className="block text-xs font-bold">Medida usada no estoque
-                              <input value={art.printSize || ''} onChange={(event) => { const artworks = [...(item.artworks || [])]; artworks[artIndex] = { ...art, printSize: event.target.value }; updateEditingItem(index, { artworks }); }} maxLength={80} disabled={isSavingOrderDetails} placeholder="Ex.: 10x10 cm" className="mt-1 min-h-10 block w-full border border-black/15 bg-white p-2" />
+                            <label className="block text-xs font-bold">Medida da estampa para baixa de estoque
+                              <input type="text" inputMode="text" autoComplete="off" aria-label={`Medida de estoque da estampa ${art.name || artIndex + 1}`} value={art.printSize || ''} onChange={(event) => { const artworks = [...(item.artworks || [])]; artworks[artIndex] = { ...art, printSize: event.target.value }; updateEditingItem(index, { artworks }); }} maxLength={80} disabled={isSavingOrderDetails} placeholder="Ex.: 10x10 cm" className="mt-1 min-h-10 block w-full border border-black/15 bg-white p-2" />
                             </label>
-                            <label className="block text-xs font-bold">Dimensão de produção
-                              <input value={art.artSize || ''} onChange={(event) => { const artworks = [...(item.artworks || [])]; artworks[artIndex] = { ...art, artSize: event.target.value }; updateEditingItem(index, { artworks }); }} maxLength={80} disabled={isSavingOrderDetails} placeholder="Ex.: 28x20 cm" className="mt-1 min-h-10 block w-full border border-black/15 bg-white p-2" />
+                            <label className="block text-xs font-bold">Dimensão de produção desta aplicação (cm)
+                              <input type="text" inputMode="text" autoComplete="off" aria-label={`Dimensão de produção da estampa ${art.name || artIndex + 1}`} value={art.artSize || ''} onChange={(event) => { const artworks = [...(item.artworks || [])]; artworks[artIndex] = { ...art, artSize: event.target.value }; updateEditingItem(index, { artworks }); }} maxLength={80} disabled={isSavingOrderDetails} placeholder="Digite a largura × altura, ex.: 28x20 cm" className="mt-1 min-h-10 block w-full border border-black/15 bg-white p-2" />
                             </label>
                             <div className="flex items-end justify-end sm:col-span-2">
                               <button type="button" disabled={isSavingOrderDetails} onClick={() => updateEditingItem(index, { artworks: (item.artworks || []).filter((_: any, row: number) => row !== artIndex) })} className="min-h-9 border border-red-200 px-3 text-xs font-bold text-red-700">Remover estampa</button>
@@ -1167,7 +1159,8 @@ export const OrderProductionDrawer: React.FC<OrderProductionDrawerProps> = ({
                             <div className="flex flex-wrap items-center justify-end gap-1">
                               <span className="bg-gray-200 px-1.5 py-0.5 font-mono text-[8px]">{pc.location || 'Peito'}</span>
                               {pc.color && <span className="bg-amber-100 px-1.5 py-0.5 font-mono text-[8px]">{pc.color}</span>}
-                              <span className="bg-gray-200 px-1.5 py-0.5 font-mono text-[8px]">{pc.artSize || pc.printSize || 'Tamanho não informado'}</span>
+                              <span className="bg-gray-200 px-1.5 py-0.5 font-mono text-[8px]">Produção: {pc.artSize || 'medida não informada'}</span>
+                              {pc.stampId && <span className="bg-blue-50 px-1.5 py-0.5 font-mono text-[8px]">Estoque: {pc.printSize || 'medida não informada'}</span>}
                             </div>
                           </div>
                         ))}

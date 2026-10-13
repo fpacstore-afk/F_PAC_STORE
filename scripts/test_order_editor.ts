@@ -3,7 +3,9 @@ import fs from 'node:fs';
 import {
   applyOrderEditArtworks,
   calculateOrderEditTotals,
+  createOrderEditArtworkFromCatalogStamp,
   getOrderEditArtworks,
+  getOrderEditProductOptionLabel,
   validateOrderEditDraft,
 } from '../shared/orderEditor.ts';
 
@@ -36,6 +38,7 @@ assert.deepEqual(editableArtworks.map((art) => [art.stampId, art.location, art.p
 editableArtworks[0] = { ...editableArtworks[0], printSize: '12x12', artSize: '12x12 cm', location: 'Peito esquerdo' };
 const saved = applyOrderEditArtworks(existing, editableArtworks, { productFinish: 'printed' });
 assert.equal(saved.printConfigs[0].printSize, '12x12', 'production print dimensions are persisted');
+assert.equal(saved.printConfigs[0].artSize, '12x12 cm', 'per-application production dimensions are persisted separately from stock size');
 assert.equal(saved.stampRecipe[0].printSize, '12x12', 'stock print size snapshot follows the editor');
 assert.equal(saved.printConfigs[1].printSize, '28x20', 'other artwork remains unchanged');
 
@@ -43,6 +46,23 @@ const legacyStamp = getOrderEditArtworks({ stampId: 'legacy-art', stampName: 'Lo
 assert.equal(legacyStamp.length, 1, 'single-stamp legacy orders remain editable');
 assert.equal(legacyStamp[0].printSize, '8x8');
 assert.equal(legacyStamp[0].artSize, '', 'stock measurement is not guessed as the production artwork dimension');
+
+const switchedStamp = createOrderEditArtworkFromCatalogStamp({
+  id: 'new-stamp', name: 'Nova arte', code: 'ART-02', printColor: 'Branco',
+  availableSizes: ['8x8', '12x12'], thumbnailUrl: 'new.png', status: 'active',
+}, 'Costas');
+assert.deepEqual(switchedStamp, {
+  stampId: 'new-stamp', name: 'Nova arte', code: 'ART-02', location: 'Costas',
+  color: 'Branco', printSize: '', artSize: '', image: 'new.png', source: 'catalog', status: 'active',
+}, 'changing the stamp clears all previous stamp-specific values and leaves ambiguous stock size for an explicit choice');
+const singleSizeStamp = createOrderEditArtworkFromCatalogStamp({ id: 'one', availableSizes: ['10x10'] }, 'Peito');
+assert.equal(singleSizeStamp.printSize, '10x10');
+assert.equal(singleSizeStamp.artSize, '', 'stock size must not be copied into the production dimension');
+
+const duplicateProductA = getOrderEditProductOptionLabel({ id: 'a', name: 'Camiseta', sku: 'CAM-01', colors: [{ name: 'Preta' }], sizes: ['P', 'M'] });
+const duplicateProductB = getOrderEditProductOptionLabel({ id: 'b', name: 'Camiseta', sku: 'CAM-02', colors: [{ name: 'Branca' }], sizes: ['G'] });
+assert.notEqual(duplicateProductA, duplicateProductB, 'same-title products have distinguishing references and variants');
+assert.match(duplicateProductA, /CAM-01/);
 
 assert.deepEqual(calculateOrderEditTotals([
   { name: 'A', price: 20, quantity: 2 },
@@ -61,6 +81,10 @@ const routes = fs.readFileSync('server.ts', 'utf8');
 assert.match(drawer, /onClick=\{cancelOrderDetailsEdit\}[^>]*>Cancelar/);
 assert.match(drawer, /if \(!onSaveOrderDetails \|\| isSavingOrderDetails\) return/);
 assert.match(drawer, /catch \(error: any\)[\s\S]*toast\.error\(error\?\.message/);
+assert.match(drawer, /createOrderEditArtworkFromCatalogStamp\(stamp, art\.location\)/, 'changing a stamp refreshes its dependent metadata');
+assert.match(drawer, /aria-label=\{`Dimensão de produção da estampa/);
+assert.match(drawer, /Produção: \{pc\.artSize \|\| 'medida não informada'\}/);
+assert.doesNotMatch(drawer, /pc\.artSize \|\| pc\.printSize/, 'production summaries do not disguise stock size as artwork dimensions');
 assert.match(controller, /order_edit_requests/);
 assert.match(controller, /reconcileOrderInventoryReservationsInTransaction/);
 assert.match(controller, /reconcileOrderStampStockInTransaction/);

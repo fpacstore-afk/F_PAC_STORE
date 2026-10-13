@@ -11,6 +11,46 @@ export type OrderEditArtwork = {
   status?: string;
 };
 
+/** Build a fresh artwork snapshot when an operator changes the catalog stamp.
+ * Only the application location belongs to the order line; all other values
+ * describe the selected stamp and must not leak from the previous selection.
+ */
+export function createOrderEditArtworkFromCatalogStamp(stamp: any, location = ''): OrderEditArtwork {
+  const availableSizes = Array.isArray(stamp?.availableSizes)
+    ? stamp.availableSizes.map((size: unknown) => String(size || '').trim()).filter(Boolean)
+    : [];
+  return {
+    stampId: String(stamp?.id || ''),
+    name: String(stamp?.name || stamp?.code || stamp?.id || ''),
+    code: String(stamp?.code || stamp?.sku || ''),
+    location: String(location || ''),
+    color: String(stamp?.printColor || stamp?.color || ''),
+    // A single stock size is unambiguous. Multiple sizes require an explicit
+    // choice; the production artwork dimension is a separate field entirely.
+    printSize: availableSizes.length === 1 ? availableSizes[0] : '',
+    artSize: String(stamp?.artSize || stamp?.artworkSize || ''),
+    image: String(stamp?.thumbnailUrl || stamp?.mockupUrl || stamp?.pngUrl || ''),
+    source: 'catalog',
+    ...(stamp?.status ? { status: String(stamp.status) } : {}),
+  };
+}
+
+/** Make same-title catalog products distinguishable in the order editor. */
+export function getOrderEditProductOptionLabel(product: any): string {
+  const parts = [
+    product?.baseModel || product?.fit || product?.productType || product?.category,
+    product?.collection,
+    product?.sku || product?.slug || product?.id,
+  ].map((part) => String(part || '').trim()).filter(Boolean);
+  const colors = Array.isArray(product?.colors)
+    ? product.colors.map((color: any) => typeof color === 'string' ? color : color?.name).filter(Boolean)
+    : [];
+  const sizes = Array.isArray(product?.sizes) ? product.sizes.filter(Boolean) : [];
+  if (colors.length) parts.push(`Cores: ${colors.slice(0, 3).join('/')}${colors.length > 3 ? '/…' : ''}`);
+  if (sizes.length) parts.push(`Tamanhos: ${sizes.slice(0, 4).join('/')}${sizes.length > 4 ? '/…' : ''}`);
+  return [String(product?.name || 'Produto'), ...parts].join(' · ');
+}
+
 function artworkId(print: any): string {
   const id = String(print?.stampId || print?.catalogStampId || '').trim();
   if (id) return id;
