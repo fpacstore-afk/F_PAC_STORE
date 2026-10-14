@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowRight, ChevronLeft, ChevronRight, Pause, Play } from 'lucide-react';
+import { ArrowDown, ArrowRight, ChevronLeft, ChevronRight, Pause, Play } from 'lucide-react';
 import { MediaSlot } from './MediaSlot';
 import type { MediaSlotConfig } from '../types/mediaSlot';
 import { isMediaVideo } from '../lib/utils';
@@ -33,7 +33,6 @@ export function HomeHeroCarousel({ slides }: HomeHeroCarouselProps) {
   const shouldPause = paused || hovered || focused;
   const touchStartX = useRef<number | null>(null);
   const frameRef = useRef<HTMLDivElement | null>(null);
-  const imageLayerRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     const viewport = window.matchMedia('(min-width: 768px)');
@@ -54,30 +53,6 @@ export function HomeHeroCarousel({ slides }: HomeHeroCarouselProps) {
     }, ROTATION_MS);
     return () => window.clearInterval(timer);
   }, [shouldPause, slides.length]);
-
-  useEffect(() => {
-    const frame = frameRef.current;
-    const imageLayer = imageLayerRef.current;
-    if (!frame || !imageLayer || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-
-    let animationFrame = 0;
-    const updateParallax = () => {
-      cancelAnimationFrame(animationFrame);
-      animationFrame = requestAnimationFrame(() => {
-        const bounds = frame.getBoundingClientRect();
-        const progress = Math.max(-1, Math.min(1, (window.innerHeight - bounds.top) / (window.innerHeight + bounds.height) - 0.5));
-        imageLayer.style.setProperty('--hero-parallax-y', `${progress * -34}px`);
-      });
-    };
-    updateParallax();
-    window.addEventListener('scroll', updateParallax, { passive: true });
-    window.addEventListener('resize', updateParallax);
-    return () => {
-      cancelAnimationFrame(animationFrame);
-      window.removeEventListener('scroll', updateParallax);
-      window.removeEventListener('resize', updateParallax);
-    };
-  }, [activeIndex, slides]);
 
   if (slides.length === 0) return null;
 
@@ -121,7 +96,7 @@ export function HomeHeroCarousel({ slides }: HomeHeroCarouselProps) {
       >
         {desktopViewport ? (
           <>
-            <div className="pointer-events-none absolute inset-x-0 bottom-0 top-[var(--site-header-height)]">
+            <div data-motion-parallax className="fpac-hero-media pointer-events-none absolute inset-x-0 bottom-[-48px] top-[var(--site-header-height)]">
               <MediaSlot
                 key={`desktop-${desktopMedia.url}`}
                 src={desktopMedia.url}
@@ -146,13 +121,14 @@ export function HomeHeroCarousel({ slides }: HomeHeroCarouselProps) {
           />
         )}
         <div className="relative z-20 mx-auto max-w-[1600px] px-5 pb-12 pt-8 sm:px-10 md:absolute md:inset-x-0 md:bottom-[10%] md:pb-0 md:pt-0 lg:px-16">
-          <p className="text-[9px] font-black uppercase tracking-[0.3em] text-[#f2c400] sm:text-[10px]">{activeSlide.eyebrow}</p>
-          <h1 className="mt-3 max-w-[min(55vw,900px)] text-[clamp(2.5rem,10vw,6rem)] font-black uppercase italic leading-[0.88] tracking-tight max-md:max-w-full">
+          <p data-motion-reveal className="text-[9px] font-black uppercase tracking-[0.3em] text-[#f2c400] sm:text-[10px]">{activeSlide.eyebrow}</p>
+          <h1 key={activeSlide.id} data-motion-reveal="title" data-motion-delay="80" className="mt-3 max-w-[min(55vw,900px)] text-[clamp(2.5rem,10vw,6rem)] font-black uppercase italic leading-[0.88] tracking-tight max-md:max-w-full">
             {activeSlide.title}
           </h1>
           <Link to={activeSlide.href} className="mt-6 inline-flex min-h-12 items-center gap-3 rounded-sm bg-[#eab308] px-6 py-3 text-[10px] font-black uppercase tracking-[0.18em] text-black transition-colors hover:bg-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#eab308]">
             Conhecer a coleção <ArrowRight size={17} />
           </Link>
+          <div><a href="#collections" className="fpac-hero-scroll">Explore a F PAC <ArrowDown size={16} aria-hidden="true" /></a></div>
         </div>
         {slides.length > 1 && (
           <div className="relative z-20 mx-auto flex max-w-[1600px] items-center justify-end gap-3 px-5 pb-6 sm:px-10 md:absolute md:inset-x-0 md:bottom-6 md:pb-0 lg:px-16">
@@ -194,9 +170,8 @@ export function HomeHeroCarousel({ slides }: HomeHeroCarouselProps) {
             aria-hidden={!isActive}
           >
             <div
-              ref={isActive ? imageLayerRef : undefined}
-              className="absolute inset-[-42px] will-change-transform"
-              style={{ transform: 'translate3d(0, var(--hero-parallax-y, 0px), 0) scale(1.07)' }}
+              data-motion-parallax={isActive ? '' : undefined}
+              className="fpac-hero-image absolute inset-[-42px]"
             >
               {slide.media ? (
                 <>
@@ -216,13 +191,14 @@ export function HomeHeroCarousel({ slides }: HomeHeroCarouselProps) {
 
       <div className="pointer-events-none absolute inset-0 z-10 bg-gradient-to-t from-black/70 via-black/10 to-transparent" />
       <div className="absolute inset-x-0 bottom-[10%] z-20 mx-auto flex max-w-[1440px] flex-col items-start px-5 sm:px-10 md:bottom-[12%] md:px-16 lg:px-24">
-        <p className="text-[9px] font-black uppercase tracking-[0.3em] text-[#f2c400] sm:text-[10px]">{activeSlide.eyebrow}</p>
-        <h1 className="mt-3 max-w-3xl text-[clamp(2.5rem,10vw,4.5rem)] font-black uppercase italic leading-[0.88] tracking-tight sm:text-6xl md:text-7xl lg:text-8xl">
+        <p data-motion-reveal className="text-[9px] font-black uppercase tracking-[0.3em] text-[#f2c400] sm:text-[10px]">{activeSlide.eyebrow}</p>
+        <h1 key={activeSlide.id} data-motion-reveal="title" data-motion-delay="80" className="mt-3 max-w-3xl text-[clamp(2.5rem,10vw,4.5rem)] font-black uppercase italic leading-[0.88] tracking-tight sm:text-6xl md:text-7xl lg:text-8xl">
           {activeSlide.title}
         </h1>
         <Link to={activeSlide.href} className="mt-5 inline-flex min-h-11 items-center gap-3 rounded-sm bg-[#eab308] px-5 py-3 text-[9px] font-black uppercase tracking-[0.18em] text-black transition-colors hover:bg-white sm:mt-6 sm:min-h-12 sm:px-7 sm:text-[10px]">
           Conhecer a coleção <ArrowRight size={16} />
         </Link>
+        <a href="#collections" className="fpac-hero-scroll">Explore a F PAC <ArrowDown size={16} aria-hidden="true" /></a>
       </div>
 
       {slides.length > 1 && (

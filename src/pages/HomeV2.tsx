@@ -1,9 +1,12 @@
 import { HomeHeroCarousel, type HomeHeroSlide } from '../components/HomeHeroCarousel';
 import { HomeCategoryCarousel } from '../components/HomeCategoryCarousel';
+import { HomeIdentityJourney } from '../components/HomeIdentityJourney';
+import { useHomeMotion } from '../hooks/useHomeMotion';
+import '../home-motion.css';
 import { resolveBrandMedia } from '../lib/brandMedia';
 import type { MediaSlotConfig } from '../types/mediaSlot';
 import { subscribePublicProductSnapshot } from '../services/publicProducts';
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   ArrowRight,
@@ -38,6 +41,8 @@ type InstagramFeedItem = {
 };
 
 export default function HomeV2() {
+  const homeRef = useRef<HTMLDivElement>(null);
+  useHomeMotion(homeRef);
   const [hero, setHero] = useState<MediaSlotConfig | null>(null);
   const [heroMobile, setHeroMobile] = useState<MediaSlotConfig | null>(null);
   const [brandImage, setBrandImage] = useState<string>('');
@@ -137,13 +142,13 @@ export default function HomeV2() {
   );
   const renderProductCards = (items: any[]) => (
     <div className="grid grid-cols-2 gap-3 sm:grid-cols-2 md:grid-cols-4 md:gap-5">
-      {items.map((product: any) => {
+      {items.map((product: any, index: number) => {
         const price = getDisplayPrices(product);
         const isPrimeProduct = productMatchesCommercialLine(product, 'prime') || Boolean(product.is_prime);
         const target = isPrimeProduct ? `/prime?product=${encodeURIComponent(product.id || product.slug)}` : getProductUrl(product);
         const productTitle = getStorefrontProductTitle(product, publicStampNames);
         return (
-          <article key={product.id || product.slug} className="group overflow-hidden rounded-2xl border border-black/10 bg-white shadow-sm transition-all hover:-translate-y-1 hover:shadow-xl">
+          <article key={product.id || product.slug} data-motion-reveal data-motion-delay={index * 70} className="group overflow-hidden rounded-2xl border border-black/10 bg-white shadow-sm transition-all hover:-translate-y-1 hover:shadow-xl">
             <Link to={target} className="relative block aspect-[4/5] overflow-hidden bg-black">
               <img src={product.images?.[0] || '/estampas/logo-fpac.png'} alt={productTitle} loading="lazy" decoding="async" className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" onError={event => { event.currentTarget.src = '/estampas/logo-fpac.png'; }} />
               {product.isBestseller === true && <span className="absolute left-3 top-3 rounded-full bg-[#eab308] px-3 py-1.5 text-[8px] font-black uppercase tracking-wider text-black">Mais vendido</span>}
@@ -178,7 +183,8 @@ export default function HomeV2() {
   );
 
   return (
-    <div className="w-full bg-white" data-home-version="canonical-v6">
+    <div ref={homeRef} className="fpac-motion-home w-full bg-white" data-home-version="canonical-v6">
+      <span className="fpac-home-progress" aria-hidden="true" />
       <Helmet>
         <title>F PAC STORE | Não é só roupa. É identidade!</title>
         <meta
@@ -201,7 +207,7 @@ export default function HomeV2() {
  
       <section id="collections" data-home-collections className="border-b border-black/5 bg-[#f7f7f5] py-5 md:py-7">
         <div className="mx-auto max-w-7xl px-5">
-          <div className="mb-3 flex items-center justify-between gap-3">
+          <div data-motion-reveal="title" className="mb-3 flex items-center justify-between gap-3">
             <div><p className="text-[8px] font-black uppercase tracking-[0.22em] text-[#9a7100]">Encontre seu estilo</p><h2 className="text-lg font-black uppercase text-black md:text-2xl">Acesse uma linha</h2></div>
             <Link to="/catalog/all" className="inline-flex min-h-10 items-center gap-2 text-[8px] font-black uppercase tracking-wider text-black md:text-[10px]">Ver catálogo <ArrowRight size={14} /></Link>
           </div>
@@ -210,8 +216,8 @@ export default function HomeV2() {
               { label: 'FORCE', detail: 'Visual limpo e discreto', to: '/catalog/all?line=force' },
               { label: 'MARK', detail: 'Estampas de presença', to: '/catalog/all?line=mark' },
               { label: 'PRIME', detail: 'Personalize sua peça', to: '/prime' },
-            ].map(item => (
-              <Link key={item.label} to={item.to} className="flex min-h-[76px] flex-col justify-center rounded-xl border border-black/10 bg-white px-4 py-3 transition-colors hover:border-[#eab308]">
+            ].map((item, index) => (
+              <Link key={item.label} to={item.to} data-motion-reveal data-motion-delay={index * 70} className="fpac-collection-link flex min-h-[76px] flex-col justify-center rounded-xl border border-black/10 bg-white px-4 py-3 transition-colors hover:border-[#eab308]">
                 <span className="text-xs font-black uppercase tracking-[0.14em]">{item.label}</span><span className="mt-1 text-[9px] text-black/50">{item.detail}</span>
               </Link>
             ))}
@@ -253,10 +259,12 @@ export default function HomeV2() {
 
       <HomeCategoryCarousel products={carouselProducts} />
 
+      <HomeIdentityJourney image={aboutImage || carouselProducts[0]?.images?.[0]} />
+
       {bestSellingProducts.length > 0 && (
         <section className="bg-white py-10 md:py-14" data-home-bestsellers>
           <div className="mx-auto max-w-7xl px-5">
-            <div className="mb-6 flex items-end justify-between gap-3">
+            <div data-motion-reveal="title" className="mb-6 flex items-end justify-between gap-3">
               <div><p className="text-[9px] font-black uppercase tracking-[0.24em] text-[#9a7100]">Destaques da loja</p><h2 className="mt-1 text-2xl font-black uppercase italic md:text-4xl">Mais vendidos</h2></div>
               <Link to="/catalog/all" className="inline-flex min-h-10 items-center gap-1 text-[8px] font-black uppercase tracking-wider text-black md:text-[10px]">Ver todos <ArrowRight size={14} /></Link>
             </div>
@@ -268,15 +276,15 @@ export default function HomeV2() {
       {newProducts.length > 0 && (
         <section className="bg-[#f7f7f5] py-10 md:py-14" data-home-launches>
           <div className="mx-auto max-w-7xl px-5">
-            <div className="mb-6"><p className="text-[9px] font-black uppercase tracking-[0.24em] text-[#9a7100]">Chegaram agora</p><h2 className="mt-1 text-2xl font-black uppercase italic md:text-4xl">Lançamentos</h2></div>
+            <div data-motion-reveal="title" className="mb-6"><p className="text-[9px] font-black uppercase tracking-[0.24em] text-[#9a7100]">Chegaram agora</p><h2 className="mt-1 text-2xl font-black uppercase italic md:text-4xl">Lançamentos</h2></div>
             {renderProductCards(newProducts)}
           </div>
         </section>
       )}
 
-      <section data-home-prime className="bg-black py-10 text-white md:py-14">
+      <section data-home-prime data-motion-scene className="fpac-section-transition bg-black py-10 text-white md:py-14">
         <div className="mx-auto flex max-w-7xl flex-col items-start justify-between gap-5 px-5 md:flex-row md:items-center">
-          <div className="max-w-2xl">
+          <div data-motion-reveal="title" className="max-w-2xl">
             <p className="text-[9px] font-black uppercase tracking-[0.24em] text-[#eab308]">Sua ideia vira peça</p>
             <h2 className="mt-2 text-3xl font-black uppercase italic md:text-5xl">Crie sua <span className="text-[#eab308]">PRIME</span></h2>
             <p className="mt-2 text-sm leading-relaxed text-white/65">Escolha modelo, cor, arte, posição e tamanho. Confira a prévia antes de adicionar à sacola.</p>
@@ -287,7 +295,7 @@ export default function HomeV2() {
 
       <section data-home-stamp-categories className="bg-white py-10 md:py-14">
         <div className="mx-auto max-w-7xl px-5">
-          <div className="mb-5 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+          <div data-motion-reveal="title" className="mb-5 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
             <div><p className="text-[9px] font-black uppercase tracking-[0.24em] text-[#9a7100]">Escolha uma temática</p><h2 className="mt-1 text-2xl font-black uppercase italic md:text-4xl">Estampas por categoria</h2></div>
             <Link to="/estampas" className="inline-flex min-h-10 items-center gap-2 text-[9px] font-black uppercase tracking-wider">Ver todas <ArrowRight size={14} /></Link>
           </div>
@@ -304,7 +312,7 @@ export default function HomeV2() {
       {catalogImages.length > 0 && (
         <section className="py-12 md:py-14 bg-[#f7f7f5]" data-home-catalog>
           <div className="max-w-6xl mx-auto px-5">
-            <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4 mb-6">
+            <div data-motion-reveal="title" className="flex flex-col md:flex-row md:items-end md:justify-between gap-4 mb-6">
               <div>
                 <p className="text-[#b88700] text-[10px] md:text-xs font-black uppercase tracking-[0.3em]">Inspiração F PAC</p>
                 <h2 className="mt-2 text-3xl md:text-5xl font-black uppercase italic text-black">Catálogo de <span className="text-[#eab308]">estampas</span></h2>
@@ -314,7 +322,7 @@ export default function HomeV2() {
             </div>
             <div className="grid md:grid-cols-2 gap-4">
               {catalogImages.map((src, index) => (
-                <Link key={index} to="/estampas" aria-label="Abrir catálogo de estampas" className="group relative aspect-video bg-black overflow-hidden rounded-2xl border border-black/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#eab308]">
+                <Link key={index} to="/estampas" data-motion-reveal="image" aria-label="Abrir catálogo de estampas" className="group relative aspect-video bg-black overflow-hidden rounded-2xl border border-black/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#eab308]">
                   <img src={src} alt="Catálogo F PAC STORE" loading="lazy" decoding="async" className="w-full h-full object-contain transition-transform duration-300 group-hover:scale-[1.02]" />
                   <span className="absolute right-3 bottom-3 inline-flex items-center gap-2 rounded-full bg-black/85 text-white px-4 py-2 text-[9px] font-black uppercase tracking-[0.16em] backdrop-blur-sm">Abrir catálogo <ArrowRight size={13} /></span>
                 </Link>
@@ -325,27 +333,27 @@ export default function HomeV2() {
       )}
 
       <section data-home-uniforms className="bg-[#f7f7f5] py-10 md:py-14">
-        <div className="mx-auto grid max-w-6xl gap-6 px-5 md:grid-cols-[1fr_auto] md:items-center">
+        <div data-motion-reveal className="mx-auto grid max-w-6xl gap-6 px-5 md:grid-cols-[1fr_auto] md:items-center">
           <div><p className="text-[9px] font-black uppercase tracking-[0.24em] text-[#9a7100]">Para sua equipe</p><h2 className="mt-2 text-2xl font-black uppercase italic md:text-4xl">Uniformes com a identidade da sua empresa</h2><p className="mt-2 max-w-2xl text-sm leading-relaxed text-black/55">Conte para a F PAC como você imagina as peças e receba um orçamento personalizado.</p></div>
           <a href="https://wa.me/5547997465602?text=Ol%C3%A1%2C%20quero%20um%20or%C3%A7amento%20para%20uniformes%20personalizados." target="_blank" rel="noreferrer" className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-black px-6 py-3 text-[10px] font-black uppercase tracking-[0.16em] text-[#eab308] transition-colors hover:bg-[#eab308] hover:text-black"><span>Orçar uniformes</span><ArrowRight size={16} /></a>
         </div>
       </section>
 
-      <section className="py-12 md:py-16 bg-black text-white" data-home-brand>
+      <section className="fpac-section-transition py-12 md:py-16 bg-black text-white" data-home-brand data-motion-scene>
         <div className="max-w-6xl mx-auto px-5 grid lg:grid-cols-2 gap-8 md:gap-10 items-center">
-          <div>
+          <div data-motion-reveal="title">
             <p className="text-[#eab308] text-[10px] md:text-xs font-black uppercase tracking-[0.3em]">Mais que vestir</p>
             <h2 className="mt-3 text-4xl md:text-6xl font-black uppercase italic leading-none">Estilo que fala<br />antes de <span className="text-[#eab308]">você.</span></h2>
             <p className="mt-5 text-white/65 leading-relaxed max-w-xl text-sm md:text-base">Qualidade, presença e liberdade para construir um visual com a sua assinatura.</p>
             <Link to="/produtos" className="mt-6 inline-flex items-center gap-2 text-[#eab308] font-black uppercase tracking-[0.2em] text-[10px]">Encontrar minha peça <ArrowRight size={15} /></Link>
           </div>
-          {aboutImage && <div className="aspect-square bg-neutral-900 overflow-hidden border border-white/10 rounded-2xl"><img src={aboutImage} alt="F PAC STORE" loading="lazy" decoding="async" className="w-full h-full object-cover" /></div>}
+          {aboutImage && <div data-motion-reveal="image" className="aspect-square bg-neutral-900 overflow-hidden border border-white/10 rounded-2xl"><img src={aboutImage} alt="F PAC STORE" loading="lazy" decoding="async" className="w-full h-full object-cover" /></div>}
         </div>
       </section>
 
       <section className="py-12 md:py-14 bg-white" data-home-instagram>
         <div className="max-w-7xl mx-auto px-5">
-          <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-5 mb-7">
+          <div data-motion-reveal="title" className="flex flex-col md:flex-row md:items-end md:justify-between gap-5 mb-7">
             <div>
               <p className="text-[#b88700] text-[10px] md:text-xs font-black uppercase tracking-[0.3em]">F PAC no Instagram</p>
               <h2 className="mt-2 text-4xl md:text-5xl font-black uppercase italic text-black">Vista. Marque. <span className="text-[#eab308]">Apareça.</span></h2>
