@@ -65,7 +65,9 @@ export default function Bag() {
     setShippingStatus('loading');
     setShippingError('');
     try {
-      const res = await fetch('https://viacep.com.br/ws/' + numericPart + '/json/');
+      const res = await fetch('https://viacep.com.br/ws/' + numericPart + '/json/', {
+        signal: AbortSignal.timeout(10_000),
+      });
       const data = await res.json();
       if (requestId !== shippingRequestId.current) return;
       if (!res.ok || data.erro) {
@@ -94,6 +96,7 @@ export default function Bag() {
       }
 
       let apiOptions: any[] = [];
+      let shippingProviderUnavailable = false;
       try {
         const calculateItems = items.map(item => ({
           id: item.id,
@@ -108,7 +111,8 @@ export default function Bag() {
         const calcRes = await fetch(getPublicApiUrl('/api/shipping/calculate'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ to: numericPart, items: calculateItems })
+          body: JSON.stringify({ to: numericPart, items: calculateItems }),
+          signal: AbortSignal.timeout(12_000),
         });
         if (requestId !== shippingRequestId.current) return;
         if (calcRes.ok) {
@@ -117,9 +121,10 @@ export default function Bag() {
             apiOptions = calcData
               .filter((option: any) => !option.error && Number.isFinite(parseFloat(option.price)))
               .sort((a: any, b: any) => parseFloat(a.price) - parseFloat(b.price));
-          }
-        }
+          } else shippingProviderUnavailable = true;
+        } else shippingProviderUnavailable = true;
       } catch (calcErr) {
+        shippingProviderUnavailable = true;
         console.warn('Melhor Envio API calculation failed.', calcErr);
       }
 
@@ -151,12 +156,16 @@ export default function Bag() {
         setShippingStatus('ready');
       } else {
         setShippingStatus('error');
-        setShippingError('Não encontramos opções de entrega para este CEP. Confira o endereço ou tente novamente.');
+        setShippingError(shippingProviderUnavailable
+          ? 'As transportadoras estão indisponíveis agora. Tente calcular o frete novamente em instantes.'
+          : 'Não encontramos opções de entrega para este CEP. Confira o endereço ou tente novamente.');
       }
     } catch (err) {
       if (requestId === shippingRequestId.current) {
         setShippingStatus('error');
-        setShippingError('Não foi possível consultar o CEP agora. Verifique sua conexão e tente novamente.');
+        setShippingError(err instanceof Error && err.name === 'TimeoutError'
+          ? 'A consulta do CEP demorou mais que o esperado. Tente novamente.'
+          : 'Não foi possível consultar o CEP agora. Verifique sua conexão e tente novamente.');
       }
     } finally {
       if (requestId === shippingRequestId.current) setLoadingCep(false);
