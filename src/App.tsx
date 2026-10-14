@@ -1,4 +1,4 @@
-import React, { Suspense, lazy, Component, ErrorInfo, ReactNode, useEffect, useState } from 'react';
+import React, { Suspense, lazy, Component, ErrorInfo, ReactNode, useEffect, useRef, useState } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, useParams, useLocation } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
 import { Navbar } from './components/Navbar';
@@ -99,6 +99,18 @@ function AppContent() {
   const location = useLocation();
   const { user } = useAuth();
   const isHome = location.pathname === '/';
+  const mainRef = useRef<HTMLElement>(null);
+  const previousPath = useRef(location.pathname);
+  useEffect(() => {
+    const changed = previousPath.current !== location.pathname;
+    previousPath.current = location.pathname;
+    if (!changed || isHome || location.pathname.startsWith('/gestao') ||
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    const animation = mainRef.current?.animate?.([{ opacity: 0.35 }, { opacity: 1 }], {
+      duration: 420, easing: 'cubic-bezier(0.22, 1, 0.36, 1)',
+    });
+    return () => animation?.cancel();
+  }, [location.pathname, isHome]);
   useEffect(() => {
     analyticsTracker.trackPageView(location.pathname);
     if (location.pathname.startsWith('/product/') || location.pathname.startsWith('/produto/')) {
@@ -111,7 +123,7 @@ function AppContent() {
     if (user) analyticsTracker.identify(user.uid, user.email || '', user.displayName || '', user.phoneNumber || '');
   }, [user]);
   return (
-    <main data-site-main id="main-content" tabIndex={-1} className={cn("flex-1", !isHome && "pt-[var(--site-header-height)]")}>
+    <main data-site-main ref={mainRef} id="main-content" tabIndex={-1} className={cn("flex-1", !isHome && "pt-[var(--site-header-height)]")}>
       <RouteMetadata />
       {/* The header is fixed. Keeping this banner inside the page flow makes it
           start below the menu instead of being hidden behind it on the home. */}
@@ -128,7 +140,7 @@ export default function App() {
   useEffect(() => { document.body.classList.add('app-loaded'); }, []);
   return (
     <Router><MotionConfig reducedMotion="user"><ScrollToTop /><Toaster position="top-right" toastOptions={{ duration: 5000 }} /><AuthProvider><MusicPlayerProvider>
-      <div className="min-h-[100dvh] bg-[#ffffff] text-gray-800 font-sans flex flex-col overflow-x-hidden" translate="no">
+      <div className="min-h-[100dvh] bg-[#ffffff] text-gray-800 font-sans flex flex-col overflow-x-clip" translate="no">
         <a href="#main-content" className="sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-[10000] focus:bg-black focus:px-4 focus:py-3 focus:text-white">Pular para o conteúdo</a>
         <Navbar /><FlashSaleBadge /><SimpleStyleQuiz /><AppContent /><Footer /><PrivacyPreferences />
         <a href="https://wa.me/5547997465602?text=Olá!%20Vim%20pelo%20site%20e%20gostaria%20de%20atendimento." target="_blank" rel="noopener noreferrer" className="fixed bottom-6 right-6 z-50 bg-[#25D366] text-white p-4 rounded-full shadow-2xl hover:scale-110 transition-transform flex items-center justify-center group" aria-label="WhatsApp">

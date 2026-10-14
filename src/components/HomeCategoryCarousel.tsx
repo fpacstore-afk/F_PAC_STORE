@@ -83,7 +83,7 @@ export function HomeCategoryCarousel({ products }: { products: CatalogProduct[] 
     <section data-home-products id="products" className="overflow-hidden bg-white py-12 md:py-16">
       <div className="mx-auto max-w-[1600px] px-5 sm:px-8 lg:px-12">
         <div className="mb-7 flex flex-wrap items-end justify-between gap-5 md:mb-9">
-          <div>
+          <div data-motion-reveal="title">
             <p className="text-[10px] font-black uppercase tracking-[0.3em] text-[#a97800]">Escolha seu produto</p>
             <h2 className="mt-3 max-w-4xl text-3xl font-black uppercase italic leading-[0.95] text-black sm:text-4xl lg:text-5xl">
               Encontre sua próxima <span className="text-[#c69500]">peça.</span>
@@ -113,7 +113,7 @@ export function HomeCategoryCarousel({ products }: { products: CatalogProduct[] 
           aria-label="Categorias de produtos"
           tabIndex={0}
         >
-          {categories.map(category => {
+          {categories.map((category, index) => {
             const image = category.products.find(product => product.images?.[0])?.images?.[0] || '';
             const Icon = category.icon;
             return (
@@ -121,6 +121,8 @@ export function HomeCategoryCarousel({ products }: { products: CatalogProduct[] 
                 key={category.slug}
                 to={`/produtos/${category.slug}`}
                 data-category-card
+                data-motion-reveal="image"
+                data-motion-delay={index * 60}
                 className={`group relative block aspect-[4/5] basis-[78%] shrink-0 snap-start overflow-hidden rounded-xl bg-[#151515] text-white shadow-sm outline-none transition-shadow duration-300 hover:shadow-2xl focus-visible:ring-4 focus-visible:ring-[#eab308] sm:basis-[43%] ${desktopWidth}`}
                 aria-label={`Conhecer ${category.title}`}
               >

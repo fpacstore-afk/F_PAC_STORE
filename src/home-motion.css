@@ -1,0 +1,88 @@
+/* All effects are scoped to the home. The native page scroll remains in control. */
+.fpac-motion-home { --home-scroll-progress: 0; }
+.fpac-home-progress {
+  position: fixed; top: var(--site-header-height); left: 0; z-index: 45;
+  width: 100%; height: 3px; background: #eab308; pointer-events: none;
+  transform: scaleX(var(--home-scroll-progress)); transform-origin: left;
+}
+.fpac-motion-home #collections { scroll-margin-top: 16px; }
+.fpac-hero-media { transform: translate3d(0, var(--home-parallax-y, 0px), 0); }
+.fpac-hero-image { transform: translate3d(0, var(--home-parallax-y, 0px), 0) scale(1.07); }
+.fpac-hero-scroll {
+  display: inline-flex; align-items: center; gap: 12px; margin-top: 22px;
+  font-size: 10px; font-weight: 800; letter-spacing: .16em; text-transform: uppercase;
+  color: #fff; text-decoration: none;
+}
+.fpac-hero-scroll::before { content: ''; width: 30px; height: 2px; background: #eab308; }
+.fpac-motion-home .fpac-collection-link { position: relative; overflow: hidden; }
+.fpac-motion-home .fpac-collection-link::after {
+  content: ''; position: absolute; right: -20px; bottom: -18px; width: 52px; height: 52px;
+  background: #eab308; transform: rotate(-24deg) translateY(36px);
+  transition: transform .5s cubic-bezier(.22,1,.36,1); pointer-events: none;
+}
+.fpac-motion-home .fpac-collection-link:is(:hover, :focus-visible)::after { transform: rotate(-24deg) translateY(0); }
+.fpac-motion-home .fpac-section-transition { position: relative; isolation: isolate; overflow: hidden; }
+.fpac-motion-home .fpac-section-transition::before {
+  content: ''; position: absolute; inset: 0; z-index: -1; pointer-events: none;
+  background: radial-gradient(ellipse at 95% 100%, #eab30825, transparent 56%),
+    repeating-linear-gradient(115deg, transparent 0 84px, #ffffff05 85px 86px);
+  transform: translate3d(var(--home-scene-shift, 0px), 0, 0) scale(1.12);
+}
+.fpac-motion-home .fpac-section-transition::after {
+  content: ''; position: absolute; top: 0; left: 0; width: 100%; height: 5px;
+  background: #eab308; transform: scaleX(var(--home-scene-progress, 0));
+  transform-origin: left; pointer-events: none;
+}
+.fpac-identity-journey {
+  position: relative; overflow: clip; background: #111; color: #fff;
+  padding: clamp(56px, 8vw, 112px) max(20px, calc((100% - 1440px) / 2));
+}
+.fpac-journey-heading { position: relative; z-index: 1; margin-bottom: 48px; }
+.fpac-motion-eyebrow { margin: 0; font-size: 10px; font-weight: 900; letter-spacing: .2em; text-transform: uppercase; color: #eab308; }
+.fpac-journey-heading h2 { margin: 14px 0 0; font-size: clamp(40px, 6vw, 88px); font-weight: 900; line-height: 1; letter-spacing: -.045em; text-transform: uppercase; }
+.fpac-journey-heading h2 span { color: #eab308; }
+.fpac-journey-layout { display: grid; grid-template-columns: 1fr 1fr; gap: clamp(32px, 6vw, 96px); align-items: start; }
+.fpac-journey-visual {
+  position: sticky; top: calc(var(--site-header-height) + 28px); order: 2;
+  display: grid; place-items: center; height: min(64vh, 640px); min-height: 360px;
+  border: 1px solid #ffffff18; background: #191919;
+}
+.fpac-journey-orbit { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+.fpac-journey-orbit span {
+  position: absolute; width: 74%; height: 150%; top: -26%; left: -36%;
+  background: #eab308; transform: rotate(calc(-24deg + var(--home-scene-rotation, 0deg)));
+}
+.fpac-journey-orbit span + span { left: auto; right: -38%; top: -4%; width: 38%; background: #eab30828; }
+.fpac-journey-picture { position: relative; width: 88%; height: 86%; overflow: hidden; }
+.fpac-journey-picture img {
+  width: 100%; height: 100%; object-fit: contain;
+  transform: translate3d(0, var(--home-scene-shift, 0px), 0);
+}
+.fpac-journey-caption { position: absolute; bottom: 16px; left: 16px; right: 16px; font-size: 9px; font-weight: 900; letter-spacing: .12em; text-align: center; }
+.fpac-journey-chapter { display: flex; flex-direction: column; justify-content: center; min-height: 44vh; padding: 48px 0; border-top: 1px solid #ffffff24; }
+.fpac-journey-chapter .fpac-motion-eyebrow span { display: inline-block; margin-right: 12px; font-size: 22px; letter-spacing: -.03em; }
+.fpac-journey-chapter h3 { max-width: 600px; margin: 20px 0 0; font-size: clamp(30px, 4vw, 56px); line-height: 1.08; font-weight: 900; letter-spacing: -.035em; }
+.fpac-journey-copy { max-width: 400px; margin: 20px 0 0; font-size: 15px; line-height: 1.7; color: #ffffffa6; }
+.fpac-motion-link { display: inline-flex; align-items: center; align-self: flex-start; gap: 12px; margin-top: 28px; color: #eab308; font-size: 12px; font-weight: 900; text-transform: uppercase; letter-spacing: .1em; }
+.fpac-motion-link:focus-visible, .fpac-hero-scroll:focus-visible { outline: 2px solid #eab308; outline-offset: 6px; }
+@media (max-width: 767px) {
+  .fpac-home-progress { height: 2px; }
+  .fpac-identity-journey { padding: 48px 20px; }
+  .fpac-journey-heading { margin-bottom: 28px; }
+  .fpac-journey-heading h2 { font-size: clamp(36px, 10vw, 56px); }
+  .fpac-journey-layout { grid-template-columns: 1fr; gap: 28px; }
+  .fpac-journey-visual { position: relative; top: auto; order: 0; height: 390px; min-height: 0; max-height: 58svh; }
+  .fpac-journey-chapter { min-height: 0; padding: 28px 0; }
+  .fpac-journey-chapter h3 { font-size: 32px; }
+  .fpac-journey-copy { margin-top: 12px; font-size: 14px; }
+  .fpac-hero-scroll { font-size: 9px; margin-top: 20px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .fpac-home-progress { display: none; }
+  .fpac-hero-media, .fpac-hero-image, .fpac-journey-picture img,
+  .fpac-motion-home .fpac-section-transition::before { transform: none; }
+  .fpac-motion-home .fpac-section-transition::after { transform: none; }
+  .fpac-motion-home .fpac-collection-link::after { transition: none; }
+  .fpac-journey-visual { position: relative; top: auto; }
+  .fpac-journey-chapter { min-height: 0; padding: 32px 0; }
+}
