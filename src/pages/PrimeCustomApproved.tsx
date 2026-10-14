@@ -69,24 +69,25 @@ const parseSize = (value: string): [number, number] => {
 };
 
 function getPlacements(kind: ProductVisualKind): Placement[] {
-  const visual = PRODUCT_VISUALS[kind];
-  if (kind === 'cap') {
-    return [{ id: 'front', label: 'Frente', location: 'Boné Frontal', positionId: 'bone_frontal', side: 'front', maxWidth: 12, maxHeight: 6, defaultSize: '10x5' }];
-  }
-  if (kind === 'shorts') {
-    return [
-      { id: 'front', label: 'Frente', location: 'Bermuda Frente', positionId: 'bermuda_frente', side: 'front', maxWidth: 15, maxHeight: 20, defaultSize: '10x12' },
-      { id: 'back', label: 'Costas', location: 'Bermuda Costas', positionId: 'bermuda_costas', side: 'back', maxWidth: 15, maxHeight: 20, defaultSize: '10x12' },
-    ];
-  }
-  const bodyPlacements: Placement[] = [
-    { id: 'front', label: 'Frente', location: 'Frente', positionId: 'peito_central', side: 'front', maxWidth: visual.frontMax[0], maxHeight: visual.frontMax[1], defaultSize: '20x30' },
-    { id: 'back', label: 'Costas', location: 'Costas', positionId: 'costas', side: 'back', maxWidth: visual.backMax[0], maxHeight: visual.backMax[1], defaultSize: '25x30' },
-  ];
-  if (kind === 'hoodie') return bodyPlacements;
-  return [...bodyPlacements,
-    { id: 'sleeve', label: 'Manga', location: 'Manga Esquerda', positionId: 'manga_esquerda', side: 'front', maxWidth: 10, maxHeight: 12, defaultSize: '8x8' },
-  ];
+  const profile = getCustomizationProfileById(kind);
+  if (!profile) return [];
+  return profile.printAreas.map(area => {
+    const id = area.id === 'left-sleeve' ? 'sleeve' : area.id;
+    const location = area.id === 'left-sleeve' ? 'Manga Esquerda'
+      : kind === 'shorts' ? area.viewSide === 'front' ? 'Bermuda Frente' : 'Bermuda Costas'
+        : kind === 'cap' ? 'Boné Frontal'
+          : area.viewSide === 'front' ? 'Frente' : 'Costas';
+    return {
+      id,
+      label: area.id === 'left-sleeve' ? 'Manga' : area.label,
+      location,
+      positionId: area.positionId,
+      side: area.viewSide,
+      maxWidth: area.maxWidthCm,
+      maxHeight: area.maxHeightCm,
+      defaultSize: area.defaultSizeCm,
+    };
+  });
 }
 
 function getOverlayStyle(kind: ProductVisualKind, placement: Placement, printSize: string): React.CSSProperties {
@@ -94,8 +95,8 @@ function getOverlayStyle(kind: ProductVisualKind, placement: Placement, printSiz
   const widthRatio = Math.min(1, width / placement.maxWidth);
   const baseWidth = kind === 'cap' ? 30 : kind === 'shorts' ? 24 : placement.id === 'sleeve' ? 13 : 34;
   return {
-    left: placement.id === 'sleeve' ? '24%' : kind === 'shorts' ? '42%' : '50%',
-    top: kind === 'cap' ? '48%' : kind === 'shorts' ? '59%' : placement.id === 'sleeve' ? '42%' : kind === 'cropped' ? '51%' : '49%',
+    left: placement.id === 'sleeve' ? '24%' : kind === 'shorts' ? '32%' : '50%',
+    top: kind === 'cap' ? '34%' : kind === 'shorts' ? '46%' : placement.id === 'sleeve' ? '42%' : kind === 'cropped' ? '51%' : '49%',
     width: `${Math.max(baseWidth * widthRatio, 7)}%`,
     aspectRatio: `${width} / ${height}`,
     transform: 'translate(-50%, -50%)',
@@ -207,7 +208,7 @@ export default function PrimeCustomApproved() {
   const priceBreakdown = calculatePrimePrice(visualKind, pricePrints);
   const price = priceBreakdown.total;
   const pixPrice = price * 0.95;
-  const appliedCount = Object.keys(applied).length;
+  const appliedCount = placements.filter(placement => applied[placement.id]?.productKey === productId).length;
 
   useEffect(() => {
     setPlacementId('front');
@@ -299,7 +300,7 @@ export default function PrimeCustomApproved() {
 
     const printConfigs = placements.flatMap(placement => {
       const item = applied[placement.id];
-      if (!item) return [];
+      if (!item || item.productKey !== productId) return [];
       const artPlacement = isMeasuredPrimeModel(visualKind) && item.bounds
         ? placePrimeArtwork(visualKind, size, placement.id as PrimeAreaId, item.printSize, item.bounds, item.position, placement.id === 'sleeve') : undefined;
       return [{ placement: artPlacement, id: `${item.id}_${placement.positionId}_${Date.now()}`, stampId: item.id, stamp: item.name, location: placement.location, printSize: item.printSize, image: item.image, background: 'Sem Fundo' as const }];
@@ -414,7 +415,7 @@ export default function PrimeCustomApproved() {
             </div>
 
             <div className={`grid gap-1.5 mb-2.5 ${placements.length === 1 ? "grid-cols-1" : placements.length === 2 ? "grid-cols-2" : "grid-cols-3"}`}>
-              {placements.map(placement => <button key={placement.id} type="button" onClick={() => setPlacementId(placement.id)} className={`min-h-10 rounded-lg text-[9px] md:text-[11px] font-black uppercase transition-colors ${placement.id === activePlacement.id ? 'bg-[#f5bd19] text-black' : 'bg-black text-white'}`}>{placement.label}{applied[placement.id] ? ' ✓' : ''}</button>)}
+              {placements.map(placement => <button key={placement.id} type="button" onClick={() => setPlacementId(placement.id)} className={`min-h-10 rounded-lg text-[9px] md:text-[11px] font-black uppercase transition-colors ${placement.id === activePlacement.id ? 'bg-[#f5bd19] text-black' : 'bg-black text-white'}`}>{placement.label}{applied[placement.id]?.productKey === productId ? ' ✓' : ''}</button>)}
             </div>
 
             <ProductMockupSprite interactive kind={visualKind} view={activePlacement.side} tone={mockupTone} className="aspect-square rounded-xl border border-black/10" label={`${visual.label} ${color} - ${activePlacement.label}`}>
@@ -426,7 +427,7 @@ export default function PrimeCustomApproved() {
             <div className="mt-2.5 px-1 text-[10px] leading-relaxed text-black/60">
               {measuredModel && <><p>{catalogSleeve ? `Catálogo: ${areaWidth} × ${areaHeight} cm na manga esquerda. Prévia da manga levemente ampliada para facilitar a visualização.` : activeApplied ? 'Arraste a estampa dentro da área pontilhada. Também é possível ajustar com as setas do teclado.' : 'A área pontilhada é fixa. Escolha e aplique uma arte para posicioná-la.'}</p>
                 {visiblePrint && <p>Arte visível: {money(visiblePrint.widthCm)} × {money(visiblePrint.heightCm)} cm. Proporção original preservada.</p>}
-                <p>A prévia mantém a mesma proporção em todos os tamanhos. Medidas representadas de forma aproximada.</p>
+                <p>A estampa mantém a proporção original. O mockup é ilustrativo; o tamanho escolhido define a peça do pedido.</p>
                 {activeApplied && !catalogSleeve && <button type="button" onClick={() => setApplied(current => ({ ...current, [activePlacement.id]: { ...current[activePlacement.id], position: undefined } }))} className="mt-1 min-h-9 underline font-bold">Restaurar posição</button>}
               </>}
             </div>
@@ -470,7 +471,7 @@ export default function PrimeCustomApproved() {
           </aside>
         </div>
 
-        <section className="mt-4 grid grid-cols-3 gap-2 rounded-2xl border border-black/10 bg-white p-3 text-center">{[['Mockup realista', 'Visualize antes'], ['Medidas reais', 'Em centímetros'], ['Compra segura', 'Checkout F PAC']].map(([title, text]) => <div key={title} className="px-1"><b className="block text-[8px] md:text-[10px] uppercase">{title}</b><span className="text-[7px] md:text-[9px] text-black/45">{text}</span></div>)}</section>
+        <section className="mt-4 grid grid-cols-3 gap-2 rounded-2xl border border-black/10 bg-white p-3 text-center">{[['Mockup', 'Visualize sua peça'], ['Área máxima', `${areaWidth} × ${areaHeight} cm`], ['Compra segura', 'Checkout F PAC']].map(([title, text]) => <div key={title} className="px-1"><b className="block text-[8px] md:text-[10px] uppercase">{title}</b><span className="text-[7px] md:text-[9px] text-black/45">{text}</span></div>)}</section>
       </div>
 
       <div className="fixed inset-x-0 bottom-0 z-[70] border-t border-black/10 bg-white/95 px-3 py-2.5 shadow-[0_-12px_35px_rgba(0,0,0,.16)] backdrop-blur-xl md:hidden">

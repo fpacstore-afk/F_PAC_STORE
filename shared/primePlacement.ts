@@ -1,4 +1,5 @@
 import { parsePrimePrintSize, isCatalogSleeveSize } from './primeArtworkSizing';
+import { getCustomizationProfileById } from './customizationProfiles';
 
 export type MeasuredPrimeModel = 'oversized' | 'traditional' | 'cropped' | 'hoodie';
 export type PrimeAreaId = 'front' | 'back' | 'sleeve' | 'sleeve_right';
@@ -36,7 +37,7 @@ export const isMeasuredPrimeModel = (kind: string): kind is MeasuredPrimeModel =
 const LANDMARKS = {
   oversized: {
     front: { centerX: 257, bodyWidth: 275, shoulderY: 51, collarY: 109, hemY: 462 },
-    back: { centerX: 274, bodyWidth: 286, shoulderY: 47, collarY: 77, hemY: 466 },
+    back: { centerX: 256, bodyWidth: 286, shoulderY: 47, collarY: 77, hemY: 466 },
     sleeve: { hemX: 451, hemY: 266, rotation: -35 },
   },
   traditional: {
@@ -63,10 +64,14 @@ export function getPrimeAreaGeometry(model: MeasuredPrimeModel, _size: string, a
     || { size: 'Referência visual', width: 60, length: 72, sleeve: 0 };
   const isSleeve = areaId === 'sleeve' || areaId === 'sleeve_right';
   if (model === 'hoodie' && isSleeve) throw new Error('O casaco permite estampas somente na frente e nas costas.');
+  const profile = getCustomizationProfileById(model);
+  const printArea = profile?.printAreas.find(area => area.id === (isSleeve ? 'left-sleeve' : areaId));
+  if (!printArea) throw new Error('Área de impressão indisponível para este modelo.');
   const view = LANDMARKS[model][areaId === 'back' ? 'back' : 'front'];
   const pixelsPerCm = Math.min(view.bodyWidth / measurement.width, (view.hemY - view.shoulderY) / measurement.length);
-  const widthCm = isSleeve ? catalogSleeve ? (sleevePrintSize === '3x2' ? 3 : 2) : 10 : 30;
-  const heightCm = isSleeve ? catalogSleeve ? (sleevePrintSize === '3x2' ? 2 : 3) : 12 : model === 'cropped' && areaId === 'front' ? 35 : 40;
+  const sleeveDimensions = catalogSleeve ? parsePrimePrintSize(sleevePrintSize) : null;
+  const widthCm = isSleeve && catalogSleeve ? sleeveDimensions?.[0] || 2 : printArea.maxWidthCm;
+  const heightCm = isSleeve && catalogSleeve ? sleeveDimensions?.[1] || 3 : printArea.maxHeightCm;
   const topGapCm = areaId === 'back' && model !== 'cropped' ? 6 : 4;
   let centerX = view.centerX;
   let centerY = view.collarY + (topGapCm + heightCm / 2) * pixelsPerCm;
@@ -139,8 +144,11 @@ export function placePrimeArtwork(model: MeasuredPrimeModel, size: string, areaI
   const clamp = (value: number, max: number) => Math.max(0, Math.min(max, value));
   return {
     version: 1, model, garmentSize: size, areaId,
+    // Body prints start at the top of the calibrated production area. Centering
+    // small artwork in the full 30 × 40 cm maximum box placed it too low on the
+    // chest and back. Sleeves remain aligned to the cuff by default.
     xCm: clamp((catalogSleeve ? undefined : position?.xCm) ?? availableX / 2, availableX),
-    yCm: clamp((catalogSleeve ? undefined : position?.yCm) ?? (isSleeve ? availableY : availableY / 2), availableY),
+    yCm: clamp((catalogSleeve ? undefined : position?.yCm) ?? (isSleeve ? availableY : 0), availableY),
     ...fitted, areaWidthCm: area.widthCm, areaHeightCm: area.heightCm,
     rotationDeg: area.rotationDeg, artwork,
     ...(isSleeve ? { sleeveMode: catalogSleeve ? 'catalog' as const : 'custom' as const } : {}),

@@ -31,7 +31,11 @@ export function PrimePrintPreview({ model, garmentSize, areaId, art, onMove, sho
     const offsets: Record<string, [number, number]> = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] };
     const offset = offsets[event.key];
     if (offset) { event.preventDefault(); move({ xCm: placed.xCm + offset[0], yCm: placed.yCm + offset[1] }); }
-    if (event.key === 'Home') { event.preventDefault(); move({ xCm: (area.widthCm - placed.widthCm) / 2, yCm: (area.heightCm - placed.heightCm) / 2 }); }
+    if (event.key === 'Home' && art?.bounds) {
+      event.preventDefault();
+      const initial = placePrimeArtwork(model, garmentSize, areaId, art.printSize, art.bounds, undefined, catalogSleeve);
+      move({ xCm: initial.xCm, yCm: initial.yCm });
+    }
   };
   const artworkStyle: React.CSSProperties | undefined = placed && {
     left: `${placed.xCm / area.widthCm * 100}%`, top: `${placed.yCm / area.heightCm * 100}%`,

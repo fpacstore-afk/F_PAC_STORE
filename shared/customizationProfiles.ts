@@ -44,6 +44,17 @@ const BACK_30X40: CustomizationPrintArea = {
   defaultSizeCm: '20x30',
 };
 
+const HOODIE_FRONT: CustomizationPrintArea = {
+  id: 'front',
+  positionId: 'peito_central',
+  label: 'Frente',
+  viewSide: 'front',
+  maxWidthCm: 30,
+  // Keep the front print above the kangaroo pocket in the PRIME mockup.
+  maxHeightCm: 25,
+  defaultSizeCm: '20x20',
+};
+
 /**
  * Registry for the F PAC customization engine.
  * PRIME is product-agnostic: every enabled garment can use the same secure
@@ -100,7 +111,7 @@ export const CUSTOMIZATION_PRODUCT_PROFILES: Readonly<Record<CustomizationProfil
     pricingMode: 'fixed',
     fixedPrice: 119.90,
     maxPrints: 2,
-    printAreas: [FRONT_30X40, BACK_30X40],
+    printAreas: [HOODIE_FRONT, BACK_30X40],
   },
   shorts: {
     id: 'shorts',
