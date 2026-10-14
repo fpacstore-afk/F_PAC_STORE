@@ -169,20 +169,8 @@ export function getVisibleArtworkBounds(data: ArrayLike<number>, width: number, 
     : { left: left / width, top: top / height, width: (right - left + 1) / width, height: (bottom - top + 1) / height };
 }
 
-// Cap sizes in the catalog are written height × width (8 × 6, 8 × 12).
-// The placement geometry always uses width × height, as do all other garments.
-export function getPrimePrintDimensions(model: PrimePlacementModel, printSize: string): readonly [number, number] | null {
+export function fitPrimeArtwork(printSize: string, artwork: ArtworkBounds) {
   const dimensions = parsePrimePrintSize(printSize);
-  return dimensions && (model === 'cap' ? [dimensions[1], dimensions[0]] : dimensions);
-}
-
-export function isPrimePrintSizeWithinArea(model: PrimePlacementModel, printSize: string, widthCm: number, heightCm: number): boolean {
-  const dimensions = getPrimePrintDimensions(model, printSize);
-  return Boolean(dimensions && dimensions[0] <= widthCm && dimensions[1] <= heightCm);
-}
-
-export function fitPrimeArtwork(printSize: string, artwork: ArtworkBounds, model: PrimePlacementModel = 'oversized') {
-  const dimensions = getPrimePrintDimensions(model, printSize);
   if (!dimensions) throw new Error('Medida de estampa inválida.');
   const aspect = artwork.sourceWidth * artwork.crop.width / (artwork.sourceHeight * artwork.crop.height);
   const widthCm = Math.min(dimensions[0], dimensions[1] * aspect);
@@ -193,9 +181,9 @@ export function placePrimeArtwork(model: PrimePlacementModel, size: string, area
   const isSleeve = areaId === 'sleeve' || areaId === 'sleeve_right';
   if (catalogSleeve && (areaId !== 'sleeve' || !isCatalogSleeveSize(printSize))) throw new Error('A estampa do catálogo na manga deve ser 2 × 3 ou 3 × 2 cm no braço esquerdo.');
   const area = getPrimeAreaGeometry(model, size, areaId, catalogSleeve, printSize);
-  const dimensions = getPrimePrintDimensions(model, printSize);
+  const dimensions = parsePrimePrintSize(printSize);
   if (!dimensions || dimensions[0] > area.widthCm || dimensions[1] > area.heightCm) throw new Error('A estampa ultrapassa a área de impressão.');
-  const fitted = fitPrimeArtwork(printSize, artwork, model);
+  const fitted = fitPrimeArtwork(printSize, artwork);
   const availableX = Math.max(0, area.widthCm - fitted.widthCm);
   const availableY = Math.max(0, area.heightCm - fitted.heightCm);
   const clamp = (value: number, max: number) => Math.max(0, Math.min(max, value));

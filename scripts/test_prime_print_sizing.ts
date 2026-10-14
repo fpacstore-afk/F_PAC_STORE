@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { getPrimeAreaGeometry, getPrimePrintDimensions, getVisibleArtworkBounds, isPrimePrintSizeWithinArea, placePrimeArtwork, validatePrimeArtworkPlacement, PRIME_GARMENT_MEASUREMENTS, PRIME_VISUAL_AREA_LANDMARKS, type MeasuredPrimeModel, type PrimeAreaId, type PrimePlacementModel } from '../shared/primePlacement';
+import { getPrimeAreaGeometry, getVisibleArtworkBounds, placePrimeArtwork, validatePrimeArtworkPlacement, PRIME_GARMENT_MEASUREMENTS, PRIME_VISUAL_AREA_LANDMARKS, type MeasuredPrimeModel, type PrimeAreaId, type PrimePlacementModel } from '../shared/primePlacement';
 import {
   PRIME_PRINT_SIZE_SURCHARGE,
   getActiveProductColorNames,
@@ -132,9 +132,10 @@ assert.equal(isPrimeSizeAllowedAtLocation('3x3', 'Bermuda Frente'), true);
 assert.equal(isPrimeSizeAllowedAtLocation('5x5', 'Bermuda Frente'), false);
 assert.equal(isPrimeSizeAllowedAtLocation('10x10', 'Bermuda Costas'), true);
 assert.equal(isPrimeSizeAllowedAtLocation('10x12', 'Bermuda Costas'), false);
-assert.equal(isPrimeSizeAllowedAtLocation('8x12', 'Boné Frontal'), true);
+assert.equal(isPrimeSizeAllowedAtLocation('8x12', 'Boné Frontal'), false);
 assert.equal(isPrimeSizeAllowedAtLocation('8x6', 'Boné Frontal'), true);
-assert.equal(isPrimeSizeAllowedAtLocation('12x8', 'Boné Frontal'), false);
+assert.equal(isPrimeSizeAllowedAtLocation('6x8', 'Boné Frontal'), true);
+assert.equal(isPrimeSizeAllowedAtLocation('12x8', 'Boné Frontal'), true);
 assert.equal(isPrimeSizeAllowedAtLocation('10x10', 'Posição Inexistente'), false);
 
 assert.equal(
@@ -296,17 +297,16 @@ const capArea = getPrimeAreaGeometry('cap', 'M', 'front');
 assert.deepEqual([capArea.widthCm, capArea.heightCm], [12, 8]);
 assert.equal(capArea.centerY, 253);
 assert.ok(capArea.centerY + capArea.heightCm * capArea.pixelsPerCm / 2 <= 305, 'The cap print box remains entirely above the visor.');
-assert.deepEqual(getPrimePrintDimensions('cap', '8x6'), [6, 8], 'Cap print dimensions are catalogued height × width.');
-assert.equal(isPrimePrintSizeWithinArea('cap', '8x12', 12, 8), true);
-assert.equal(isPrimePrintSizeWithinArea('cap', '12x8', 12, 8), false);
+assert.equal(isPrimePrintSizeWithin('6x8', 12, 8), true, 'The registered portrait logo fills the cap area height.');
+assert.equal(isPrimePrintSizeWithin('8x12', 12, 8), false);
 const portraitCapArt = { sourceWidth: 100, sourceHeight: 100, crop: { left: 0, top: 0, width: .75, height: 1 } };
-const capPrint = placePrimeArtwork('cap', 'M', 'front', '8x6', portraitCapArt);
-assert.deepEqual([capPrint.widthCm, capPrint.heightCm, capPrint.xCm, capPrint.yCm], [6, 8, 3, 0], 'An 8 cm tall cap artwork touches the top and bottom of the 8 cm tall area.');
-assert.deepEqual(validatePrimeArtworkPlacement(capPrint, 'cap', 'M', 'Boné Frontal', '8x6'), capPrint);
-const movedCap = placePrimeArtwork('cap', 'M', 'front', '8x6', portraitCapArt, { xCm: 50, yCm: 50 });
+const capPrint = placePrimeArtwork('cap', 'M', 'front', '6x8', portraitCapArt);
+assert.deepEqual([capPrint.widthCm, capPrint.heightCm, capPrint.xCm, capPrint.yCm], [6, 8, 3, 0], 'A registered 6 × 8 portrait logo touches the top and bottom of the 8 cm tall cap area.');
+assert.deepEqual(validatePrimeArtworkPlacement(capPrint, 'cap', 'M', 'Boné Frontal', '6x8'), capPrint);
+const movedCap = placePrimeArtwork('cap', 'M', 'front', '6x8', portraitCapArt, { xCm: 50, yCm: 50 });
 assert.deepEqual([movedCap.xCm + movedCap.widthCm, movedCap.yCm + movedCap.heightCm], [12, 8], 'The cap print can be dragged to the edge without leaving its fixed area.');
-assert.deepEqual(validatePrimeArtworkPlacement(movedCap, 'cap', 'M', 'Boné Frontal', '8x6'), movedCap);
-assert.throws(() => placePrimeArtwork('cap', 'M', 'front', '12x8', portraitCapArt), /ultrapassa/);
+assert.deepEqual(validatePrimeArtworkPlacement(movedCap, 'cap', 'M', 'Boné Frontal', '6x8'), movedCap);
+assert.throws(() => placePrimeArtwork('cap', 'M', 'front', '8x12', portraitCapArt), /ultrapassa/);
 assert.throws(() => placePrimeArtwork('shorts', 'M', 'front', '5x5', art), /ultrapassa/);
 const movedShorts = placePrimeArtwork('shorts', 'M', 'back', '10x10', art, { xCm: 500, yCm: 500 });
 assert.deepEqual([movedShorts.xCm + movedShorts.widthCm, movedShorts.yCm + movedShorts.heightCm], [10, 10], 'Dragging a maximum-size print remains bounded by its pocket area.');
@@ -317,7 +317,7 @@ for (const kind of ['oversized','traditional','cropped','hoodie','shorts','cap']
   assert.equal(productProfile.fixedSleeve, ['oversized','traditional','cropped'].includes(kind), `${kind} fixed sleeve status matches the garment.`);
   if (['oversized','traditional','cropped'].includes(kind)) assert.equal(productProfile.printAreas.find(area => area.id === 'left-sleeve')?.defaultSizeCm, '2x3', `${kind} sleeve print uses the fixed 2 × 3 cm size.`);
   for (const printArea of productProfile.printAreas) {
-    assert.ok(isPrimePrintSizeWithinArea(kind, printArea.defaultSizeCm, printArea.maxWidthCm, printArea.maxHeightCm), `${kind} ${printArea.id} default size stays inside its production area.`);
+    assert.ok(isPrimePrintSizeWithin(printArea.defaultSizeCm, printArea.maxWidthCm, printArea.maxHeightCm), `${kind} ${printArea.id} default size stays inside its production area.`);
     if (['oversized','traditional','cropped','hoodie','shorts','cap'].includes(kind)) {
       const areaId = printArea.id === 'left-sleeve' ? 'sleeve' : printArea.id as PrimeAreaId;
       const visualArea = getPrimeAreaGeometry(kind as PrimePlacementModel, 'M', areaId);

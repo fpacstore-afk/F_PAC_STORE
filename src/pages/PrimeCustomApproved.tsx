@@ -1,6 +1,6 @@
 import { PrimePrintPreview } from '../components/PrimePrintPreview';
 import { loadPrimeArtworkBounds } from '../lib/primeArtworkBounds';
-import { isPrimePlacementModel, getPrimeAreaGeometry, isPrimePrintSizeWithinArea, placePrimeArtwork, type ArtworkBounds, type PrimeAreaId, type PrimeArtPosition } from '../../shared/primePlacement';
+import { isPrimePlacementModel, getPrimeAreaGeometry, placePrimeArtwork, type ArtworkBounds, type PrimeAreaId, type PrimeArtPosition } from '../../shared/primePlacement';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Check, ChevronRight, Maximize2, Ruler,
@@ -23,6 +23,7 @@ import { subscribePublicCatalog } from '../services/publicProducts';
 import {
   formatPrimePrintSize,
   getCatalogSleeveSizes,
+  isPrimePrintSizeWithin,
   normalizePrimePrintSize,
   normalizeRegisteredPrimePrintSizes,
 } from '../../shared/primeArtworkSizing';
@@ -175,8 +176,8 @@ export default function PrimeCustomApproved() {
     if (selectedArtwork?.source !== 'catalog') return [];
     if (activePlacement.id === 'sleeve') return getCatalogSleeveSizes(selectedArtwork.availableSizes);
     return normalizeRegisteredPrimePrintSizes(selectedArtwork.availableSizes)
-      .filter(value => isPrimePrintSizeWithinArea(visualKind, value, activePlacement.maxWidth, activePlacement.maxHeight));
-  }, [activePlacement.id, activePlacement.maxHeight, activePlacement.maxWidth, selectedArtwork, visualKind]);
+      .filter(value => isPrimePrintSizeWithin(value, activePlacement.maxWidth, activePlacement.maxHeight));
+  }, [activePlacement.id, activePlacement.maxHeight, activePlacement.maxWidth, selectedArtwork]);
   const draftPrintSize = draftPrintSizes[activePlacement?.id] || '';
   const selectedPrintSize = draftPrintSize && registeredCatalogSizes.includes(draftPrintSize) ? draftPrintSize : registeredCatalogSizes[0] || '';
   const previewPrintSize = activeApplied?.printSize || selectedPrintSize || activePlacement?.defaultSize || '10x10';
@@ -273,7 +274,7 @@ export default function PrimeCustomApproved() {
   const updatePrintSize = (value: string) => {
     const normalized = normalizePrimePrintSize(value);
     setDraftPrintSizes(current => ({ ...current, [activePlacement.id]: normalized }));
-    if (activeApplied && selectedArtwork?.id === activeApplied.id && isPrimePrintSizeWithinArea(visualKind, normalized, activePlacement.maxWidth, activePlacement.maxHeight)) {
+    if (activeApplied && selectedArtwork?.id === activeApplied.id && isPrimePrintSizeWithin(normalized, activePlacement.maxWidth, activePlacement.maxHeight)) {
       setApplied(current => ({ ...current, [activePlacement.id]: { ...activeApplied, printSize: normalized, position: undefined } }));
     }
   };
@@ -405,7 +406,7 @@ export default function PrimeCustomApproved() {
 
             <div className="mt-2.5 px-1 text-[10px] leading-relaxed text-black/60">
               {positionedModel && <><p>{catalogSleeve ? `Estampa fixa: ${areaWidth} × ${areaHeight} cm na manga esquerda. Prévia da manga levemente ampliada para facilitar a visualização.` : activeApplied ? 'Arraste a estampa dentro da área pontilhada. Use as setas do teclado para ajustes finos.' : 'A área pontilhada é fixa. Depois de aplicar a arte, arraste-a para posicionar dentro da área.'}</p>
-                {visiblePrint && <p>Arte visível: {money(visiblePrint.widthCm)} × {money(visiblePrint.heightCm)} cm. Proporção original preservada.</p>}
+                {visiblePrint && <p>Arte visível: {money(visiblePrint.widthCm)} × {money(visiblePrint.heightCm)} cm{visualKind === 'cap' ? ' (largura × altura)' : ''}. Proporção original preservada.</p>}
                 <p>A estampa mantém a proporção original. O mockup é ilustrativo; o tamanho escolhido define a peça do pedido.</p>
                 {activeApplied && !catalogSleeve && <button type="button" onClick={() => setApplied(current => ({ ...current, [activePlacement.id]: { ...current[activePlacement.id], position: undefined } }))} className="mt-1 min-h-9 underline font-bold">Restaurar posição</button>}
               </>}
@@ -428,7 +429,7 @@ export default function PrimeCustomApproved() {
 
               {selectedArtwork && <div className="mt-3 rounded-xl border border-black/10 bg-[#f8f8f6] p-2.5">
                 <div className="flex items-center gap-2.5"><img src={selectedArtwork.image} alt={selectedArtwork.name} className="h-12 w-12 rounded-lg bg-black object-contain p-1" /><div className="min-w-0 flex-1"><b className="block truncate text-xs">{selectedArtwork.name}</b><span className="text-[9px] text-black/45">Estampa disponível no catálogo · aplicar em {activePlacement.label.toLowerCase()}</span></div></div>
-                {registeredCatalogSizes.length > 0 ? <label className="mt-2.5 block"><span className="mb-1 block text-[8px] font-black uppercase tracking-wider text-black/45">Medida cadastrada para esta estampa</span><select value={selectedPrintSize} onChange={event => updatePrintSize(event.target.value)} className="min-h-11 w-full rounded-lg border border-black/10 bg-white px-3 text-xs font-bold">{registeredCatalogSizes.map(value => <option key={value} value={value}>{formatPrimePrintSize(value)}</option>)}</select></label> : <p className="mt-2.5 rounded-lg border border-amber-300 bg-amber-50 p-3 text-[10px] font-bold leading-relaxed text-amber-900">Esta estampa ainda não possui uma medida cadastrada compatível com a área de {activePlacement.maxWidth} × {activePlacement.maxHeight} cm.</p>}
+                {registeredCatalogSizes.length > 0 ? <label className="mt-2.5 block"><span className="mb-1 block text-[8px] font-black uppercase tracking-wider text-black/45">Medida cadastrada para esta estampa{visualKind === 'cap' ? ' (largura × altura)' : ''}</span><select value={selectedPrintSize} onChange={event => updatePrintSize(event.target.value)} className="min-h-11 w-full rounded-lg border border-black/10 bg-white px-3 text-xs font-bold">{registeredCatalogSizes.map(value => <option key={value} value={value}>{formatPrimePrintSize(value)}</option>)}</select></label> : <p className="mt-2.5 rounded-lg border border-amber-300 bg-amber-50 p-3 text-[10px] font-bold leading-relaxed text-amber-900">Esta estampa ainda não possui uma medida cadastrada compatível com a área de {activePlacement.maxWidth} × {activePlacement.maxHeight} cm.</p>}
                 <button type="button" disabled={!canApplyArtwork || busy} onClick={() => void applyArtwork()} className="mt-2.5 min-h-11 w-full rounded-lg bg-[#f5bd19] px-4 text-[9px] font-black uppercase flex items-center justify-center gap-1.5 disabled:cursor-not-allowed disabled:bg-black/10 disabled:text-black/35"><Check size={14} /> {busy ? 'Preparando arte...' : 'Aplicar na peça'}</button>
               </div>}
 
@@ -448,7 +449,7 @@ export default function PrimeCustomApproved() {
           </aside>
         </div>
 
-        <section className="mt-4 grid grid-cols-3 gap-2 rounded-2xl border border-black/10 bg-white p-3 text-center">{[['Mockup', 'Visualize sua peça'], ['Área máxima', `${areaWidth} × ${areaHeight} cm`], ['Compra segura', 'Checkout F PAC']].map(([title, text]) => <div key={title} className="px-1"><b className="block text-[8px] md:text-[10px] uppercase">{title}</b><span className="text-[7px] md:text-[9px] text-black/45">{text}</span></div>)}</section>
+        <section className="mt-4 grid grid-cols-3 gap-2 rounded-2xl border border-black/10 bg-white p-3 text-center">{[['Mockup', 'Visualize sua peça'], ['Área máxima', visualKind === 'cap' ? `${areaHeight} × ${areaWidth} cm (altura × largura)` : `${areaWidth} × ${areaHeight} cm`], ['Compra segura', 'Checkout F PAC']].map(([title, text]) => <div key={title} className="px-1"><b className="block text-[8px] md:text-[10px] uppercase">{title}</b><span className="text-[7px] md:text-[9px] text-black/45">{text}</span></div>)}</section>
       </div>
 
       <div className="fixed inset-x-0 bottom-0 z-[70] border-t border-black/10 bg-white/95 px-3 py-2.5 shadow-[0_-12px_35px_rgba(0,0,0,.16)] backdrop-blur-xl md:hidden">
@@ -463,7 +464,7 @@ export default function PrimeCustomApproved() {
       </div>
 
       {showSizes && <div className="fixed inset-0 z-[100] grid place-items-center bg-black/80 p-4"><div className="relative max-h-[90dvh] w-full max-w-lg overflow-y-auto rounded-2xl bg-white p-5 text-black"><button type="button" onClick={() => setShowSizes(false)} className="absolute right-3 top-2 h-10 w-10 text-xl" aria-label="Fechar guia">×</button><SizeChart model={visualKind} onClose={() => setShowSizes(false)} /></div></div>}
-      {expandedPreview && <div className="fixed inset-0 z-[110] grid place-items-center bg-black/90 p-3 md:p-8" onClick={() => setExpandedPreview(false)}><div className="relative w-full max-w-[min(56rem,90dvh)]" onClick={event => event.stopPropagation()}><button type="button" onClick={() => setExpandedPreview(false)} className="absolute right-3 top-3 z-20 grid h-10 w-10 place-items-center rounded-full bg-black text-white shadow-lg" aria-label="Fechar visualização ampliada"><X size={18} /></button><ProductMockupSprite interactive kind={visualKind} view={activePlacement.side} tone={mockupTone} className="max-h-[90dvh] aspect-square rounded-2xl" label={`${visual.label} ${color} - ${activePlacement.label}`}>{previewOverlay}<div className="absolute bottom-4 left-4 rounded-full bg-black/80 px-4 py-2 text-[10px] font-bold text-white backdrop-blur-sm">{activePlacement.label} · {areaWidth}×{areaHeight} cm</div></ProductMockupSprite></div></div>}
+      {expandedPreview && <div className="fixed inset-0 z-[110] grid place-items-center bg-black/90 p-3 md:p-8" onClick={() => setExpandedPreview(false)}><div className="relative w-full max-w-[min(56rem,90dvh)]" onClick={event => event.stopPropagation()}><button type="button" onClick={() => setExpandedPreview(false)} className="absolute right-3 top-3 z-20 grid h-10 w-10 place-items-center rounded-full bg-black text-white shadow-lg" aria-label="Fechar visualização ampliada"><X size={18} /></button><ProductMockupSprite interactive kind={visualKind} view={activePlacement.side} tone={mockupTone} className="max-h-[90dvh] aspect-square rounded-2xl" label={`${visual.label} ${color} - ${activePlacement.label}`}>{previewOverlay}<div className="absolute bottom-4 left-4 rounded-full bg-black/80 px-4 py-2 text-[10px] font-bold text-white backdrop-blur-sm">{activePlacement.label} · {visualKind === 'cap' ? `${areaHeight}×${areaWidth} cm (altura × largura)` : `${areaWidth}×${areaHeight} cm`}</div></ProductMockupSprite></div></div>}
     </div>
   );
 }
