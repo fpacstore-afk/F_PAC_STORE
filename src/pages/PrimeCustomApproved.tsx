@@ -18,7 +18,7 @@ import { SizeChart } from '../components/SizeChart';
 import { PRIME_CUSTOM_FIXED_PRICE, getCustomizationProfileById } from '../../shared/customizationProfiles';
 import { isDesignPublic, normalizeDesignDocument, sortDesignCatalog } from '../lib/stampCatalog';
 import { ProductMockupSprite } from '../components/ProductMockupSprite';
-import { PRIME_VISUAL_AREA_ANCHORS, PRODUCT_VISUALS, getProductVisualKind, type ProductVisualKind } from '../lib/productPresentation';
+import { PRODUCT_VISUALS, getPrimeVisualAreaStyle, getProductVisualKind, type ProductVisualKind } from '../lib/productPresentation';
 import { subscribePublicCatalog } from '../services/publicProducts';
 import {
   formatPrimePrintSize,
@@ -26,7 +26,6 @@ import {
   isPrimePrintSizeWithin,
   normalizePrimePrintSize,
   normalizeRegisteredPrimePrintSizes,
-  parsePrimePrintSize,
 } from '../../shared/primeArtworkSizing';
 
 type Artwork = {
@@ -47,6 +46,8 @@ type Placement = {
   maxWidth: number;
   maxHeight: number;
   defaultSize: string;
+  rotationDeg?: number;
+  orientationInstruction?: string;
 };
 type AppliedArtwork = Artwork & { productKey: string; printSize: string; bounds?: ArtworkBounds; position?: PrimeArtPosition };
 
@@ -63,10 +64,6 @@ const PRIME_FALLBACK_PRODUCTS = (Object.keys(PRODUCT_VISUALS) as ProductVisualKi
 
 }));
 const money = (value: number) => value.toFixed(2).replace('.', ',');
-const parseSize = (value: string): [number, number] => {
-  const dimensions = parsePrimePrintSize(value);
-  return dimensions ? [dimensions[0], dimensions[1]] : [1, 1];
-};
 
 function getPlacements(kind: ProductVisualKind): Placement[] {
   const profile = getCustomizationProfileById(kind);
@@ -86,24 +83,10 @@ function getPlacements(kind: ProductVisualKind): Placement[] {
       maxWidth: area.maxWidthCm,
       maxHeight: area.maxHeightCm,
       defaultSize: area.defaultSizeCm,
+      rotationDeg: area.rotationDeg,
+      orientationInstruction: area.orientationInstruction,
     };
   });
-}
-
-function getOverlayStyle(kind: ProductVisualKind, placement: Placement, printSize: string): React.CSSProperties {
-  const [width, height] = parseSize(printSize);
-  const widthRatio = Math.min(1, width / placement.maxWidth);
-  const visualAnchor = kind === 'shorts'
-    ? PRIME_VISUAL_AREA_ANCHORS.shorts[placement.id as 'front' | 'back']
-    : kind === 'cap' ? PRIME_VISUAL_AREA_ANCHORS.cap.front : undefined;
-  const baseWidth = visualAnchor?.baseWidth ?? (placement.id === 'sleeve' ? 13 : 34);
-  return {
-    left: `${visualAnchor?.left ?? (placement.id === 'sleeve' ? 24 : 50)}%`,
-    top: `${visualAnchor?.top ?? (placement.id === 'sleeve' ? 42 : kind === 'cropped' ? 51 : 49)}%`,
-    width: `${Math.max(baseWidth * widthRatio, 7)}%`,
-    aspectRatio: `${width} / ${height}`,
-    transform: 'translate(-50%, -50%)',
-  };
 }
 
 export default function PrimeCustomApproved() {
@@ -218,8 +201,8 @@ export default function PrimeCustomApproved() {
     setApplied({});
     setDraftPrintSizes({});
     setSelectedArtwork(null);
-    setSleeveSetup(visualKind === 'oversized' ? 'loading' : 'ready');
-  }, [selectedProduct?.id, selectedProduct?.slug]);
+    setSleeveSetup(profile.fixedSleeve ? 'loading' : 'ready');
+  }, [selectedProduct?.id, selectedProduct?.slug, profile.fixedSleeve]);
 
   useEffect(() => {
     const nextColor = baseOptions.colors.some(item => item.name === color) ? color : baseOptions.colors[0]?.name || '';
@@ -241,7 +224,7 @@ export default function PrimeCustomApproved() {
     } catch { setSleeveSetup('error'); toast.error('Não foi possível carregar a estampa de manga incluída. Tente novamente.'); }
   };
   useEffect(() => {
-    if (visualKind !== 'oversized' || !productId) return;
+    if (!profile.fixedSleeve || !productId) return;
     if (!defaultSleeveArt) { if (artCatalogLoaded) setSleeveSetup('error'); return; }
     let cancelled = false;
     setSleeveSetup('loading');
@@ -251,7 +234,7 @@ export default function PrimeCustomApproved() {
       setSleeveSetup('ready');
     }).catch(() => { if (!cancelled) setSleeveSetup('error'); });
     return () => { cancelled = true; };
-  }, [productId, visualKind, defaultSleeveArt?.id, defaultSleeveArt?.image, defaultSleeveArt?.availableSizes?.join(','), artCatalogLoaded]);
+  }, [productId, profile.fixedSleeve, defaultSleeveArt?.id, defaultSleeveArt?.image, defaultSleeveArt?.availableSizes?.join(','), artCatalogLoaded]);
 
   useEffect(() => {
     const requestedDesign = searchParams.get('design');
@@ -306,7 +289,7 @@ export default function PrimeCustomApproved() {
       if (!item || item.productKey !== productId) return [];
       const artPlacement = isMeasuredPrimeModel(visualKind) && item.bounds
         ? placePrimeArtwork(visualKind, size, placement.id as PrimeAreaId, item.printSize, item.bounds, item.position, placement.id === 'sleeve') : undefined;
-      return [{ placement: artPlacement, id: `${item.id}_${placement.positionId}_${Date.now()}`, stampId: item.id, stamp: item.name, location: placement.location, printSize: item.printSize, image: item.image, background: 'Sem Fundo' as const }];
+      return [{ placement: artPlacement, id: `${item.id}_${placement.positionId}_${Date.now()}`, stampId: item.id, stamp: item.name, location: placement.location, printSize: item.printSize, image: item.image, background: 'Sem Fundo' as const, ...(placement.rotationDeg === undefined ? {} : { rotationDeg: placement.rotationDeg }), ...(placement.orientationInstruction ? { orientationInstruction: placement.orientationInstruction } : {}) }];
     });
 
     addItem({
@@ -345,7 +328,7 @@ export default function PrimeCustomApproved() {
   </>;
   const previewOverlay = measuredModel
     ? previewArts(activePlacement.side, true)
-    : (<div className="absolute" style={getOverlayStyle(visualKind, activePlacement, previewPrintSize)}>
+    : (<div className="absolute" style={getPrimeVisualAreaStyle(visualKind, activePlacement, previewPrintSize)}>
                 <div className={`relative h-full w-full overflow-hidden border ${activeApplied ? 'border-transparent' : 'border-dashed border-black/35'} bg-white/5`}>
                   {activeApplied ? <img src={activeApplied.image} alt={activeApplied.name} className="h-full w-full object-contain" /> : <span className="absolute inset-0 grid place-items-center px-1 text-center text-[6px] md:text-[8px] font-black uppercase tracking-wide text-black/45">Área da arte</span>}
                 </div>
@@ -414,7 +397,7 @@ export default function PrimeCustomApproved() {
           <section className="rounded-2xl border border-black/10 bg-white p-2.5 md:p-4 shadow-sm">
             <div className="flex items-center justify-between gap-3 px-1 pb-2.5">
               <div><p className="text-[8px] font-black uppercase tracking-[0.18em] text-[#9a7100]">2. Personalize</p><h2 className="text-base md:text-xl font-black uppercase">{visual.label}</h2></div>
-              <span className="rounded-full bg-black px-3 py-1.5 text-[8px] font-black uppercase tracking-[0.14em] text-[#f5bd19]">{isSleeve ? 'Catálogo · manga esquerda' : 'Prévia fixa'}</span>
+              <span className="rounded-full bg-black px-3 py-1.5 text-[8px] font-black uppercase tracking-[0.14em] text-[#f5bd19]">{isSleeve ? 'Estampa fixa · manga esquerda' : 'Prévia fixa'}</span>
             </div>
 
             <div className={`grid gap-1.5 mb-2.5 ${placements.length === 1 ? "grid-cols-1" : placements.length === 2 ? "grid-cols-2" : "grid-cols-3"}`}>
@@ -428,7 +411,7 @@ export default function PrimeCustomApproved() {
             </ProductMockupSprite>
 
             <div className="mt-2.5 px-1 text-[10px] leading-relaxed text-black/60">
-              {measuredModel && <><p>{catalogSleeve ? `Catálogo: ${areaWidth} × ${areaHeight} cm na manga esquerda. Prévia da manga levemente ampliada para facilitar a visualização.` : activeApplied ? 'Arraste a estampa dentro da área pontilhada. Também é possível ajustar com as setas do teclado.' : 'A área pontilhada é fixa. Escolha e aplique uma arte para posicioná-la.'}</p>
+              {measuredModel && <><p>{catalogSleeve ? `Estampa fixa: ${areaWidth} × ${areaHeight} cm na manga esquerda. Prévia da manga levemente ampliada para facilitar a visualização.` : activeApplied ? 'Arraste a estampa dentro da área pontilhada. Também é possível ajustar com as setas do teclado.' : 'A área pontilhada é fixa. Escolha e aplique uma arte para posicioná-la.'}</p>
                 {visiblePrint && <p>Arte visível: {money(visiblePrint.widthCm)} × {money(visiblePrint.heightCm)} cm. Proporção original preservada.</p>}
                 <p>A estampa mantém a proporção original. O mockup é ilustrativo; o tamanho escolhido define a peça do pedido.</p>
                 {activeApplied && !catalogSleeve && <button type="button" onClick={() => setApplied(current => ({ ...current, [activePlacement.id]: { ...current[activePlacement.id], position: undefined } }))} className="mt-1 min-h-9 underline font-bold">Restaurar posição</button>}
@@ -456,17 +439,15 @@ export default function PrimeCustomApproved() {
                 <button type="button" disabled={!canApplyArtwork || busy} onClick={() => void applyArtwork()} className="mt-2.5 min-h-11 w-full rounded-lg bg-[#f5bd19] px-4 text-[9px] font-black uppercase flex items-center justify-center gap-1.5 disabled:cursor-not-allowed disabled:bg-black/10 disabled:text-black/35"><Check size={14} /> {busy ? 'Preparando arte...' : 'Aplicar na peça'}</button>
               </div>}
 
-              <div className="mt-3 flex items-center justify-between border-t border-black/5 pt-3"><div><p className="text-[8px] font-black uppercase tracking-wider text-black/35">Configuração</p><p className="text-xs font-bold">{appliedCount}/{profile.maxPrints} aplicações</p></div>{activeApplied && <button type="button" onClick={() => setApplied(current => { const next = { ...current }; delete next[activePlacement.id]; return next; })} className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-red-200 px-3 text-[8px] font-black uppercase text-red-700"><Trash2 size={13} /> {visualKind === 'oversized' && isSleeve && activeApplied.source === 'catalog' ? 'Retirar da manga (+ R$ 3,00)' : 'Remover'}</button>}</div>
+              <div className="mt-3 flex items-center justify-between border-t border-black/5 pt-3"><div><p className="text-[8px] font-black uppercase tracking-wider text-black/35">Configuração</p><p className="text-xs font-bold">{appliedCount}/{profile.maxPrints} aplicações</p></div>{activeApplied && <button type="button" onClick={() => setApplied(current => { const next = { ...current }; delete next[activePlacement.id]; return next; })} className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-red-200 px-3 text-[8px] font-black uppercase text-red-700"><Trash2 size={13} /> {visualKind === 'oversized' && isSleeve && activeApplied.source === 'catalog' ? 'Retirar da manga (+ R$ 3,00)' : profile.fixedSleeve && isSleeve ? 'Remover estampa fixa' : 'Remover'}</button>}</div>
             </section>
 
             <section className="rounded-2xl bg-black p-4 md:p-5 text-white shadow-xl">
-              {visualKind === 'oversized' && <div className="mb-4 space-y-1 text-xs text-white/80">
-                <p>Peça com estampa de manga: R$ {money(priceBreakdown.base)}</p>
-                <p>Estampas adicionais: R$ {money(priceBreakdown.prints)}</p>
-                {priceBreakdown.removal > 0 && <p>Retirada da estampa de manga: + R$ 3,00</p>}
+              {profile.fixedSleeve && <div className="mb-4 space-y-1 text-xs text-white/80">
+                {visualKind === 'oversized' && <><p>Peça com estampa de manga: R$ {money(priceBreakdown.base)}</p><p>Estampas adicionais: R$ {money(priceBreakdown.prints)}</p>{priceBreakdown.removal > 0 && <p>Retirada da estampa de manga: + R$ 3,00</p>}</>}
                 {sleeveSetup === 'error' && <p role="status">A estampa de manga incluída está indisponível. Tente carregar novamente ou escolha outra do catálogo.</p>}
                 {sleeveSetup === 'loading' && <p role="status">Preparando estampa de manga incluída...</p>}
-                {(priceBreakdown.removal > 0 || sleeveSetup === 'error') && <button type="button" disabled={!defaultSleeveArt || sleeveSetup === 'loading'} onClick={() => void restoreSleeve()} className="min-h-9 underline text-[#f5bd19]">{sleeveSetup === 'error' ? 'Tentar carregar a estampa incluída' : 'Recolocar estampa de manga incluída'}</button>}
+                {(visualKind === 'oversized' && priceBreakdown.removal > 0 || sleeveSetup === 'error') && <button type="button" disabled={!defaultSleeveArt || sleeveSetup === 'loading'} onClick={() => void restoreSleeve()} className="min-h-9 underline text-[#f5bd19]">{sleeveSetup === 'error' ? 'Tentar carregar a estampa incluída' : 'Recolocar estampa de manga incluída'}</button>}
               </div>}
               <div className="flex items-end justify-between gap-4"><div><p className="text-[8px] font-black uppercase tracking-[0.18em] text-white/45">PRIME CUSTOM</p><p className="mt-1 text-3xl font-black text-[#f5bd19]">{(isRegisteredProduct || visualKind === 'oversized') ? `R$ ${money(price)}` : 'Em prévia'}</p><p className="text-[9px] text-white/55">{(isRegisteredProduct || visualKind === 'oversized') ? `R$ ${money(pixPrice)} no PIX` : 'Compra indisponível'}</p></div><div className="text-right text-[8px] uppercase tracking-wider text-white/45"><Sparkles size={18} className="ml-auto mb-1 text-[#f5bd19]" />Sua criação<br />na F PAC</div></div>
               <button type="button" onClick={finish} disabled={!canPurchase || (appliedCount === 0 && visualKind !== 'oversized') || busy || sleeveSetup !== 'ready'} className="mt-4 min-h-13 w-full rounded-xl bg-[#f5bd19] px-4 text-[10px] font-black uppercase tracking-[0.1em] text-black flex items-center justify-center gap-2 disabled:cursor-not-allowed disabled:opacity-40"><ShoppingCart size={18} /> Adicionar à sacola <ChevronRight size={16} /></button>

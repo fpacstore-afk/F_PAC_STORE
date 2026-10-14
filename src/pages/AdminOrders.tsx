@@ -1368,7 +1368,7 @@ function AdminOrdersInner() {
       : items.map((item: any) => ({ size: item.size, quantity: item.quantity }));
     const rawArtworks = Array.isArray(customProduction.artworks) && customProduction.artworks.length
       ? customProduction.artworks
-      : items.flatMap((item: any) => Array.isArray(item.printConfigs) ? item.printConfigs : []);
+      : items.flatMap((item: any) => Array.isArray(item.customization?.prints) ? item.customization.prints : Array.isArray(item.printConfigs) ? item.printConfigs : []);
     const artworks = rawArtworks.filter((art: any, index: number, all: any[]) => all.findIndex((other) => (
       `${other.stampId || other.id || other.stamp}|${other.location || ''}|${other.artSize || other.printSize || ''}`
       === `${art.stampId || art.id || art.stamp}|${art.location || ''}|${art.artSize || art.printSize || ''}`
@@ -1392,6 +1392,7 @@ function AdminOrdersInner() {
         <div><b>Aplicação:</b> ${escapeHtml(art.location || 'Não informada')}</div>
         <div><b>Cor da estampa:</b> ${escapeHtml(art.color || 'Não informada')}</div>
         <div><b>Tamanho:</b> ${escapeHtml(art.artSize || art.printSize || 'Não informado')}</div>
+        ${art.orientationInstruction ? `<div><b>Orientação:</b> ${escapeHtml(art.orientationInstruction)}</div>` : ''}
         ${art.stockPrintSize && art.stockPrintSize !== (art.artSize || art.printSize) ? `<div><b>Medida do estoque:</b> ${escapeHtml(art.stockPrintSize)}</div>` : ''}
         ${art.notes ? `<div class="note"><b>Detalhe:</b> ${escapeHtml(art.notes)}</div>` : ''}
         ${art.source === 'own_art' ? '<div class="own-art">ARTE PRÓPRIA — SEM BAIXA NO CATÁLOGO</div>' : ''}

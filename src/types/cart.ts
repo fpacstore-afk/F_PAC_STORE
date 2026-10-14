@@ -9,6 +9,8 @@ export interface PrintConfiguration {
   background: 'Com Fundo' | 'Sem Fundo';
   productionFiles?: any[];
   placement?: PrimeArtworkPlacement;
+  rotationDeg?: number;
+  orientationInstruction?: string;
   scale?: number;
   rotation?: number;
   offsetX?: number;

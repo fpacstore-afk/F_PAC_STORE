@@ -37,7 +37,8 @@ export const isMeasuredPrimeModel = (kind: string): kind is MeasuredPrimeModel =
 const LANDMARKS = {
   oversized: {
     front: { centerX: 257, bodyWidth: 275, shoulderY: 51, collarY: 109, hemY: 462 },
-    back: { centerX: 256, bodyWidth: 286, shoulderY: 47, collarY: 77, hemY: 466 },
+    // The rear torso is shifted right within its sprite cell; align to the body, not the cell.
+    back: { centerX: 274, bodyWidth: 286, shoulderY: 47, collarY: 77, hemY: 466 },
     sleeve: { hemX: 451, hemY: 266, rotation: -35 },
   },
   traditional: {
@@ -52,7 +53,8 @@ const LANDMARKS = {
   },
   hoodie: {
     front: { centerX: 256, bodyWidth: 290, shoulderY: 60, collarY: 150, hemY: 452 },
-    back: { centerX: 256, bodyWidth: 290, shoulderY: 60, collarY: 150, hemY: 452 },
+    // The rear sweatshirt body is shifted right within its sprite cell.
+    back: { centerX: 274, bodyWidth: 290, shoulderY: 60, collarY: 150, hemY: 452 },
     sleeve: { hemX: 0, hemY: 0, rotation: 0 },
   },
 };

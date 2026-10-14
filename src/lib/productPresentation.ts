@@ -1,3 +1,7 @@
+import type { CSSProperties } from 'react';
+import { parsePrimePrintSize } from '../../shared/primeArtworkSizing';
+import { getCustomizationProfileById } from '../../shared/customizationProfiles';
+
 export type ProductVisualKind = 'oversized' | 'traditional' | 'cropped' | 'hoodie' | 'shorts' | 'cap';
 
 export interface ProductVisualDefinition {
@@ -19,13 +23,37 @@ export const PRODUCT_VISUALS: Readonly<Record<ProductVisualKind, ProductVisualDe
 
 export const PRIME_VISUAL_AREA_ANCHORS = Object.freeze({
   shorts: Object.freeze({
-    front: Object.freeze({ left: 80, top: 50, baseWidth: 12 }),
+    front: Object.freeze({ left: 80, top: 48, baseWidth: 4.5 }),
     back: Object.freeze({ left: 66, top: 28, baseWidth: 20 }),
   }),
   cap: Object.freeze({
-    front: Object.freeze({ left: 50, top: 56, baseWidth: 30 }),
+    front: Object.freeze({ left: 50, top: 50, baseWidth: 34 }),
   }),
 });
+
+type PrimeVisualAnchor = { left: number; top: number; baseWidth: number; rotationDeg?: number };
+
+export function getPrimeVisualAreaStyle(
+  kind: ProductVisualKind,
+  placement: { id: string; maxWidth: number },
+  printSize: string,
+): CSSProperties {
+  const [width, height] = parsePrimePrintSize(printSize) || [1, 1];
+  const widthRatio = Math.min(1, width / placement.maxWidth);
+  const anchor: PrimeVisualAnchor | undefined = kind === 'shorts'
+    ? PRIME_VISUAL_AREA_ANCHORS.shorts[placement.id as 'front' | 'back']
+    : kind === 'cap' ? PRIME_VISUAL_AREA_ANCHORS.cap.front : undefined;
+  const baseWidth = anchor?.baseWidth ?? (placement.id === 'sleeve' ? 13 : 34);
+  const rotationDeg = getCustomizationProfileById(kind)?.printAreas.find(area => area.id === placement.id)?.rotationDeg ?? anchor?.rotationDeg ?? 0;
+  const minimumWidth = kind === 'shorts' && placement.id === 'front' ? 1 : 7;
+  return {
+    left: `${anchor?.left ?? (placement.id === 'sleeve' ? 24 : 50)}%`,
+    top: `${anchor?.top ?? (placement.id === 'sleeve' ? 42 : kind === 'cropped' ? 51 : 49)}%`,
+    width: `${Math.max(baseWidth * widthRatio, minimumWidth)}%`,
+    aspectRatio: `${width} / ${height}`,
+    transform: `translate(-50%, -50%) rotate(${rotationDeg}deg)`,
+  };
+}
 
 const normalize = (value: unknown): string => String(value || '')
   .normalize('NFD')
