@@ -18,6 +18,8 @@ import { getOrderPaidAmount as getOrderAmountPaid, getOrderPendingAmount as getO
 import toast from 'react-hot-toast';
 import { cn } from '../lib/utils';
 import { parseCurrencyInput } from '../../shared/currencyInput';
+import { applyOrderEditArtworks, calculateOrderEditTotals, createOrderEditArtworkFromCatalogStamp, getOrderEditArtworks, getOrderEditProductOptionLabel, validateOrderEditDraft } from '../../shared/orderEditor';
+import { resolveProductStampRecipeEntries } from '../../shared/productStampRecipe';
 
 interface OrderProductionDrawerProps {
   order: any;
@@ -31,7 +33,14 @@ interface OrderProductionDrawerProps {
   onSaveCustomerDetails?: (orderId: string, details: OrderCustomerDetails) => Promise<void>;
   products?: any[];
   stamps?: any[];
-  onSaveOrderDetails?: (orderId: string, details: { items: any[]; origin: string }) => Promise<void>;
+  onSaveOrderDetails?: (orderId: string, details: {
+    items: any[];
+    origin: string;
+    fields: Record<string, string>;
+    expectedVersion: number;
+    expectedUpdatedAt?: number;
+    editId: string;
+  }) => Promise<void>;
 }
 
 type TabType = 'resumo' | 'produtos' | 'producao' | 'envio' | 'historico' | 'acoes';
@@ -62,6 +71,11 @@ export const OrderProductionDrawer: React.FC<OrderProductionDrawerProps> = ({
   const [notificationTemplates, setNotificationTemplates] = useState<Record<string, string>>(DEFAULT_STAGE_TEMPLATES);
 
   useEffect(() => {
+    setObservations(order.observations || '');
+    setDeliveryDate(order.deliveryDate || '');
+  }, [order.id, order.observations, order.deliveryDate]);
+
+  useEffect(() => {
     let isActive = true;
     authenticatedFetch('/api/automation/production-settings', {
       headers: { Accept: 'application/json' }
@@ -86,8 +100,11 @@ export const OrderProductionDrawer: React.FC<OrderProductionDrawerProps> = ({
   const [payIdempotencyKey, setPayIdempotencyKey] = useState<string>('');
   const [isSubmittingPay, setIsSubmittingPay] = useState(false);
   const [isEditingOrderDetails, setIsEditingOrderDetails] = useState(false);
+  const [isSavingOrderDetails, setIsSavingOrderDetails] = useState(false);
   const [editingOrigin, setEditingOrigin] = useState(String(order.origin || 'Site'));
-  const [editingItems, setEditingItems] = useState<any[]>(() => (order.items || []).map((item: any) => ({ ...item })));
+  const [editingOrderFields, setEditingOrderFields] = useState<Record<string, string>>({});
+  const [editingItems, setEditingItems] = useState<any[]>([]);
+  const [orderEditId, setOrderEditId] = useState('');
 
   const handleOpenPayModal = () => {
     const due = getOrderBalanceDue(order);
@@ -230,14 +247,159 @@ export const OrderProductionDrawer: React.FC<OrderProductionDrawerProps> = ({
     }
   };
 
+  const editableOrderFieldKeys = [
+    'customerName', 'customerPhone', 'customerPhone2', 'customerEmail',
+    'address', 'number', 'complement', 'neighborhood', 'city', 'state', 'cep',
+    'observations', 'deliveryDate',
+  ];
+
+  const startOrderDetailsEdit = () => {
+    setEditingOrigin(String(order.origin || 'Site'));
+    setEditingOrderFields(Object.fromEntries(editableOrderFieldKeys.map((key) => [key, String(order[key] || '')])));
+    setEditingItems((Array.isArray(order.items) ? order.items : []).map((item: any, index: number) => ({
+      ...item,
+      _sourceIndex: index,
+      productId: String(item.productId || item.id || ''),
+      name: String(item.name || ''),
+      color: String(item.color || ''),
+      size: String(item.size || ''),
+      quantity: Number(item.quantity) || 1,
+      price: Number(item.price) || 0,
+      artworks: getOrderEditArtworks(item),
+    })));
+    setOrderEditId(typeof crypto !== 'undefined' && crypto.randomUUID
+      ? crypto.randomUUID()
+      : `edit_${order.id}_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`);
+    setIsEditingOrderDetails(true);
+  };
+
+  const cancelOrderDetailsEdit = () => {
+    setEditingItems([]);
+    setEditingOrderFields({});
+    setIsEditingOrderDetails(false);
+  };
+
+  const updateEditingItem = (index: number, update: Record<string, any>) => {
+    setEditingItems((current) => current.map((entry, entryIndex) => entryIndex === index ? { ...entry, ...update } : entry));
+  };
+
+  const addEditingItem = () => {
+    setEditingItems((current) => [...current, {
+      _sourceIndex: null,
+      id: '',
+      productId: '',
+      slug: '',
+      name: '',
+      image: '',
+      color: '',
+      size: '',
+      variantKey: '',
+      quantity: 1,
+      price: 0,
+      inventoryManaged: false,
+      artworks: [],
+    }]);
+  };
+
+  const selectEditingProduct = (index: number, productId: string) => {
+    const item = editingItems[index];
+    if (!productId) {
+      updateEditingItem(index, { productId: '', id: '', slug: '', parentSlug: '', name: '', image: '', product: undefined, productFinish: undefined, inventoryManaged: false });
+      return;
+    }
+    const product = products.find((candidate) => candidate.id === productId || candidate.slug === productId);
+    if (!product) return;
+    const initialColor = Array.isArray(product.colors) && product.colors.length && !product.colors.some((entry: any) => (typeof entry === 'object' ? entry.name : entry) === item.color)
+      ? (typeof product.colors[0] === 'object' ? product.colors[0].name || '' : product.colors[0] || '')
+      : item.color;
+    const recipe = product.productFinish === 'printed' ? resolveProductStampRecipeEntries(product, initialColor) : [];
+    const artworks = recipe.map((entry: any) => {
+      const stamp = stamps.find((candidate) => candidate.id === entry.stampId);
+      return {
+        stampId: entry.stampId,
+        name: stamp?.name || stamp?.code || entry.stampId,
+        code: stamp?.code || stamp?.sku || '',
+        location: entry.location || '',
+        color: stamp?.printColor || stamp?.color || '',
+        printSize: entry.printSize || '',
+        artSize: entry.artSize || '',
+        image: stamp?.thumbnailUrl || stamp?.mockupUrl || stamp?.pngUrl || '',
+        source: 'catalog',
+      };
+    });
+    updateEditingItem(index, {
+      id: product.id,
+      productId: product.id,
+      slug: product.slug || product.id,
+      name: product.name || '',
+      image: product.images?.[0] || product.image || item.image || '',
+      product,
+      productFinish: product.productFinish,
+      inventoryManaged: true,
+      ...(product.sizes?.length && !product.sizes.includes(item.size) ? { size: product.sizes[0] } : {}),
+      color: initialColor || '',
+      price: Number(product.price ?? item.price) || 0,
+      artworks,
+    });
+  };
+
+  const editingTotals = calculateOrderEditTotals(editingItems, order.shipping, order.couponDiscount);
+  const paymentStatusForEdit = String(order.payment?.status || order.paymentStatus || '').toLowerCase();
+  const paidAmountForEdit = Number(order.payment?.paidAmount ?? order.paidAmount ?? order.amountPaid ?? 0) || 0;
+  const hasPaymentHistoryForEdit = paidAmountForEdit > 0
+    || ['approved', 'partially_paid', 'refunded', 'partially_refunded'].includes(paymentStatusForEdit)
+    || (Array.isArray(order.paymentLogs) && order.paymentLogs.length > 0)
+    || (Array.isArray(order.installments) && order.installments.some((installment: any) => Number(installment.paidAmount || 0) > 0 || installment.status === 'paid'));
+  const financialEditBlocked = hasPaymentHistoryForEdit
+    && (Math.round(editingTotals.subtotal * 100) !== Math.round((Number(order.subtotal) || 0) * 100)
+      || Math.round(editingTotals.total * 100) !== Math.round((Number(order.total) || 0) * 100));
+
   const handleSaveOrderDetails = async () => {
-    if (!onSaveOrderDetails) return;
+    if (!onSaveOrderDetails || isSavingOrderDetails) return;
+    const validation = validateOrderEditDraft(editingItems, editingOrigin);
+    if (validation) { toast.error(validation); return; }
+    if (financialEditBlocked) {
+      toast.error('O pedido possui histórico de pagamento. Ajuste quantidade/preço para manter subtotal e total iguais.');
+      return;
+    }
+    setIsSavingOrderDetails(true);
     try {
-      await onSaveOrderDetails(order.id, { items: editingItems, origin: editingOrigin });
-      setIsEditingOrderDetails(false);
-      toast.success('Produtos, estampas e canal de venda atualizados.');
+      const items = editingItems.map((item) => {
+        const product = products.find((candidate) => candidate.id === item.productId || candidate.slug === item.productId) || item.product;
+        const savedItem = applyOrderEditArtworks({
+          ...item,
+          id: item.productId || item.id || '',
+          productId: item.productId || item.id || '',
+          slug: item.slug || item.productId || item.id || '',
+          name: String(item.name || '').trim(),
+          color: String(item.color || '').trim(),
+          size: String(item.size || '').trim(),
+          variantKey: `${String(item.color || '').trim()}_${String(item.size || '').trim()}`,
+          variantId: `${String(item.slug || item.productId || item.id || '').trim()}_${String(item.color || '').trim()}_${String(item.size || '').trim()}`,
+          quantity: Number(item.quantity),
+          price: Number(item.price),
+        }, item.artworks || [], product);
+        delete savedItem._sourceIndex;
+        delete savedItem.artworks;
+        return { ...savedItem, sourceIndex: item._sourceIndex, artworks: item.artworks || [] };
+      });
+      const updatedAtValue = typeof order.updatedAt?.toMillis === 'function'
+        ? order.updatedAt.toMillis()
+        : (typeof order.updatedAt === 'number' ? order.updatedAt : Date.parse(String(order.updatedAt || '')));
+      await onSaveOrderDetails(order.id, {
+        items,
+        origin: editingOrigin,
+        fields: Object.fromEntries(editableOrderFieldKeys.map((key) => [key, String(editingOrderFields[key] || '')])),
+        expectedVersion: Number(order.detailsVersion || 0),
+        ...(Number.isFinite(updatedAtValue) ? { expectedUpdatedAt: updatedAtValue } : {}),
+        editId: orderEditId,
+      });
+      cancelOrderDetailsEdit();
+      toast.success('Alterações do pedido salvas.');
     } catch (error: any) {
-      toast.error(error?.message || 'Não foi possível atualizar o pedido.');
+      toast.error(error?.message || 'Não foi possível salvar as alterações do pedido.');
+    } finally {
+      setIsSavingOrderDetails(false);
     }
   };
 
@@ -704,37 +866,175 @@ export const OrderProductionDrawer: React.FC<OrderProductionDrawerProps> = ({
                   <ShoppingBag size={12} className="text-[#eab308]" /> 
                   Itens do Pedido para Produção ({totalItemsCount} Peças)
                 </h4>
-                <button type="button" onClick={() => setIsEditingOrderDetails((value) => !value)} className="text-[8px] font-black uppercase border border-black/15 px-2 py-1 hover:border-[#eab308]">
-                  <Edit3 size={10} className="inline mr-1" />{isEditingOrderDetails ? 'Cancelar edição' : 'Editar pedido'}
-                </button>
+                {isEditingOrderDetails ? (
+                  <button type="button" disabled={isSavingOrderDetails} onClick={cancelOrderDetailsEdit} className="min-h-10 border border-black/20 bg-white px-3 py-2 text-xs font-bold hover:border-red-400 disabled:opacity-50">Cancelar edição</button>
+                ) : (
+                  <button type="button" onClick={startOrderDetailsEdit} className="min-h-10 border border-black/15 bg-white px-3 py-2 text-xs font-black uppercase hover:border-[#eab308]">
+                    <Edit3 size={12} className="inline mr-1" />Editar pedido
+                  </button>
+                )}
               </div>
 
               {isEditingOrderDetails && (
-                <div className="space-y-3 border border-[#eab308]/50 bg-amber-50 p-3">
-                  <label className="block text-[9px] font-black uppercase">Canal de venda
-                    <select value={editingOrigin} onChange={(event) => setEditingOrigin(event.target.value)} className="mt-1 block w-full border border-black/15 bg-white p-2 text-[10px] font-bold">
-                      <option value="Venda Direta">Venda direta</option><option value="WhatsApp">WhatsApp</option><option value="Site">Site</option><option value="Instagram">Instagram</option>
-                    </select>
-                  </label>
-                  {editingItems.map((item, index) => <div key={index} className="grid gap-2 sm:grid-cols-2 border-t border-amber-200 pt-2">
-                    <label className="text-[9px] font-black uppercase">Produto
-                      <select value={item.id || item.productId || ''} onChange={(event) => {
-                        const product = products.find((candidate) => candidate.id === event.target.value || candidate.slug === event.target.value);
-                        setEditingItems((current) => current.map((entry, entryIndex) => entryIndex !== index ? entry : product ? { ...entry, id: product.id, productId: product.id, slug: product.slug || product.id, name: product.name, image: product.images?.[0] || entry.image, price: Number(product.price ?? entry.price) } : entry));
-                      }} className="mt-1 block w-full border border-black/15 bg-white p-2 text-[10px] font-bold">
-                        <option value="">Produto não vinculado</option>{products.map((product) => <option key={product.id} value={product.id}>{product.name}</option>)}
+                <div className="space-y-4 border border-[#eab308]/50 bg-amber-50 p-4">
+                  <p className="text-xs text-gray-700">Edite os dados deste pedido. O identificador e o histórico de pagamento serão preservados; o estoque é ajustado na mesma gravação quando houver reserva ativa.</p>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <label className="block text-xs font-bold">Canal de venda
+                      <select value={editingOrigin} onChange={(event) => setEditingOrigin(event.target.value)} disabled={isSavingOrderDetails} className="mt-1 min-h-10 block w-full border border-black/15 bg-white p-2">
+                        {!['Venda Direta', 'WhatsApp', 'Site', 'Instagram'].includes(editingOrigin) && <option value={editingOrigin}>{editingOrigin}</option>}
+                        <option value="Venda Direta">Venda direta</option><option value="WhatsApp">WhatsApp</option><option value="Site">Site</option><option value="Instagram">Instagram</option>
                       </select>
                     </label>
-                    <label className="text-[9px] font-black uppercase">Estampa
-                      <select value={item.stampId || ''} onChange={(event) => {
-                        const stamp = stamps.find((candidate) => candidate.id === event.target.value);
-                        setEditingItems((current) => current.map((entry, entryIndex) => entryIndex !== index ? entry : stamp ? { ...entry, stampId: stamp.id, stampName: stamp.name || stamp.code, stampStatus: stamp.status || '', printConfigs: [{ stampId: stamp.id, stamp: stamp.name || stamp.code, image: stamp.thumbnailUrl || stamp.mockupUrl || stamp.pngUrl || '', status: stamp.status || 'active' }] } : { ...entry, stampId: '', stampName: '', stampStatus: '', printConfigs: [] }));
-                      }} className="mt-1 block w-full border border-black/15 bg-white p-2 text-[10px] font-bold">
-                        <option value="">Sem estampa</option>{stamps.map((stamp) => <option key={stamp.id} value={stamp.id}>{stamp.name || stamp.code}{stamp.status === 'unavailable' ? ' (indisponível)' : ''}</option>)}
-                      </select>
+                    <label className="block text-xs font-bold">Nome do cliente
+                      <input value={editingOrderFields.customerName || ''} onChange={(event) => setEditingOrderFields((current) => ({ ...current, customerName: event.target.value }))} maxLength={200} disabled={isSavingOrderDetails} className="mt-1 min-h-10 block w-full border border-black/15 bg-white p-2" />
                     </label>
-                  </div>)}
-                  <button type="button" onClick={handleSaveOrderDetails} className="bg-black px-3 py-2 text-[9px] font-black uppercase text-[#eab308] hover:bg-[#eab308] hover:text-black">Salvar correções do pedido</button>
+                    <label className="block text-xs font-bold">Telefone
+                      <input type="tel" value={editingOrderFields.customerPhone || ''} onChange={(event) => setEditingOrderFields((current) => ({ ...current, customerPhone: event.target.value }))} maxLength={40} disabled={isSavingOrderDetails} className="mt-1 min-h-10 block w-full border border-black/15 bg-white p-2" />
+                    </label>
+                    <label className="block text-xs font-bold">Telefone alternativo
+                      <input type="tel" value={editingOrderFields.customerPhone2 || ''} onChange={(event) => setEditingOrderFields((current) => ({ ...current, customerPhone2: event.target.value }))} maxLength={40} disabled={isSavingOrderDetails} className="mt-1 min-h-10 block w-full border border-black/15 bg-white p-2" />
+                    </label>
+                    <label className="block text-xs font-bold">E-mail
+                      <input type="email" value={editingOrderFields.customerEmail || ''} onChange={(event) => setEditingOrderFields((current) => ({ ...current, customerEmail: event.target.value }))} maxLength={254} disabled={isSavingOrderDetails} className="mt-1 min-h-10 block w-full border border-black/15 bg-white p-2" />
+                    </label>
+                    <label className="block text-xs font-bold">Data de entrega
+                      <input type="date" value={editingOrderFields.deliveryDate || ''} onChange={(event) => setEditingOrderFields((current) => ({ ...current, deliveryDate: event.target.value }))} disabled={isSavingOrderDetails} className="mt-1 min-h-10 block w-full border border-black/15 bg-white p-2" />
+                    </label>
+                    <label className="block text-xs font-bold sm:col-span-2">Endereço
+                      <input value={editingOrderFields.address || ''} onChange={(event) => setEditingOrderFields((current) => ({ ...current, address: event.target.value }))} maxLength={240} disabled={isSavingOrderDetails} className="mt-1 min-h-10 block w-full border border-black/15 bg-white p-2" />
+                    </label>
+                    <label className="block text-xs font-bold">Número
+                      <input value={editingOrderFields.number || ''} onChange={(event) => setEditingOrderFields((current) => ({ ...current, number: event.target.value }))} maxLength={40} disabled={isSavingOrderDetails} className="mt-1 min-h-10 block w-full border border-black/15 bg-white p-2" />
+                    </label>
+                    <label className="block text-xs font-bold">Complemento
+                      <input value={editingOrderFields.complement || ''} onChange={(event) => setEditingOrderFields((current) => ({ ...current, complement: event.target.value }))} maxLength={120} disabled={isSavingOrderDetails} className="mt-1 min-h-10 block w-full border border-black/15 bg-white p-2" />
+                    </label>
+                    <label className="block text-xs font-bold">Bairro
+                      <input value={editingOrderFields.neighborhood || ''} onChange={(event) => setEditingOrderFields((current) => ({ ...current, neighborhood: event.target.value }))} maxLength={120} disabled={isSavingOrderDetails} className="mt-1 min-h-10 block w-full border border-black/15 bg-white p-2" />
+                    </label>
+                    <label className="block text-xs font-bold">Cidade
+                      <input value={editingOrderFields.city || ''} onChange={(event) => setEditingOrderFields((current) => ({ ...current, city: event.target.value }))} maxLength={100} disabled={isSavingOrderDetails} className="mt-1 min-h-10 block w-full border border-black/15 bg-white p-2" />
+                    </label>
+                    <label className="block text-xs font-bold">Estado
+                      <input value={editingOrderFields.state || ''} onChange={(event) => setEditingOrderFields((current) => ({ ...current, state: event.target.value }))} maxLength={20} disabled={isSavingOrderDetails} className="mt-1 min-h-10 block w-full border border-black/15 bg-white p-2" />
+                    </label>
+                    <label className="block text-xs font-bold">CEP
+                      <input value={editingOrderFields.cep || ''} onChange={(event) => setEditingOrderFields((current) => ({ ...current, cep: event.target.value }))} maxLength={20} disabled={isSavingOrderDetails} className="mt-1 min-h-10 block w-full border border-black/15 bg-white p-2" />
+                    </label>
+                    <label className="block text-xs font-bold sm:col-span-2">Observações do pedido
+                      <textarea value={editingOrderFields.observations || ''} onChange={(event) => setEditingOrderFields((current) => ({ ...current, observations: event.target.value }))} maxLength={3000} rows={3} disabled={isSavingOrderDetails} className="mt-1 block w-full border border-black/15 bg-white p-2" />
+                    </label>
+                  </div>
+
+                  <div className="space-y-3">
+                    {editingItems.map((item, index) => {
+                      const product = products.find((candidate) => candidate.id === item.productId || candidate.slug === item.productId) || item.product;
+                      const colors = Array.isArray(product?.colors) ? product.colors.map((entry: any) => typeof entry === 'object' ? entry.name || '' : entry).filter(Boolean) : [];
+                      const sizes = Array.isArray(product?.sizes) ? product.sizes : [];
+                      return <section key={`${item._sourceIndex ?? 'new'}-${index}`} className="space-y-3 border border-amber-300 bg-white p-3">
+                        <div className="flex items-center justify-between gap-2 border-b border-black/10 pb-2">
+                          <h5 className="text-xs font-black uppercase">Item {index + 1}</h5>
+                          <button type="button" disabled={isSavingOrderDetails || editingItems.length <= 1} onClick={() => setEditingItems((current) => current.filter((_, row) => row !== index))} className="min-h-9 border border-red-200 px-2 text-xs font-bold text-red-700 disabled:opacity-40">Remover item</button>
+                        </div>
+                        <div className="grid gap-3 sm:grid-cols-2">
+                          <label className="block text-xs font-bold sm:col-span-2">Vincular produto do catálogo
+                            <select value={item.productId || ''} onChange={(event) => selectEditingProduct(index, event.target.value)} disabled={isSavingOrderDetails} className="mt-1 min-h-10 block w-full border border-black/15 bg-white p-2">
+                              <option value="">Produto personalizado / sem vínculo</option>
+                              {item.productId && !products.some((candidate) => candidate.id === item.productId || candidate.slug === item.productId) && <option value={item.productId}>Produto atual: {item.name || item.productId}</option>}
+                              {products.map((candidate) => <option key={candidate.id} value={candidate.id}>{getOrderEditProductOptionLabel(candidate)}</option>)}
+                            </select>
+                          </label>
+                          <label className="block text-xs font-bold sm:col-span-2">Nome/descrição do produto
+                            <input value={item.name || ''} onChange={(event) => updateEditingItem(index, { name: event.target.value })} maxLength={200} disabled={isSavingOrderDetails} className="mt-1 min-h-10 block w-full border border-black/15 bg-white p-2" />
+                          </label>
+                          <label className="block text-xs font-bold">Cor/variação
+                            {colors.length ? <select value={item.color || ''} onChange={(event) => {
+                              const color = event.target.value;
+                              const recipe = product?.productFinish === 'printed' ? resolveProductStampRecipeEntries(product, color) : [];
+                              const artworks = recipe.map((entry: any) => {
+                                const stamp = stamps.find((candidate) => candidate.id === entry.stampId);
+                                return { stampId: entry.stampId, name: stamp?.name || stamp?.code || entry.stampId, code: stamp?.code || stamp?.sku || '', location: entry.location || '', color: stamp?.printColor || stamp?.color || '', printSize: entry.printSize || '', artSize: entry.artSize || '', image: stamp?.thumbnailUrl || stamp?.mockupUrl || stamp?.pngUrl || '', source: 'catalog' };
+                              });
+                              updateEditingItem(index, { color, ...(product?.productFinish === 'printed' ? { artworks } : {}) });
+                            }} disabled={isSavingOrderDetails} className="mt-1 min-h-10 block w-full border border-black/15 bg-white p-2">
+                              {!colors.includes(item.color) && item.color && <option value={item.color}>{item.color} (atual)</option>}{colors.map((color: string) => <option key={color} value={color}>{color}</option>)}
+                            </select> : <input value={item.color || ''} onChange={(event) => updateEditingItem(index, { color: event.target.value })} maxLength={100} disabled={isSavingOrderDetails} className="mt-1 min-h-10 block w-full border border-black/15 bg-white p-2" />}
+                          </label>
+                          <label className="block text-xs font-bold">Tamanho/variação
+                            {sizes.length ? <select value={item.size || ''} onChange={(event) => updateEditingItem(index, { size: event.target.value })} disabled={isSavingOrderDetails} className="mt-1 min-h-10 block w-full border border-black/15 bg-white p-2">
+                              {!sizes.includes(item.size) && item.size && <option value={item.size}>{item.size} (atual)</option>}{sizes.map((size: string) => <option key={size} value={size}>{size}</option>)}
+                            </select> : <input value={item.size || ''} onChange={(event) => updateEditingItem(index, { size: event.target.value })} maxLength={80} disabled={isSavingOrderDetails} className="mt-1 min-h-10 block w-full border border-black/15 bg-white p-2" />}
+                          </label>
+                          <label className="block text-xs font-bold">Quantidade
+                            <input type="number" min={1} max={999} step={1} value={item.quantity} onChange={(event) => updateEditingItem(index, { quantity: event.target.value === '' ? '' : Number(event.target.value) })} disabled={isSavingOrderDetails} className="mt-1 min-h-10 block w-full border border-black/15 bg-white p-2 font-mono" />
+                          </label>
+                          <label className="block text-xs font-bold">Preço unitário (R$)
+                            <input type="number" min={0} max={1000000} step="0.01" value={item.price} onChange={(event) => updateEditingItem(index, { price: event.target.value === '' ? '' : Number(event.target.value) })} disabled={isSavingOrderDetails} className="mt-1 min-h-10 block w-full border border-black/15 bg-white p-2 font-mono" />
+                          </label>
+                        </div>
+
+                        <div className="space-y-2 border-t border-black/10 pt-3">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <h6 className="text-xs font-black uppercase">Artes/estampas deste item</h6>
+                            <button type="button" disabled={isSavingOrderDetails || (item.artworks || []).length >= 20} onClick={() => updateEditingItem(index, { artworks: [...(item.artworks || []), { stampId: '', name: '', code: '', location: '', color: '', printSize: '', artSize: '', image: '' }] })} className="min-h-9 border border-black/20 px-2 text-xs font-bold disabled:opacity-40">+ Adicionar estampa</button>
+                          </div>
+                          {(item.artworks || []).length === 0 && <p className="text-xs text-gray-500">Nenhuma arte vinculada.</p>}
+                          {(item.artworks || []).map((art: any, artIndex: number) => <div key={`${art.stampId || 'custom'}-${artIndex}`} className="grid gap-2 border border-black/10 bg-gray-50 p-3 sm:grid-cols-2">
+                            <label className="block text-xs font-bold sm:col-span-2">Estampa de catálogo
+                              <select value={art.stampId || ''} onChange={(event) => {
+                                const stamp = stamps.find((candidate) => candidate.id === event.target.value);
+                                const artworks = [...(item.artworks || [])];
+                                artworks[artIndex] = stamp
+                                  ? createOrderEditArtworkFromCatalogStamp(stamp, art.location)
+                                  : { stampId: '', name: '', code: '', location: art.location || '', color: '', printSize: '', artSize: '', image: '', source: 'customer' };
+                                updateEditingItem(index, { artworks });
+                              }} disabled={isSavingOrderDetails} className="mt-1 min-h-10 block w-full border border-black/15 bg-white p-2">
+                                <option value="">Arte própria / sem baixa de estampa</option>
+                                {art.stampId && !stamps.some((candidate) => candidate.id === art.stampId) && <option value={art.stampId}>Estampa atual ({art.stampId})</option>}
+                                {stamps.map((stamp) => <option key={stamp.id} value={stamp.id}>{stamp.name || stamp.code || stamp.id}{stamp.status === 'unavailable' ? ' (indisponível)' : ''}</option>)}
+                              </select>
+                            </label>
+                            <label className="block text-xs font-bold">Nome da arte
+                              <input value={art.name || ''} onChange={(event) => { const artworks = [...(item.artworks || [])]; artworks[artIndex] = { ...art, name: event.target.value }; updateEditingItem(index, { artworks }); }} maxLength={200} disabled={isSavingOrderDetails} className="mt-1 min-h-10 block w-full border border-black/15 bg-white p-2" />
+                            </label>
+                            <label className="block text-xs font-bold">Código
+                              <input value={art.code || ''} onChange={(event) => { const artworks = [...(item.artworks || [])]; artworks[artIndex] = { ...art, code: event.target.value }; updateEditingItem(index, { artworks }); }} maxLength={100} disabled={isSavingOrderDetails} className="mt-1 min-h-10 block w-full border border-black/15 bg-white p-2" />
+                            </label>
+                            <label className="block text-xs font-bold">Local de aplicação
+                              <input value={art.location || ''} onChange={(event) => { const artworks = [...(item.artworks || [])]; artworks[artIndex] = { ...art, location: event.target.value }; updateEditingItem(index, { artworks }); }} maxLength={200} disabled={isSavingOrderDetails} className="mt-1 min-h-10 block w-full border border-black/15 bg-white p-2" />
+                            </label>
+                            <label className="block text-xs font-bold">Cor da estampa
+                              <input value={art.color || ''} onChange={(event) => { const artworks = [...(item.artworks || [])]; artworks[artIndex] = { ...art, color: event.target.value }; updateEditingItem(index, { artworks }); }} maxLength={100} disabled={isSavingOrderDetails} className="mt-1 min-h-10 block w-full border border-black/15 bg-white p-2" />
+                            </label>
+                            <label className="block text-xs font-bold">Medida da estampa para baixa de estoque
+                              <input type="text" inputMode="text" autoComplete="off" aria-label={`Medida de estoque da estampa ${art.name || artIndex + 1}`} value={art.printSize || ''} onChange={(event) => { const artworks = [...(item.artworks || [])]; artworks[artIndex] = { ...art, printSize: event.target.value }; updateEditingItem(index, { artworks }); }} maxLength={80} disabled={isSavingOrderDetails} placeholder="Ex.: 10x10 cm" className="mt-1 min-h-10 block w-full border border-black/15 bg-white p-2" />
+                            </label>
+                            <label className="block text-xs font-bold">Dimensão de produção desta aplicação (cm)
+                              <input type="text" inputMode="text" autoComplete="off" aria-label={`Dimensão de produção da estampa ${art.name || artIndex + 1}`} value={art.artSize || ''} onChange={(event) => { const artworks = [...(item.artworks || [])]; artworks[artIndex] = { ...art, artSize: event.target.value }; updateEditingItem(index, { artworks }); }} maxLength={80} disabled={isSavingOrderDetails} placeholder="Digite a largura × altura, ex.: 28x20 cm" className="mt-1 min-h-10 block w-full border border-black/15 bg-white p-2" />
+                            </label>
+                            <div className="flex items-end justify-end sm:col-span-2">
+                              <button type="button" disabled={isSavingOrderDetails} onClick={() => updateEditingItem(index, { artworks: (item.artworks || []).filter((_: any, row: number) => row !== artIndex) })} className="min-h-9 border border-red-200 px-3 text-xs font-bold text-red-700">Remover estampa</button>
+                            </div>
+                          </div>)}
+                        </div>
+                      </section>;
+                    })}
+                    <button type="button" disabled={isSavingOrderDetails || editingItems.length >= 100} onClick={addEditingItem} className="min-h-10 border border-black/20 bg-white px-3 text-xs font-bold disabled:opacity-40">+ Adicionar item</button>
+                  </div>
+
+                  <div className="border border-black/10 bg-white p-3 text-xs">
+                    <div className="flex justify-between"><span>Subtotal calculado</span><strong>R$ {editingTotals.subtotal.toFixed(2)}</strong></div>
+                    <div className="mt-1 flex justify-between text-gray-600"><span>Frete atual</span><span>R$ {editingTotals.shipping.toFixed(2)}</span></div>
+                    {editingTotals.couponDiscount > 0 && <div className="mt-1 flex justify-between text-red-700"><span>Desconto atual</span><span>- R$ {editingTotals.couponDiscount.toFixed(2)}</span></div>}
+                    <div className="mt-2 flex justify-between border-t border-black/10 pt-2 font-black"><span>Novo total do pedido</span><span>R$ {editingTotals.total.toFixed(2)}</span></div>
+                    {hasPaymentHistoryForEdit && <p className="mt-2 text-amber-800">O pagamento e o histórico financeiro não serão reescritos. Para salvar este pedido pago, subtotal e total precisam permanecer nos valores atuais.</p>}
+                    {financialEditBlocked && <p className="mt-2 font-bold text-red-700">O total calculado mudou; ajuste quantidade/preço antes de salvar este pedido com pagamento registrado.</p>}
+                  </div>
+
+                  <div className="flex flex-wrap justify-end gap-2 border-t border-amber-200 pt-3">
+                    <button type="button" disabled={isSavingOrderDetails} onClick={cancelOrderDetailsEdit} className="min-h-11 border border-black/20 bg-white px-4 py-2 text-xs font-bold disabled:opacity-50">Cancelar</button>
+                    <button type="button" disabled={isSavingOrderDetails || financialEditBlocked} onClick={handleSaveOrderDetails} className="min-h-11 bg-black px-4 py-2 text-xs font-black uppercase text-[#eab308] hover:bg-[#eab308] hover:text-black disabled:cursor-not-allowed disabled:opacity-50">{isSavingOrderDetails ? 'Salvando alterações...' : 'Salvar alterações'}</button>
+                  </div>
                 </div>
               )}
 
@@ -859,7 +1159,8 @@ export const OrderProductionDrawer: React.FC<OrderProductionDrawerProps> = ({
                             <div className="flex flex-wrap items-center justify-end gap-1">
                               <span className="bg-gray-200 px-1.5 py-0.5 font-mono text-[8px]">{pc.location || 'Peito'}</span>
                               {pc.color && <span className="bg-amber-100 px-1.5 py-0.5 font-mono text-[8px]">{pc.color}</span>}
-                              <span className="bg-gray-200 px-1.5 py-0.5 font-mono text-[8px]">{pc.artSize || pc.printSize || 'Tamanho não informado'}</span>
+                              <span className="bg-gray-200 px-1.5 py-0.5 font-mono text-[8px]">Produção: {pc.artSize || 'medida não informada'}</span>
+                              {pc.stampId && <span className="bg-blue-50 px-1.5 py-0.5 font-mono text-[8px]">Estoque: {pc.printSize || 'medida não informada'}</span>}
                             </div>
                           </div>
                         ))}

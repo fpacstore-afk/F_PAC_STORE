@@ -101,7 +101,8 @@ import {
   getCashForecastController,
   previewHistoricalOrderCloseout,
   executeHistoricalOrderCloseout,
-  createManualOrderController
+  createManualOrderController,
+  updateOrderDetailsController
 } from "./server/controllers/admin.controller.js";
 import {
   getCommercialActionsController,
@@ -492,6 +493,7 @@ apiRouter.all("/admin/run-integrity-tests", adminApiLimiter, authenticateAdmin, 
 apiRouter.get("/admin/orders-maintenance/preview", adminApiLimiter, authenticateAdmin, previewHistoricalOrderCloseout);
 apiRouter.post("/admin/orders-maintenance/execute", adminApiLimiter, authenticateAdmin, executeHistoricalOrderCloseout);
 apiRouter.post("/admin/orders/manual", adminApiLimiter, authenticateAdmin, createManualOrderController);
+apiRouter.put("/admin/orders/:orderId/details", adminApiLimiter, authenticateAdmin, updateOrderDetailsController);
 apiRouter.post(
   "/admin/media/upload",
   adminApiLimiter,
