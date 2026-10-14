@@ -12,9 +12,19 @@ export const PRODUCT_VISUALS: Readonly<Record<ProductVisualKind, ProductVisualDe
   oversized: { kind: 'oversized', label: 'Camiseta Oversized', spriteIndex: 0, frontMax: [30, 40], backMax: [30, 40] },
   traditional: { kind: 'traditional', label: 'Camiseta Tradicional', spriteIndex: 1, frontMax: [30, 40], backMax: [30, 40] },
   cropped: { kind: 'cropped', label: 'Cropped Oversized', spriteIndex: 2, frontMax: [30, 35], backMax: [30, 40] },
-  hoodie: { kind: 'hoodie', label: 'Moletom / Casaco', spriteIndex: 3, frontMax: [30, 40], backMax: [30, 40] },
-  shorts: { kind: 'shorts', label: 'Bermuda', spriteIndex: 4, frontMax: [15, 20], backMax: [15, 20] },
-  cap: { kind: 'cap', label: 'Boné', spriteIndex: 5, frontMax: [12, 6], backMax: [10, 6] },
+  hoodie: { kind: 'hoodie', label: 'Moletom / Casaco', spriteIndex: 3, frontMax: [30, 25], backMax: [30, 40] },
+  shorts: { kind: 'shorts', label: 'Bermuda', spriteIndex: 4, frontMax: [3, 3], backMax: [10, 10] },
+  cap: { kind: 'cap', label: 'Boné', spriteIndex: 5, frontMax: [12, 8], backMax: [10, 6] },
+});
+
+export const PRIME_VISUAL_AREA_ANCHORS = Object.freeze({
+  shorts: Object.freeze({
+    front: Object.freeze({ left: 80, top: 50, baseWidth: 12 }),
+    back: Object.freeze({ left: 66, top: 28, baseWidth: 20 }),
+  }),
+  cap: Object.freeze({
+    front: Object.freeze({ left: 50, top: 56, baseWidth: 30 }),
+  }),
 });
 
 const normalize = (value: unknown): string => String(value || '')
