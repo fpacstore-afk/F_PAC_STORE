@@ -1,11 +1,11 @@
 import React, { useRef } from 'react';
 import {
   getPrimeAreaGeometry, placePrimeArtwork,
-  type ArtworkBounds, type MeasuredPrimeModel, type PrimeAreaId, type PrimeArtPosition,
+  type ArtworkBounds, type PrimePlacementModel, type PrimeAreaId, type PrimeArtPosition,
 } from '../../shared/primePlacement';
 
 interface Props {
-  model: MeasuredPrimeModel;
+  model: PrimePlacementModel;
   garmentSize: string;
   areaId: PrimeAreaId;
   art?: { image: string; name: string; printSize: string; bounds?: ArtworkBounds; position?: PrimeArtPosition };

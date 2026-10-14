@@ -2,8 +2,12 @@ import { parsePrimePrintSize, isCatalogSleeveSize } from './primeArtworkSizing';
 import { getCustomizationProfileById } from './customizationProfiles';
 
 export type MeasuredPrimeModel = 'oversized' | 'traditional' | 'cropped' | 'hoodie';
+export type PrimePlacementModel = MeasuredPrimeModel | 'shorts' | 'cap';
 export type PrimeAreaId = 'front' | 'back' | 'sleeve' | 'sleeve_right';
 export type GarmentMeasurement = { size: string; width: number; length: number; sleeve: number };
+
+export const isPrimePlacementModel = (kind: string): kind is PrimePlacementModel =>
+  ['oversized', 'traditional', 'cropped', 'hoodie', 'shorts', 'cap'].includes(kind);
 
 // Manufacturer tables supplied by the store: Tiggas Malhão 240, ZIMM Classic
 // Suedine 250 and Tiggas Cropped/Boxy 190. Values are flat garment measurements.
@@ -59,7 +63,23 @@ const LANDMARKS = {
   },
 };
 
-export function getPrimeAreaGeometry(model: MeasuredPrimeModel, _size: string, areaId: PrimeAreaId, catalogSleeve = false, sleevePrintSize = '2x3') {
+// Normalized mockup calibrations for products without a size chart. The box is
+// the fixed print area; artwork remains movable inside it in physical cm.
+export const PRIME_VISUAL_AREA_LANDMARKS = Object.freeze({
+  shorts: Object.freeze({
+    front: Object.freeze({ centerX: 410, centerY: 246, widthPx: 31, heightPx: 31 }),
+    // The small rear pocket sits lower than the previous anchor.
+    back: Object.freeze({ centerX: 338, centerY: 159, widthPx: 102, heightPx: 102 }),
+  }),
+  cap: Object.freeze({
+    // A portrait 8 × 12 cm area sits on the crown, just above the visor.
+    front: Object.freeze({ centerX: 256, centerY: 280, widthPx: 61, heightPx: 92 }),
+  }),
+});
+
+const VISUAL_REFERENCE_MEASUREMENT: GarmentMeasurement = { size: 'Referência visual', width: 60, length: 72, sleeve: 0 };
+
+export function getPrimeAreaGeometry(model: PrimePlacementModel, _size: string, areaId: PrimeAreaId, catalogSleeve = false, sleevePrintSize = '2x3') {
   // One stable reference for the visual, independent of the ordered size.
   // The customer size is carried in the production data, never a photo warp.
   const measurement = PRIME_GARMENT_MEASUREMENTS[model]?.find(row => row.size === 'M')
@@ -69,12 +89,34 @@ export function getPrimeAreaGeometry(model: MeasuredPrimeModel, _size: string, a
   const profile = getCustomizationProfileById(model);
   const printArea = profile?.printAreas.find(area => area.id === (isSleeve ? 'left-sleeve' : areaId));
   if (!printArea) throw new Error('Área de impressão indisponível para este modelo.');
+  if (!isMeasuredPrimeModel(model)) {
+    if (isSleeve) throw new Error('Este modelo não possui área de manga.');
+    const view = PRIME_VISUAL_AREA_LANDMARKS[model][areaId as 'front' | 'back'];
+    if (!view) throw new Error('Área de impressão indisponível para este modelo.');
+    const pixelsPerCm = Math.min(view.widthPx / printArea.maxWidthCm, view.heightPx / printArea.maxHeightCm);
+    return {
+      widthCm: printArea.maxWidthCm,
+      heightCm: printArea.maxHeightCm,
+      pixelsPerCm,
+      centerX: view.centerX,
+      centerY: view.centerY,
+      rotationDeg: printArea.rotationDeg || 0,
+      measurement: VISUAL_REFERENCE_MEASUREMENT,
+      estimated: true,
+      imageTransform: 'none',
+      garmentWidthPx: 512,
+      garmentLengthPx: 512,
+      garmentHemY: 512,
+    };
+  }
   const view = LANDMARKS[model][areaId === 'back' ? 'back' : 'front'];
   const pixelsPerCm = Math.min(view.bodyWidth / measurement.width, (view.hemY - view.shoulderY) / measurement.length);
   const sleeveDimensions = catalogSleeve ? parsePrimePrintSize(sleevePrintSize) : null;
   const widthCm = isSleeve && catalogSleeve ? sleeveDimensions?.[0] || 2 : printArea.maxWidthCm;
   const heightCm = isSleeve && catalogSleeve ? sleeveDimensions?.[1] || 3 : printArea.maxHeightCm;
-  const topGapCm = model === 'hoodie' && areaId === 'front' ? 0 : areaId === 'back' && model !== 'cropped' ? 6 : 4;
+  const topGapCm = model === 'hoodie' && areaId === 'front' ? 0
+    : model === 'hoodie' && areaId === 'back' ? 9
+      : areaId === 'back' && model !== 'cropped' ? 6 : 4;
   let centerX = view.centerX;
   let centerY = view.collarY + (topGapCm + heightCm / 2) * pixelsPerCm;
   let rotationDeg = 0;
@@ -102,7 +144,7 @@ export type ArtworkBounds = {
 export type PrimeArtPosition = { xCm: number; yCm: number };
 export interface PrimeArtworkPlacement extends PrimeArtPosition {
   version: 1;
-  model: MeasuredPrimeModel;
+  model: PrimePlacementModel;
   garmentSize: string;
   areaId: PrimeAreaId;
   widthCm: number;
@@ -134,7 +176,7 @@ export function fitPrimeArtwork(printSize: string, artwork: ArtworkBounds) {
   return { widthCm, heightCm: widthCm / aspect };
 }
 
-export function placePrimeArtwork(model: MeasuredPrimeModel, size: string, areaId: PrimeAreaId, printSize: string, artwork: ArtworkBounds, position?: PrimeArtPosition, catalogSleeve = false): PrimeArtworkPlacement {
+export function placePrimeArtwork(model: PrimePlacementModel, size: string, areaId: PrimeAreaId, printSize: string, artwork: ArtworkBounds, position?: PrimeArtPosition, catalogSleeve = false): PrimeArtworkPlacement {
   const isSleeve = areaId === 'sleeve' || areaId === 'sleeve_right';
   if (catalogSleeve && (areaId !== 'sleeve' || !isCatalogSleeveSize(printSize))) throw new Error('A estampa do catálogo na manga deve ser 2 × 3 ou 3 × 2 cm no braço esquerdo.');
   const area = getPrimeAreaGeometry(model, size, areaId, catalogSleeve, printSize);
@@ -150,7 +192,7 @@ export function placePrimeArtwork(model: MeasuredPrimeModel, size: string, areaI
     // small artwork in the full 30 × 40 cm maximum box placed it too low on the
     // chest and back. Sleeves remain aligned to the cuff by default.
     xCm: clamp((catalogSleeve ? undefined : position?.xCm) ?? availableX / 2, availableX),
-    yCm: clamp((catalogSleeve ? undefined : position?.yCm) ?? (isSleeve ? availableY : 0), availableY),
+    yCm: clamp((catalogSleeve ? undefined : position?.yCm) ?? (isSleeve ? availableY : isMeasuredPrimeModel(model) ? 0 : availableY / 2), availableY),
     ...fitted, areaWidthCm: area.widthCm, areaHeightCm: area.heightCm,
     rotationDeg: area.rotationDeg, artwork,
     ...(isSleeve ? { sleeveMode: catalogSleeve ? 'catalog' as const : 'custom' as const } : {}),
@@ -162,8 +204,11 @@ export function placePrimeArtwork(model: MeasuredPrimeModel, size: string, areaI
 // come from the server profile, not from client-supplied limits.
 export function validatePrimeArtworkPlacement(value: unknown, model: string, size: string, location: string, printSize: string, catalogSleeve = false): PrimeArtworkPlacement | undefined {
   if (value == null) return undefined;
-  if (!isMeasuredPrimeModel(model)) throw new Error('Posicionamento indisponível para este modelo.');
-  const areaId = location === 'Frente' ? 'front' : location === 'Costas' ? 'back' : location === 'Manga Esquerda' ? 'sleeve' : location === 'Manga Direita' ? 'sleeve_right' : null;
+  if (!isPrimePlacementModel(model)) throw new Error('Posicionamento indisponível para este modelo.');
+  const areaId = location === 'Frente' ? 'front' : location === 'Costas' ? 'back'
+    : location === 'Bermuda Frente' ? 'front' : location === 'Bermuda Costas' ? 'back'
+      : location === 'Boné Frontal' ? 'front'
+        : location === 'Manga Esquerda' ? 'sleeve' : location === 'Manga Direita' ? 'sleeve_right' : null;
   const input = value as PrimeArtworkPlacement;
   const finite = (n: unknown): n is number => typeof n === 'number' && Number.isFinite(n);
   const art = input?.artwork;

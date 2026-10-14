@@ -1,6 +1,6 @@
 import { PrimePrintPreview } from '../components/PrimePrintPreview';
 import { loadPrimeArtworkBounds } from '../lib/primeArtworkBounds';
-import { PRIME_GARMENT_MEASUREMENTS, isMeasuredPrimeModel, getPrimeAreaGeometry, placePrimeArtwork, type ArtworkBounds, type PrimeAreaId, type PrimeArtPosition } from '../../shared/primePlacement';
+import { isPrimePlacementModel, getPrimeAreaGeometry, placePrimeArtwork, type ArtworkBounds, type PrimeAreaId, type PrimeArtPosition } from '../../shared/primePlacement';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Check, ChevronRight, Maximize2, Ruler,
@@ -18,7 +18,7 @@ import { SizeChart } from '../components/SizeChart';
 import { PRIME_CUSTOM_FIXED_PRICE, getCustomizationProfileById } from '../../shared/customizationProfiles';
 import { isDesignPublic, normalizeDesignDocument, sortDesignCatalog } from '../lib/stampCatalog';
 import { ProductMockupSprite } from '../components/ProductMockupSprite';
-import { PRODUCT_VISUALS, getPrimeVisualAreaStyle, getProductVisualKind, type ProductVisualKind } from '../lib/productPresentation';
+import { PRODUCT_VISUALS, getProductVisualKind, type ProductVisualKind } from '../lib/productPresentation';
 import { subscribePublicCatalog } from '../services/publicProducts';
 import {
   formatPrimePrintSize,
@@ -261,7 +261,7 @@ export default function PrimeCustomApproved() {
     setBusy(true);
     const requestedContext = applicationContext.current;
     try {
-      const bounds = isMeasuredPrimeModel(visualKind) ? await loadPrimeArtworkBounds(selectedArtwork.image, selectedArtwork.id) : undefined;
+      const bounds = await loadPrimeArtworkBounds(selectedArtwork.image, selectedArtwork.id);
       if (applicationContext.current !== requestedContext) return;
       setApplied(current => ({ ...current, [activePlacement.id]: { ...selectedArtwork, productKey: productId, printSize: currentSize, bounds } }));
       if (visualKind === 'oversized' && activePlacement.id === 'sleeve') setSleeveSetup('ready');
@@ -287,7 +287,7 @@ export default function PrimeCustomApproved() {
     const printConfigs = placements.flatMap(placement => {
       const item = applied[placement.id];
       if (!item || item.productKey !== productId) return [];
-      const artPlacement = isMeasuredPrimeModel(visualKind) && item.bounds
+      const artPlacement = isPrimePlacementModel(visualKind) && item.bounds
         ? placePrimeArtwork(visualKind, size, placement.id as PrimeAreaId, item.printSize, item.bounds, item.position, placement.id === 'sleeve') : undefined;
       return [{ placement: artPlacement, id: `${item.id}_${placement.positionId}_${Date.now()}`, stampId: item.id, stamp: item.name, location: placement.location, printSize: item.printSize, image: item.image, background: 'Sem Fundo' as const, ...(placement.rotationDeg === undefined ? {} : { rotationDeg: placement.rotationDeg }), ...(placement.orientationInstruction ? { orientationInstruction: placement.orientationInstruction } : {}) }];
     });
@@ -311,28 +311,22 @@ export default function PrimeCustomApproved() {
 
   const moveActiveArt = (position: PrimeArtPosition) => setApplied(current => current[activePlacement.id]
     ? { ...current, [activePlacement.id]: { ...current[activePlacement.id], position } } : current);
-  const measuredModel = isMeasuredPrimeModel(visualKind) ? visualKind : null;
+  const positionedModel = isPrimePlacementModel(visualKind) ? visualKind : null;
   const isSleeve = activePlacement.id === 'sleeve';
   const catalogSleeve = isSleeve && (activeApplied?.source || selectedArtwork?.source || 'catalog') === 'catalog';
   const activeAreaId: PrimeAreaId = activePlacement.id as PrimeAreaId;
-  const geometry = measuredModel ? getPrimeAreaGeometry(measuredModel, size, activeAreaId, catalogSleeve, previewPrintSize) : null;
-  const areaWidth = catalogSleeve ? geometry?.widthCm || 2 : activePlacement.maxWidth;
-  const areaHeight = catalogSleeve ? geometry?.heightCm || 3 : activePlacement.maxHeight;
-  const visiblePrint = measuredModel && activeApplied?.bounds ? placePrimeArtwork(measuredModel, size, activeAreaId, activeApplied.printSize, activeApplied.bounds, activeApplied.position, catalogSleeve) : null;
-  const previewArts = (side: MockupSide, editing = false) => measuredModel && <>
+  const geometry = positionedModel ? getPrimeAreaGeometry(positionedModel, size, activeAreaId, catalogSleeve, previewPrintSize) : null;
+  const areaWidth = geometry?.widthCm || activePlacement.maxWidth;
+  const areaHeight = geometry?.heightCm || activePlacement.maxHeight;
+  const visiblePrint = positionedModel && activeApplied?.bounds ? placePrimeArtwork(positionedModel, size, activeAreaId, activeApplied.printSize, activeApplied.bounds, activeApplied.position, catalogSleeve) : null;
+  const previewArts = (side: MockupSide, editing = false) => positionedModel && <>
     {placements.filter(placement => placement.side === side && applied[placement.id]?.productKey === productId && (!editing || placement.id !== activePlacement.id)).map(placement => {
       const item = applied[placement.id];
-      return <PrimePrintPreview key={placement.id} model={measuredModel} garmentSize={size} areaId={placement.id as PrimeAreaId} art={item} catalogSleeve={placement.id === 'sleeve' && item.source === 'catalog'} showArea={false} />;
+      return <PrimePrintPreview key={placement.id} model={positionedModel} garmentSize={size} areaId={placement.id as PrimeAreaId} art={item} catalogSleeve={placement.id === 'sleeve' && item.source === 'catalog'} showArea={false} />;
     })}
-    {editing && <PrimePrintPreview model={measuredModel} garmentSize={size} areaId={activeAreaId} art={activeApplied} catalogSleeve={catalogSleeve} onMove={catalogSleeve ? undefined : moveActiveArt} />}
+    {editing && <PrimePrintPreview model={positionedModel} garmentSize={size} areaId={activeAreaId} art={activeApplied} catalogSleeve={catalogSleeve} onMove={catalogSleeve ? undefined : moveActiveArt} />}
   </>;
-  const previewOverlay = measuredModel
-    ? previewArts(activePlacement.side, true)
-    : (<div className="absolute" style={getPrimeVisualAreaStyle(visualKind, activePlacement, previewPrintSize)}>
-                <div className={`relative h-full w-full overflow-hidden border ${activeApplied ? 'border-transparent' : 'border-dashed border-black/35'} bg-white/5`}>
-                  {activeApplied ? <img src={activeApplied.image} alt={activeApplied.name} className="h-full w-full object-contain" /> : <span className="absolute inset-0 grid place-items-center px-1 text-center text-[6px] md:text-[8px] font-black uppercase tracking-wide text-black/45">Área da arte</span>}
-                </div>
-              </div>);
+  const previewOverlay = previewArts(activePlacement.side, true);
 
   return (
     <div className="min-h-screen bg-[#f4f3ef] text-[#111] pb-48 md:pb-16">
@@ -397,7 +391,7 @@ export default function PrimeCustomApproved() {
           <section className="rounded-2xl border border-black/10 bg-white p-2.5 md:p-4 shadow-sm">
             <div className="flex items-center justify-between gap-3 px-1 pb-2.5">
               <div><p className="text-[8px] font-black uppercase tracking-[0.18em] text-[#9a7100]">2. Personalize</p><h2 className="text-base md:text-xl font-black uppercase">{visual.label}</h2></div>
-              <span className="rounded-full bg-black px-3 py-1.5 text-[8px] font-black uppercase tracking-[0.14em] text-[#f5bd19]">{isSleeve ? 'Estampa fixa · manga esquerda' : 'Prévia fixa'}</span>
+              <span className="rounded-full bg-black px-3 py-1.5 text-[8px] font-black uppercase tracking-[0.14em] text-[#f5bd19]">{catalogSleeve ? 'Estampa fixa · manga esquerda' : 'Área fixa · estampa móvel'}</span>
             </div>
 
             <div className={`grid gap-1.5 mb-2.5 ${placements.length === 1 ? "grid-cols-1" : placements.length === 2 ? "grid-cols-2" : "grid-cols-3"}`}>
@@ -411,7 +405,7 @@ export default function PrimeCustomApproved() {
             </ProductMockupSprite>
 
             <div className="mt-2.5 px-1 text-[10px] leading-relaxed text-black/60">
-              {measuredModel && <><p>{catalogSleeve ? `Estampa fixa: ${areaWidth} × ${areaHeight} cm na manga esquerda. Prévia da manga levemente ampliada para facilitar a visualização.` : activeApplied ? 'Arraste a estampa dentro da área pontilhada. Também é possível ajustar com as setas do teclado.' : 'A área pontilhada é fixa. Escolha e aplique uma arte para posicioná-la.'}</p>
+              {positionedModel && <><p>{catalogSleeve ? `Estampa fixa: ${areaWidth} × ${areaHeight} cm na manga esquerda. Prévia da manga levemente ampliada para facilitar a visualização.` : activeApplied ? 'Arraste a estampa dentro da área pontilhada. Use as setas do teclado para ajustes finos.' : 'A área pontilhada é fixa. Depois de aplicar a arte, arraste-a para posicionar dentro da área.'}</p>
                 {visiblePrint && <p>Arte visível: {money(visiblePrint.widthCm)} × {money(visiblePrint.heightCm)} cm. Proporção original preservada.</p>}
                 <p>A estampa mantém a proporção original. O mockup é ilustrativo; o tamanho escolhido define a peça do pedido.</p>
                 {activeApplied && !catalogSleeve && <button type="button" onClick={() => setApplied(current => ({ ...current, [activePlacement.id]: { ...current[activePlacement.id], position: undefined } }))} className="mt-1 min-h-9 underline font-bold">Restaurar posição</button>}

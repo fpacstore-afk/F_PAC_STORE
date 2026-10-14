@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { getPrimeAreaGeometry, getVisibleArtworkBounds, placePrimeArtwork, validatePrimeArtworkPlacement, PRIME_GARMENT_MEASUREMENTS, type MeasuredPrimeModel, type PrimeAreaId } from '../shared/primePlacement';
+import { getPrimeAreaGeometry, getVisibleArtworkBounds, placePrimeArtwork, validatePrimeArtworkPlacement, PRIME_GARMENT_MEASUREMENTS, PRIME_VISUAL_AREA_LANDMARKS, type MeasuredPrimeModel, type PrimeAreaId, type PrimePlacementModel } from '../shared/primePlacement';
 import {
   PRIME_PRINT_SIZE_SURCHARGE,
   getActiveProductColorNames,
@@ -31,7 +31,6 @@ import {
   isSizeCompatibleWithPosition,
   parseDimensionsCm,
 } from '../src/lib/primePrintSizing';
-import { getPrimeVisualAreaStyle, PRIME_VISUAL_AREA_ANCHORS } from '../src/lib/productPresentation';
 
 const chest = {
   maxDimensions: '30x40 cm',
@@ -133,8 +132,9 @@ assert.equal(isPrimeSizeAllowedAtLocation('3x3', 'Bermuda Frente'), true);
 assert.equal(isPrimeSizeAllowedAtLocation('5x5', 'Bermuda Frente'), false);
 assert.equal(isPrimeSizeAllowedAtLocation('10x10', 'Bermuda Costas'), true);
 assert.equal(isPrimeSizeAllowedAtLocation('10x12', 'Bermuda Costas'), false);
-assert.equal(isPrimeSizeAllowedAtLocation('12x8', 'Boné Frontal'), true);
-assert.equal(isPrimeSizeAllowedAtLocation('12x9', 'Boné Frontal'), false);
+assert.equal(isPrimeSizeAllowedAtLocation('8x12', 'Boné Frontal'), true);
+assert.equal(isPrimeSizeAllowedAtLocation('8x6', 'Boné Frontal'), true);
+assert.equal(isPrimeSizeAllowedAtLocation('12x8', 'Boné Frontal'), false);
 assert.equal(isPrimeSizeAllowedAtLocation('10x10', 'Posição Inexistente'), false);
 
 assert.equal(
@@ -269,21 +269,42 @@ assert.equal(getCustomizationProfileById('hoodie')?.printAreas.length,2);
 const hoodieFront = getPrimeAreaGeometry('hoodie','M','front');
 assert.deepEqual([hoodieFront.widthCm, hoodieFront.heightCm, hoodieFront.estimated], [30, 25, true]);
 assert.ok(Math.abs(hoodieFront.centerY - hoodieFront.heightCm * hoodieFront.pixelsPerCm / 2 - 150) < 0.001, 'Hoodie front starts at the collar and ends just above the pocket.');
-assert.equal(getPrimeAreaGeometry('hoodie','M','back').centerX, 274, 'Hoodie back print box is centered on the garment torso.');
+const hoodieBack = getPrimeAreaGeometry('hoodie','M','back');
+assert.equal(hoodieBack.centerX, 274, 'Hoodie back print box is centered on the garment torso.');
+assert.ok(Math.abs(hoodieBack.centerY - hoodieBack.heightCm * hoodieBack.pixelsPerCm / 2 - (150 + 9 * hoodieBack.pixelsPerCm)) < 0.001, 'Hoodie back print area sits lower on the torso.');
 assert.equal(placePrimeArtwork('hoodie','M','front','20x20',art).areaHeightCm, 25);
 assert.throws(() => placePrimeArtwork('hoodie','M','front','30x30',art), /ultrapassa/);
 assert.deepEqual(getCustomizationProfileById('shorts')?.printAreas.map(area => [area.maxWidthCm, area.maxHeightCm, area.defaultSizeCm]), [[3, 3, '2x3'], [10, 10, '10x10']]);
-assert.deepEqual(getCustomizationProfileById('cap')?.printAreas.map(area => [area.maxWidthCm, area.maxHeightCm]), [[12, 8]]);
-assert.deepEqual(PRIME_VISUAL_AREA_ANCHORS.shorts.front, { left: 80, top: 48, baseWidth: 4.5 }, 'Bermuda front overlay is small and sits on the angled cargo pocket flap.');
-assert.deepEqual(PRIME_VISUAL_AREA_ANCHORS.shorts.back, { left: 66, top: 28, baseWidth: 20 }, 'Bermuda back overlay sits on the small rear pocket.');
-assert.deepEqual(PRIME_VISUAL_AREA_ANCHORS.cap.front, { left: 50, top: 50, baseWidth: 34 }, 'Cap overlay is larger and stays above the brim.');
-assert.equal(getPrimeVisualAreaStyle('shorts', { id: 'front', maxWidth: 3 }, '2x3').width, '3%');
-assert.equal(getPrimeVisualAreaStyle('shorts', { id: 'front', maxWidth: 3 }, '2x3').transform, 'translate(-50%, -50%) rotate(-12deg)');
+assert.deepEqual(getCustomizationProfileById('cap')?.printAreas.map(area => [area.maxWidthCm, area.maxHeightCm, area.defaultSizeCm]), [[8, 12, '8x6']]);
+assert.deepEqual(PRIME_VISUAL_AREA_LANDMARKS.shorts.front, { centerX: 410, centerY: 246, widthPx: 31, heightPx: 31 }, 'Bermuda front area is sized for a larger 2 × 3 print over the angled cargo flap.');
+assert.deepEqual(PRIME_VISUAL_AREA_LANDMARKS.shorts.back, { centerX: 338, centerY: 159, widthPx: 102, heightPx: 102 }, 'Bermuda back area is lower and centered on the rear pocket.');
+assert.deepEqual(PRIME_VISUAL_AREA_LANDMARKS.cap.front, { centerX: 256, centerY: 280, widthPx: 61, heightPx: 92 }, 'Cap print area sits lower on the crown and remains above the brim.');
 assert.equal(getCustomizationProfileById('shorts')?.printAreas[0].rotationDeg, -12);
 assert.match(getCustomizationProfileById('shorts')?.printAreas[0].orientationInstruction || '', /12°.*bolso cargo/);
-const capFrontStyle = getPrimeVisualAreaStyle('cap', { id: 'front', maxWidth: 12 }, '10x5');
-assert.equal(capFrontStyle.top, '50%');
-assert.ok(Number.parseFloat(String(capFrontStyle.width)) > 25, 'Cap print area grows slightly from its former width.');
+const shortsFront = getPrimeAreaGeometry('shorts', 'M', 'front');
+const shortsLogo = placePrimeArtwork('shorts', 'M', 'front', '2x3', art);
+assert.deepEqual([shortsFront.widthCm, shortsFront.heightCm, shortsFront.rotationDeg], [3, 3, -12]);
+assert.equal(shortsLogo.widthCm, 2);
+assert.ok(shortsFront.pixelsPerCm > 10, 'The 2 × 3 Bermuda preview is larger than the previous overlay.');
+assert.ok(shortsLogo.widthCm * shortsFront.pixelsPerCm > 0.03 * 512, 'The corrected 2 × 3 Bermuda art is visibly larger than its previous 3% preview.');
+assert.ok(Math.abs(shortsLogo.yCm + shortsLogo.heightCm / 2 - 1.5) < 0.001, 'The Bermuda print is centered inside the cargo-pocket area.');
+const shortsBack = getPrimeAreaGeometry('shorts', 'M', 'back');
+assert.ok(shortsBack.centerY > 28 * 512 / 100, 'The rear-pocket area has moved down from its former position.');
+const capArea = getPrimeAreaGeometry('cap', 'M', 'front');
+assert.deepEqual([capArea.widthCm, capArea.heightCm], [8, 12]);
+assert.equal(capArea.centerY, 280);
+const landscapeCapArt = { sourceWidth: 100, sourceHeight: 100, crop: { left: 0, top: 0, width: 1, height: .75 } };
+const capPrint = placePrimeArtwork('cap', 'M', 'front', '8x6', landscapeCapArt);
+assert.deepEqual([capPrint.widthCm, capPrint.heightCm, capPrint.xCm, capPrint.yCm], [8, 6, 0, 3], 'An 8 × 6 artwork fills the 8 cm cap area edge to edge and is vertically centered.');
+assert.deepEqual(validatePrimeArtworkPlacement(capPrint, 'cap', 'M', 'Boné Frontal', '8x6'), capPrint);
+const movedCap = placePrimeArtwork('cap', 'M', 'front', '8x6', landscapeCapArt, { xCm: 50, yCm: 50 });
+assert.deepEqual([movedCap.xCm + movedCap.widthCm, movedCap.yCm + movedCap.heightCm], [8, 12], 'The cap print can be dragged to the edge without leaving its fixed area.');
+assert.deepEqual(validatePrimeArtworkPlacement(movedCap, 'cap', 'M', 'Boné Frontal', '8x6'), movedCap);
+assert.throws(() => placePrimeArtwork('cap', 'M', 'front', '12x8', landscapeCapArt), /ultrapassa/);
+assert.throws(() => placePrimeArtwork('shorts', 'M', 'front', '5x5', art), /ultrapassa/);
+const movedShorts = placePrimeArtwork('shorts', 'M', 'back', '10x10', art, { xCm: 500, yCm: 500 });
+assert.deepEqual([movedShorts.xCm + movedShorts.widthCm, movedShorts.yCm + movedShorts.heightCm], [10, 10], 'Dragging a maximum-size print remains bounded by its pocket area.');
+assert.deepEqual(validatePrimeArtworkPlacement(movedShorts, 'shorts', 'M', 'Bermuda Costas', '10x10'), movedShorts);
 for (const kind of ['oversized','traditional','cropped','hoodie','shorts','cap'] as const) {
   const productProfile = getCustomizationProfileById(kind)!;
   assert.ok(productProfile.printAreas.length > 0, `${kind} has at least one production area.`);
@@ -291,9 +312,9 @@ for (const kind of ['oversized','traditional','cropped','hoodie','shorts','cap']
   if (['oversized','traditional','cropped'].includes(kind)) assert.equal(productProfile.printAreas.find(area => area.id === 'left-sleeve')?.defaultSizeCm, '2x3', `${kind} sleeve print uses the fixed 2 × 3 cm size.`);
   for (const printArea of productProfile.printAreas) {
     assert.ok(isPrimePrintSizeWithin(printArea.defaultSizeCm, printArea.maxWidthCm, printArea.maxHeightCm), `${kind} ${printArea.id} default size stays inside its production area.`);
-    if (['oversized','traditional','cropped','hoodie'].includes(kind)) {
+    if (['oversized','traditional','cropped','hoodie','shorts','cap'].includes(kind)) {
       const areaId = printArea.id === 'left-sleeve' ? 'sleeve' : printArea.id as PrimeAreaId;
-      const visualArea = getPrimeAreaGeometry(kind as MeasuredPrimeModel, 'M', areaId);
+      const visualArea = getPrimeAreaGeometry(kind as PrimePlacementModel, 'M', areaId);
       assert.deepEqual([visualArea.widthCm, visualArea.heightCm], [printArea.maxWidthCm, printArea.maxHeightCm], `${kind} preview and checkout profile use the same print-area limits.`);
     }
   }

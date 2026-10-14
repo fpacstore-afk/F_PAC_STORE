@@ -12,7 +12,7 @@ export function PrimeOrderPlacements({ item }: { item: any }) {
       <b>{print.stamp} · {print.location}</b>
       {print.placement?.version === 1 && <>
         <p>{describePrimePlacement(print.placement)}</p>
-        <p className="text-black/60">Área fixa: {print.placement.areaWidthCm} × {print.placement.areaHeightCm} cm · tamanho {print.placement.garmentSize}. {print.placement.areaId.startsWith('sleeve') ? 'Área a 2 cm da barra, acompanhando sua inclinação.' : 'Área centralizada; topo a ' + (print.placement.areaId === 'back' && print.placement.model !== 'cropped' ? 6 : 4) + ' cm abaixo da gola.'}</p>
+        <p className="text-black/60">Área fixa: {print.placement.areaWidthCm} × {print.placement.areaHeightCm} cm · tamanho {print.placement.garmentSize}. {print.placement.areaId.startsWith('sleeve') ? 'Estampa fixa, a 2 cm da barra e acompanhando sua inclinação.' : ['shorts', 'cap'].includes(print.placement.model) ? 'Arte posicionada pelo cliente dentro da área demarcada no mockup.' : 'Arte posicionada pelo cliente dentro da área; topo a ' + (print.placement.areaId === 'back' && print.placement.model !== 'cropped' ? (print.placement.model === 'hoodie' ? 9 : 6) : 4) + ' cm abaixo da gola.'}</p>
       </>}
       {print.orientationInstruction && <p className="font-semibold text-black/75">{print.orientationInstruction}</p>}
     </div>)}
