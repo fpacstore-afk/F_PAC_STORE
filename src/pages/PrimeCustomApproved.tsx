@@ -1,6 +1,6 @@
 import { PrimePrintPreview } from '../components/PrimePrintPreview';
 import { loadPrimeArtworkBounds } from '../lib/primeArtworkBounds';
-import { isPrimePlacementModel, getPrimeAreaGeometry, placePrimeArtwork, type ArtworkBounds, type PrimeAreaId, type PrimeArtPosition } from '../../shared/primePlacement';
+import { isPrimePlacementModel, getPrimeAreaGeometry, isPrimePrintSizeWithinArea, placePrimeArtwork, type ArtworkBounds, type PrimeAreaId, type PrimeArtPosition } from '../../shared/primePlacement';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Check, ChevronRight, Maximize2, Ruler,
@@ -23,7 +23,6 @@ import { subscribePublicCatalog } from '../services/publicProducts';
 import {
   formatPrimePrintSize,
   getCatalogSleeveSizes,
-  isPrimePrintSizeWithin,
   normalizePrimePrintSize,
   normalizeRegisteredPrimePrintSizes,
 } from '../../shared/primeArtworkSizing';
@@ -176,8 +175,8 @@ export default function PrimeCustomApproved() {
     if (selectedArtwork?.source !== 'catalog') return [];
     if (activePlacement.id === 'sleeve') return getCatalogSleeveSizes(selectedArtwork.availableSizes);
     return normalizeRegisteredPrimePrintSizes(selectedArtwork.availableSizes)
-      .filter(value => isPrimePrintSizeWithin(value, activePlacement.maxWidth, activePlacement.maxHeight));
-  }, [activePlacement.id, activePlacement.maxHeight, activePlacement.maxWidth, selectedArtwork]);
+      .filter(value => isPrimePrintSizeWithinArea(visualKind, value, activePlacement.maxWidth, activePlacement.maxHeight));
+  }, [activePlacement.id, activePlacement.maxHeight, activePlacement.maxWidth, selectedArtwork, visualKind]);
   const draftPrintSize = draftPrintSizes[activePlacement?.id] || '';
   const selectedPrintSize = draftPrintSize && registeredCatalogSizes.includes(draftPrintSize) ? draftPrintSize : registeredCatalogSizes[0] || '';
   const previewPrintSize = activeApplied?.printSize || selectedPrintSize || activePlacement?.defaultSize || '10x10';
@@ -274,7 +273,7 @@ export default function PrimeCustomApproved() {
   const updatePrintSize = (value: string) => {
     const normalized = normalizePrimePrintSize(value);
     setDraftPrintSizes(current => ({ ...current, [activePlacement.id]: normalized }));
-    if (activeApplied && selectedArtwork?.id === activeApplied.id && isPrimePrintSizeWithin(normalized, activePlacement.maxWidth, activePlacement.maxHeight)) {
+    if (activeApplied && selectedArtwork?.id === activeApplied.id && isPrimePrintSizeWithinArea(visualKind, normalized, activePlacement.maxWidth, activePlacement.maxHeight)) {
       setApplied(current => ({ ...current, [activePlacement.id]: { ...activeApplied, printSize: normalized, position: undefined } }));
     }
   };
@@ -400,7 +399,7 @@ export default function PrimeCustomApproved() {
 
             <ProductMockupSprite interactive kind={visualKind} view={activePlacement.side} tone={mockupTone} className="aspect-square rounded-xl border border-black/10" label={`${visual.label} ${color} - ${activePlacement.label}`}>
               {previewOverlay}
-              <div className="absolute bottom-3 left-3 rounded-full bg-black/80 px-3 py-1.5 text-[8px] md:text-[10px] font-bold text-white backdrop-blur-sm">{catalogSleeve ? 'Estampa fixa: ' : 'Área máx.: '}{areaWidth}×{areaHeight} cm</div>
+              <div className="absolute bottom-3 left-3 rounded-full bg-black/80 px-3 py-1.5 text-[8px] md:text-[10px] font-bold text-white backdrop-blur-sm">{catalogSleeve ? 'Estampa fixa: ' : 'Área máx.: '}{visualKind === 'cap' ? `${areaHeight}×${areaWidth} cm (altura × largura)` : `${areaWidth}×${areaHeight} cm`}</div>
               <button type="button" onClick={() => setExpandedPreview(true)} className="absolute right-3 top-3 h-9 w-9 rounded-full bg-black/80 text-white grid place-items-center" aria-label="Visualização ampliada"><Maximize2 size={15} /></button>
             </ProductMockupSprite>
 

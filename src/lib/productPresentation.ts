@@ -14,7 +14,7 @@ export const PRODUCT_VISUALS: Readonly<Record<ProductVisualKind, ProductVisualDe
   cropped: { kind: 'cropped', label: 'Cropped Oversized', spriteIndex: 2, frontMax: [30, 35], backMax: [30, 40] },
   hoodie: { kind: 'hoodie', label: 'Moletom / Casaco', spriteIndex: 3, frontMax: [30, 25], backMax: [30, 40] },
   shorts: { kind: 'shorts', label: 'Bermuda', spriteIndex: 4, frontMax: [3, 3], backMax: [10, 10] },
-  cap: { kind: 'cap', label: 'Boné', spriteIndex: 5, frontMax: [8, 12], backMax: [10, 6] },
+  cap: { kind: 'cap', label: 'Boné', spriteIndex: 5, frontMax: [12, 8], backMax: [10, 6] },
 });
 
 const normalize = (value: unknown): string => String(value || '')

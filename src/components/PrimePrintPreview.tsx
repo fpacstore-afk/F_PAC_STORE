@@ -76,7 +76,7 @@ export function PrimePrintPreview({ model, garmentSize, areaId, art, onMove, sho
           onLostPointerCapture={() => { drag.current = undefined; }}
         >{svg}</button>
         : <div className="absolute pointer-events-none" style={artworkStyle}>{svg}</div>)
-        : showArea && <span className="absolute inset-0 grid place-items-center text-center text-[8px] font-bold text-white [text-shadow:0_1px_3px_black]">Área fixa<br />{area.widthCm} × {area.heightCm} cm</span>}
+        : showArea && <span className="absolute inset-0 grid place-items-center text-center text-[8px] font-bold text-white [text-shadow:0_1px_3px_black]">Área fixa<br />{model === 'cap' ? `${area.heightCm} × ${area.widthCm}` : `${area.widthCm} × ${area.heightCm}`} cm</span>}
     </div>
   );
 }
