@@ -200,6 +200,9 @@ assert.deepEqual(crop, { left: .2, top: .1, width: .6, height: .8 });
 const art = { sourceWidth: 100, sourceHeight: 100, crop };
 const fullArt = placePrimeArtwork('oversized', 'M', 'front', '30x40', art);
 assert.deepEqual([fullArt.xCm, fullArt.yCm, fullArt.widthCm, fullArt.heightCm], [0, 0, 30, 40]);
+const smallDefault = placePrimeArtwork('oversized', 'M', 'front', '10x10', art);
+assert.equal(smallDefault.yCm, 0, 'Small body prints start at the chest/back production anchor instead of the middle of the 30 × 40 cm limit.');
+assert.equal(getPrimeAreaGeometry('oversized', 'M', 'back').centerX, 256, 'The back print area is centered on the oversized mockup.');
 assert.equal(placePrimeArtwork('oversized', 'M', 'front', '30x40', art, { xCm: 20, yCm: -50 }).xCm, 0);
 const small = placePrimeArtwork('oversized', 'M', 'front', '6x8', art, { xCm: -5, yCm: 100 });
 assert.equal(small.xCm, 0); assert.equal(small.yCm, 32);
@@ -217,6 +220,7 @@ for (const model of ['oversized', 'traditional', 'cropped'] as MeasuredPrimeMode
       assert.ok(bottom < area.garmentHemY, model + ' print area stays above garment hem');
     }
     const initial = placePrimeArtwork(model, row.size, areaId, '6x8', art);
+    if (areaId !== 'sleeve') assert.equal(initial.yCm, 0, `${model} ${areaId} uses its top production anchor.`);
     assert.equal(area.imageTransform, 'none');
     assert.deepEqual(area, getPrimeAreaGeometry(model, 'M', areaId), 'Size changes never shift photo, print or area');
     const moved = placePrimeArtwork(model, row.size, areaId, '6x8', art, { xCm: 900, yCm: -900 });
@@ -255,6 +259,22 @@ for (const model of ['oversized','traditional','cropped'] as MeasuredPrimeModel[
 }
 assert.throws(() => getPrimeAreaGeometry('hoodie','M','sleeve'));
 assert.equal(getCustomizationProfileById('hoodie')?.printAreas.length,2);
+const hoodieFront = getPrimeAreaGeometry('hoodie','M','front');
+assert.deepEqual([hoodieFront.widthCm, hoodieFront.heightCm, hoodieFront.estimated], [30, 25, true]);
+assert.equal(placePrimeArtwork('hoodie','M','front','20x20',art).areaHeightCm, 25);
+assert.throws(() => placePrimeArtwork('hoodie','M','front','30x30',art), /ultrapassa/);
+for (const kind of ['oversized','traditional','cropped','hoodie','shorts','cap'] as const) {
+  const productProfile = getCustomizationProfileById(kind)!;
+  assert.ok(productProfile.printAreas.length > 0, `${kind} has at least one production area.`);
+  for (const printArea of productProfile.printAreas) {
+    assert.ok(isPrimePrintSizeWithin(printArea.defaultSizeCm, printArea.maxWidthCm, printArea.maxHeightCm), `${kind} ${printArea.id} default size stays inside its production area.`);
+    if (['oversized','traditional','cropped','hoodie'].includes(kind)) {
+      const areaId = printArea.id === 'left-sleeve' ? 'sleeve' : printArea.id as PrimeAreaId;
+      const visualArea = getPrimeAreaGeometry(kind as MeasuredPrimeModel, 'M', areaId);
+      assert.deepEqual([visualArea.widthCm, visualArea.heightCm], [printArea.maxWidthCm, printArea.maxHeightCm], `${kind} preview and checkout profile use the same print-area limits.`);
+    }
+  }
+}
 const options = primeBaseOptions([{id:'blank',slug:'blank',colors:[{name:'Branco'},{name:'Preto'},{name:'Bege',available:false}],sizes:['M','G']}],{blank:{available:true,variants:{Branco_M:{availableQuantity:2},Branco_G:{availableQuantity:0},Preto_G:{availableQuantity:1},Bege_M:{availableQuantity:3},Azul_M:{availableQuantity:2}}}});
 assert.deepEqual(options.combinations.map(x=>x.color.name+'_'+x.size),['Branco_M','Preto_G']);
 console.log('PRIME feedback: stable previews, both sleeves, catalog logo, plain inventory and all approved price combinations passed.');
