@@ -54,7 +54,7 @@ export const PRIME_POSITION_RULES = Object.freeze({
   'Gola Traseira': { id: 'gola_traseira', max: [10, 10] as const },
   'Bermuda Frente': { id: 'bermuda_frente', max: [3, 3] as const },
   'Bermuda Costas': { id: 'bermuda_costas', max: [10, 10] as const },
-  'Boné Frontal': { id: 'bone_frontal', max: [12, 8] as const },
+  'Boné Frontal': { id: 'bone_frontal', max: [8, 12] as const },
 });
 
 export const parsePrimePrintDimensions = (value: string): readonly [number, number] | null => {
