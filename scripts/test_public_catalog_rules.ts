@@ -12,7 +12,7 @@ const environment = await initializeTestEnvironment({ projectId: 'demo-fpac-ecom
 try {
   await environment.withSecurityRulesDisabled(async context => {
     const db = context.firestore();
-    for (const [path, data] of Object.entries({ 'products/shirt': { name: 'Audit fixture', costPrice: 35 }, 'inventory/shirt': { stock: 10 }, 'config/brand': { logo: '/logo.png' }, 'config/private': { internal: true }, 'designs/fp-stock': { name: 'FP preta', stockBalance: 6, stockBySize: { '8x6': 2 } } })) await setDoc(doc(db, path), data);
+    for (const [path, data] of Object.entries({ 'products/shirt': { name: 'Audit fixture', costPrice: 35 }, 'inventory/shirt': { stock: 10 }, 'config/brand': { logo: '/logo.png' }, 'config/private': { internal: true }, 'designs/fp-stock': { name: 'FP preta', stockBalance: 6, stockBySize: { '8x6': 2 } }, 'instagram_media_library/fixture': { url: 'https://res.cloudinary.com/example/image/upload/sample.jpg', caption: 'Rascunho privado' } })) await setDoc(doc(db, path), data);
   });
   const guest = environment.unauthenticatedContext().firestore();
   const customer = environment.authenticatedContext('customer', { email: 'customer@example.invalid', email_verified: true }).firestore();
@@ -25,6 +25,9 @@ try {
     await assertFails(getDocs(collection(db, 'designs')));
     await assertFails(getDoc(doc(db, 'config/private')));
     await assertFails(getDocs(collection(db, 'config')));
+    await assertFails(getDoc(doc(db, 'instagram_media_library/fixture')));
+    await assertFails(getDocs(collection(db, 'instagram_media_library')));
+    await assertFails(setDoc(doc(db, 'instagram_media_library/forged'), { url: 'https://example.invalid/image.jpg' }));
     await assertFails(setDoc(doc(db, 'products/shirt'), { price: 1 }));
     await assertSucceeds(getDoc(doc(db, 'config/brand')));
   }
@@ -34,7 +37,10 @@ try {
   await assertSucceeds(getDoc(doc(manager, 'designs/fp-stock')));
   await assertSucceeds(getDocs(collection(manager, 'designs')));
   await assertSucceeds(getDocs(collection(manager, 'config')));
-  console.log('24 real Firestore rule checks passed against isolated demo emulator.');
+  await assertSucceeds(getDoc(doc(manager, 'instagram_media_library/fixture')));
+  await assertSucceeds(getDocs(collection(manager, 'instagram_media_library')));
+  await assertSucceeds(setDoc(doc(manager, 'instagram_media_library/manager-upload'), { url: 'https://res.cloudinary.com/example/image/upload/manager.jpg', caption: '' }));
+  console.log('Firestore access rules, including the private Instagram media library, passed against the isolated demo emulator.');
   const presetReference = doc(manager, 'settings', 'product_color_presets');
   await assertSucceeds(runTransaction(manager, async transaction => {
     const snapshot = await transaction.get(presetReference);

@@ -1975,6 +1975,8 @@ export default function ProductDetail() {
                           <img
                             src={img}
                             alt={`${product.headline || product.category || 'Produto'} thumb ${i}`}
+                            loading="lazy"
+                            decoding="async"
                             referrerPolicy="no-referrer"
                             className="w-full h-full object-contain"
                           />
@@ -1998,6 +2000,9 @@ export default function ProductDetail() {
                       transition={{ duration: 0.35 }}
                       src={viewingStampUrl || displayImages[activeImage] || displayImages[0]}
                       alt={displayProductTitle}
+                      loading="eager"
+                      fetchPriority="high"
+                      decoding="async"
                       className="w-full h-full object-contain p-2"
                       referrerPolicy="no-referrer"
                       onError={(e) => {

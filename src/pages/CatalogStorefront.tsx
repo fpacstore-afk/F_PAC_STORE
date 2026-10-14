@@ -306,7 +306,7 @@ export default function CatalogStorefront() {
                 return (
                   <article key={product.id || product.slug} className="group flex flex-col overflow-hidden rounded-xl md:rounded-2xl bg-white border border-black/10 shadow-sm hover:shadow-xl hover:-translate-y-0.5 transition-all duration-300">
                     <Link to={productTarget} className="relative block aspect-square md:aspect-[4/5] bg-black overflow-hidden">
-                      <img src={product.images?.[0] || '/estampas/logo-fpac.png'} alt={product.name || 'Produto F PAC STORE'} className="w-full h-full object-cover group-hover:scale-[1.03] transition-transform duration-500" loading="lazy" onError={e => { e.currentTarget.src = '/estampas/logo-fpac.png'; }} />
+                      <img src={product.images?.[0] || '/estampas/logo-fpac.png'} alt={product.name || 'Produto F PAC STORE'} className="w-full h-full object-cover group-hover:scale-[1.03] transition-transform duration-500" loading="lazy" decoding="async" onError={e => { e.currentTarget.src = '/estampas/logo-fpac.png'; }} />
                       {!available && <span className="absolute top-3 left-3 bg-black/85 text-white border border-white/10 px-3 py-1.5 rounded-full text-[8px] font-black uppercase tracking-[0.16em]">Esgotado</span>}
                       {available && product.isBestseller && <span className="absolute top-3 left-3 bg-[#eab308] text-black px-3 py-1.5 rounded-full text-[8px] font-black uppercase tracking-[0.16em]">Mais vendido</span>}
                       {available && !product.isBestseller && product.isNew && <span className="absolute top-3 left-3 bg-white text-black px-3 py-1.5 rounded-full text-[8px] font-black uppercase tracking-[0.16em]">Novidade</span>}
