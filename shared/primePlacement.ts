@@ -57,8 +57,8 @@ const LANDMARKS = {
   },
   hoodie: {
     front: { centerX: 256, bodyWidth: 290, shoulderY: 60, collarY: 150, hemY: 452 },
-    // The rear sweatshirt body is shifted right within its sprite cell.
-    back: { centerX: 274, bodyWidth: 290, shoulderY: 60, collarY: 150, hemY: 452 },
+    // The hood ends at y=120 and the rear torso is centered at x=256.
+    back: { centerX: 256, bodyWidth: 290, shoulderY: 60, collarY: 120, hemY: 452 },
     sleeve: { hemX: 0, hemY: 0, rotation: 0 },
   },
 };
@@ -67,13 +67,14 @@ const LANDMARKS = {
 // the fixed print area; artwork remains movable inside it in physical cm.
 export const PRIME_VISUAL_AREA_LANDMARKS = Object.freeze({
   shorts: Object.freeze({
-    front: Object.freeze({ centerX: 410, centerY: 246, widthPx: 31, heightPx: 31 }),
-    // The small rear pocket sits lower than the previous anchor.
-    back: Object.freeze({ centerX: 338, centerY: 159, widthPx: 102, heightPx: 102 }),
+    // The angled cargo flap spans roughly x=381–433, y=231–278.
+    front: Object.freeze({ centerX: 406, centerY: 253, widthPx: 36, heightPx: 36 }),
+    // Keep the square inside the rear pocket below its opening at y=127.
+    back: Object.freeze({ centerX: 341, centerY: 170, widthPx: 80, heightPx: 80 }),
   }),
   cap: Object.freeze({
-    // A portrait 8 × 12 cm area sits on the crown, just above the visor.
-    front: Object.freeze({ centerX: 256, centerY: 280, widthPx: 61, heightPx: 92 }),
+    // The 8 cm tall × 12 cm wide crown area ends above the visor at y≈305.
+    front: Object.freeze({ centerX: 256, centerY: 253, widthPx: 144, heightPx: 96 }),
   }),
 });
 
@@ -115,7 +116,7 @@ export function getPrimeAreaGeometry(model: PrimePlacementModel, _size: string, 
   const widthCm = isSleeve && catalogSleeve ? sleeveDimensions?.[0] || 2 : printArea.maxWidthCm;
   const heightCm = isSleeve && catalogSleeve ? sleeveDimensions?.[1] || 3 : printArea.maxHeightCm;
   const topGapCm = model === 'hoodie' && areaId === 'front' ? 0
-    : model === 'hoodie' && areaId === 'back' ? 9
+    : model === 'hoodie' && areaId === 'back' ? 1
       : areaId === 'back' && model !== 'cropped' ? 6 : 4;
   let centerX = view.centerX;
   let centerY = view.collarY + (topGapCm + heightCm / 2) * pixelsPerCm;
@@ -168,8 +169,20 @@ export function getVisibleArtworkBounds(data: ArrayLike<number>, width: number, 
     : { left: left / width, top: top / height, width: (right - left + 1) / width, height: (bottom - top + 1) / height };
 }
 
-export function fitPrimeArtwork(printSize: string, artwork: ArtworkBounds) {
+// Cap sizes in the catalog are written height × width (8 × 6, 8 × 12).
+// The placement geometry always uses width × height, as do all other garments.
+export function getPrimePrintDimensions(model: PrimePlacementModel, printSize: string): readonly [number, number] | null {
   const dimensions = parsePrimePrintSize(printSize);
+  return dimensions && (model === 'cap' ? [dimensions[1], dimensions[0]] : dimensions);
+}
+
+export function isPrimePrintSizeWithinArea(model: PrimePlacementModel, printSize: string, widthCm: number, heightCm: number): boolean {
+  const dimensions = getPrimePrintDimensions(model, printSize);
+  return Boolean(dimensions && dimensions[0] <= widthCm && dimensions[1] <= heightCm);
+}
+
+export function fitPrimeArtwork(printSize: string, artwork: ArtworkBounds, model: PrimePlacementModel = 'oversized') {
+  const dimensions = getPrimePrintDimensions(model, printSize);
   if (!dimensions) throw new Error('Medida de estampa inválida.');
   const aspect = artwork.sourceWidth * artwork.crop.width / (artwork.sourceHeight * artwork.crop.height);
   const widthCm = Math.min(dimensions[0], dimensions[1] * aspect);
@@ -180,9 +193,9 @@ export function placePrimeArtwork(model: PrimePlacementModel, size: string, area
   const isSleeve = areaId === 'sleeve' || areaId === 'sleeve_right';
   if (catalogSleeve && (areaId !== 'sleeve' || !isCatalogSleeveSize(printSize))) throw new Error('A estampa do catálogo na manga deve ser 2 × 3 ou 3 × 2 cm no braço esquerdo.');
   const area = getPrimeAreaGeometry(model, size, areaId, catalogSleeve, printSize);
-  const dimensions = parsePrimePrintSize(printSize);
+  const dimensions = getPrimePrintDimensions(model, printSize);
   if (!dimensions || dimensions[0] > area.widthCm || dimensions[1] > area.heightCm) throw new Error('A estampa ultrapassa a área de impressão.');
-  const fitted = fitPrimeArtwork(printSize, artwork);
+  const fitted = fitPrimeArtwork(printSize, artwork, model);
   const availableX = Math.max(0, area.widthCm - fitted.widthCm);
   const availableY = Math.max(0, area.heightCm - fitted.heightCm);
   const clamp = (value: number, max: number) => Math.max(0, Math.min(max, value));

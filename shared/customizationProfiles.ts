@@ -147,7 +147,9 @@ export const CUSTOMIZATION_PRODUCT_PROFILES: Readonly<Record<CustomizationProfil
     pricingMode: 'fixed',
     fixedPrice: 119.90,
     maxPrints: 1,
-    printAreas: [{ id: 'front', positionId: 'bone_frontal', label: 'Frente', viewSide: 'front', maxWidthCm: 8, maxHeightCm: 12, defaultSizeCm: '8x6' }],
+    // Cap measurements are catalogued as height × width: 8 × 12 cm.
+    // Geometry and production metadata always store width, then height.
+    printAreas: [{ id: 'front', positionId: 'bone_frontal', label: 'Frente', viewSide: 'front', maxWidthCm: 12, maxHeightCm: 8, defaultSizeCm: '8x6' }],
   },
 });
 
