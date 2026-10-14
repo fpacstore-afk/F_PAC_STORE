@@ -50,7 +50,7 @@ const HOODIE_FRONT: CustomizationPrintArea = {
   label: 'Frente',
   viewSide: 'front',
   maxWidthCm: 30,
-  // Keep the front print above the kangaroo pocket in the PRIME mockup.
+  // Align the production box from the neckline down to just above the kangaroo pocket.
   maxHeightCm: 25,
   defaultSizeCm: '20x20',
 };
@@ -124,7 +124,7 @@ export const CUSTOMIZATION_PRODUCT_PROFILES: Readonly<Record<CustomizationProfil
     pricingMode: 'fixed',
     fixedPrice: 119.90,
     maxPrints: 2,
-    printAreas: [{ id: 'front', positionId: 'bermuda_frente', label: 'Frente', viewSide: 'front', maxWidthCm: 15, maxHeightCm: 20, defaultSizeCm: '10x12' }, { id: 'back', positionId: 'bermuda_costas', label: 'Costas', viewSide: 'back', maxWidthCm: 15, maxHeightCm: 20, defaultSizeCm: '10x12' }],
+    printAreas: [{ id: 'front', positionId: 'bermuda_frente', label: 'Frente', viewSide: 'front', maxWidthCm: 3, maxHeightCm: 3, defaultSizeCm: '3x3' }, { id: 'back', positionId: 'bermuda_costas', label: 'Costas', viewSide: 'back', maxWidthCm: 10, maxHeightCm: 10, defaultSizeCm: '10x10' }],
   },
   cap: {
     id: 'cap',
@@ -137,7 +137,7 @@ export const CUSTOMIZATION_PRODUCT_PROFILES: Readonly<Record<CustomizationProfil
     pricingMode: 'fixed',
     fixedPrice: 119.90,
     maxPrints: 1,
-    printAreas: [{ id: 'front', positionId: 'bone_frontal', label: 'Frente', viewSide: 'front', maxWidthCm: 12, maxHeightCm: 6, defaultSizeCm: '10x5' }],
+    printAreas: [{ id: 'front', positionId: 'bone_frontal', label: 'Frente', viewSide: 'front', maxWidthCm: 12, maxHeightCm: 8, defaultSizeCm: '10x5' }],
   },
 });
 

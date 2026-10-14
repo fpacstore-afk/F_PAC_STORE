@@ -72,7 +72,7 @@ export function getPrimeAreaGeometry(model: MeasuredPrimeModel, _size: string, a
   const sleeveDimensions = catalogSleeve ? parsePrimePrintSize(sleevePrintSize) : null;
   const widthCm = isSleeve && catalogSleeve ? sleeveDimensions?.[0] || 2 : printArea.maxWidthCm;
   const heightCm = isSleeve && catalogSleeve ? sleeveDimensions?.[1] || 3 : printArea.maxHeightCm;
-  const topGapCm = areaId === 'back' && model !== 'cropped' ? 6 : 4;
+  const topGapCm = model === 'hoodie' && areaId === 'front' ? 0 : areaId === 'back' && model !== 'cropped' ? 6 : 4;
   let centerX = view.centerX;
   let centerY = view.collarY + (topGapCm + heightCm / 2) * pixelsPerCm;
   let rotationDeg = 0;

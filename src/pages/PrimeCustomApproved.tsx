@@ -18,7 +18,7 @@ import { SizeChart } from '../components/SizeChart';
 import { PRIME_CUSTOM_FIXED_PRICE, getCustomizationProfileById } from '../../shared/customizationProfiles';
 import { isDesignPublic, normalizeDesignDocument, sortDesignCatalog } from '../lib/stampCatalog';
 import { ProductMockupSprite } from '../components/ProductMockupSprite';
-import { PRODUCT_VISUALS, getProductVisualKind, type ProductVisualKind } from '../lib/productPresentation';
+import { PRIME_VISUAL_AREA_ANCHORS, PRODUCT_VISUALS, getProductVisualKind, type ProductVisualKind } from '../lib/productPresentation';
 import { subscribePublicCatalog } from '../services/publicProducts';
 import {
   formatPrimePrintSize,
@@ -93,10 +93,13 @@ function getPlacements(kind: ProductVisualKind): Placement[] {
 function getOverlayStyle(kind: ProductVisualKind, placement: Placement, printSize: string): React.CSSProperties {
   const [width, height] = parseSize(printSize);
   const widthRatio = Math.min(1, width / placement.maxWidth);
-  const baseWidth = kind === 'cap' ? 30 : kind === 'shorts' ? 24 : placement.id === 'sleeve' ? 13 : 34;
+  const visualAnchor = kind === 'shorts'
+    ? PRIME_VISUAL_AREA_ANCHORS.shorts[placement.id as 'front' | 'back']
+    : kind === 'cap' ? PRIME_VISUAL_AREA_ANCHORS.cap.front : undefined;
+  const baseWidth = visualAnchor?.baseWidth ?? (placement.id === 'sleeve' ? 13 : 34);
   return {
-    left: placement.id === 'sleeve' ? '24%' : kind === 'shorts' ? '32%' : '50%',
-    top: kind === 'cap' ? '34%' : kind === 'shorts' ? '46%' : placement.id === 'sleeve' ? '42%' : kind === 'cropped' ? '51%' : '49%',
+    left: `${visualAnchor?.left ?? (placement.id === 'sleeve' ? 24 : 50)}%`,
+    top: `${visualAnchor?.top ?? (placement.id === 'sleeve' ? 42 : kind === 'cropped' ? 51 : 49)}%`,
     width: `${Math.max(baseWidth * widthRatio, 7)}%`,
     aspectRatio: `${width} / ${height}`,
     transform: 'translate(-50%, -50%)',

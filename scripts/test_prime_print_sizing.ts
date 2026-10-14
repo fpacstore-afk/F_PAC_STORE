@@ -31,6 +31,7 @@ import {
   isSizeCompatibleWithPosition,
   parseDimensionsCm,
 } from '../src/lib/primePrintSizing';
+import { PRIME_VISUAL_AREA_ANCHORS } from '../src/lib/productPresentation';
 
 const chest = {
   maxDimensions: '30x40 cm',
@@ -128,6 +129,12 @@ assert.equal(isPrimeSizeAllowedAtLocation('30x40', 'Peito Central'), true); // l
 assert.equal(isPrimeSizeAllowedAtLocation('30x40', 'Peito Esquerdo'), false);
 assert.equal(isPrimeSizeAllowedAtLocation('17.5x22.5', 'Frente'), true);
 assert.equal(isPrimeSizeAllowedAtLocation('10x12', 'Manga Esquerda'), true); // legacy compatibility
+assert.equal(isPrimeSizeAllowedAtLocation('3x3', 'Bermuda Frente'), true);
+assert.equal(isPrimeSizeAllowedAtLocation('5x5', 'Bermuda Frente'), false);
+assert.equal(isPrimeSizeAllowedAtLocation('10x10', 'Bermuda Costas'), true);
+assert.equal(isPrimeSizeAllowedAtLocation('10x12', 'Bermuda Costas'), false);
+assert.equal(isPrimeSizeAllowedAtLocation('12x8', 'Boné Frontal'), true);
+assert.equal(isPrimeSizeAllowedAtLocation('12x9', 'Boné Frontal'), false);
 assert.equal(isPrimeSizeAllowedAtLocation('10x10', 'Posição Inexistente'), false);
 
 assert.equal(
@@ -261,8 +268,15 @@ assert.throws(() => getPrimeAreaGeometry('hoodie','M','sleeve'));
 assert.equal(getCustomizationProfileById('hoodie')?.printAreas.length,2);
 const hoodieFront = getPrimeAreaGeometry('hoodie','M','front');
 assert.deepEqual([hoodieFront.widthCm, hoodieFront.heightCm, hoodieFront.estimated], [30, 25, true]);
+assert.ok(Math.abs(hoodieFront.centerY - hoodieFront.heightCm * hoodieFront.pixelsPerCm / 2 - 150) < 0.001, 'Hoodie front starts at the collar and ends just above the pocket.');
+assert.equal(getPrimeAreaGeometry('hoodie','M','back').centerX, 256, 'Hoodie back print box is centered.');
 assert.equal(placePrimeArtwork('hoodie','M','front','20x20',art).areaHeightCm, 25);
 assert.throws(() => placePrimeArtwork('hoodie','M','front','30x30',art), /ultrapassa/);
+assert.deepEqual(getCustomizationProfileById('shorts')?.printAreas.map(area => [area.maxWidthCm, area.maxHeightCm, area.defaultSizeCm]), [[3, 3, '3x3'], [10, 10, '10x10']]);
+assert.deepEqual(getCustomizationProfileById('cap')?.printAreas.map(area => [area.maxWidthCm, area.maxHeightCm]), [[12, 8]]);
+assert.deepEqual(PRIME_VISUAL_AREA_ANCHORS.shorts.front, { left: 80, top: 50, baseWidth: 12 }, 'Bermuda front overlay sits on the marked cargo pocket flap.');
+assert.deepEqual(PRIME_VISUAL_AREA_ANCHORS.shorts.back, { left: 66, top: 28, baseWidth: 20 }, 'Bermuda back overlay sits on the small rear pocket.');
+assert.deepEqual(PRIME_VISUAL_AREA_ANCHORS.cap.front, { left: 50, top: 56, baseWidth: 30 }, 'Cap overlay is lower on the front panel.');
 for (const kind of ['oversized','traditional','cropped','hoodie','shorts','cap'] as const) {
   const productProfile = getCustomizationProfileById(kind)!;
   assert.ok(productProfile.printAreas.length > 0, `${kind} has at least one production area.`);
