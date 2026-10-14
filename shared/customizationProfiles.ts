@@ -147,8 +147,8 @@ export const CUSTOMIZATION_PRODUCT_PROFILES: Readonly<Record<CustomizationProfil
     pricingMode: 'fixed',
     fixedPrice: 119.90,
     maxPrints: 1,
-    // Cap measurements are catalogued as height × width: 8 × 12 cm.
-    // Geometry and production metadata always store width, then height.
+    // The customer-facing area is 8 cm tall × 12 cm wide. Catalog print sizes
+    // retain their standard width × height order (e.g. 6 × 8 cm).
     printAreas: [{ id: 'front', positionId: 'bone_frontal', label: 'Frente', viewSide: 'front', maxWidthCm: 12, maxHeightCm: 8, defaultSizeCm: '8x6' }],
   },
 });

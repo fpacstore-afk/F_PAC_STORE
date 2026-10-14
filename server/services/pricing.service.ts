@@ -1,6 +1,6 @@
 import { isCatalogSleeveSize } from '../../shared/primeArtworkSizing.js';
 import { qualifiesForFreeShipping } from '../../shared/shippingThreshold.js';
-import { getPrimePrintDimensions, validatePrimeArtworkPlacement } from '../../shared/primePlacement.js';
+import { validatePrimeArtworkPlacement } from '../../shared/primePlacement.js';
 import { getDb } from '../firebase.js';
 import { OrderItem, OrderPricingSnapshot } from '../types/order.types.js';
 import { MelhorEnvioService } from './melhor-envio.service.js';
@@ -22,6 +22,7 @@ import {
   isConfiguredVariantAllowed,
   isPrimeSizeAllowedAtLocation,
   resolvePrimeStampId,
+  parsePrimePrintDimensions,
   PRIME_POSITION_RULES,
 } from './prime-custom-rules.js';
 
@@ -117,7 +118,7 @@ export async function calculateOrderPricing(input: PricingInput): Promise<Calcul
         }
         const isSleeve = location === 'Manga Esquerda' || location === 'Manga Direita';
         const area = customizationProfile.printAreas.find(area => area.positionId === PRIME_POSITION_RULES[location as keyof typeof PRIME_POSITION_RULES]?.id || (isSleeve && area.id === 'left-sleeve'));
-        const dimensions = getPrimePrintDimensions(customizationProfile.id, printSize);
+        const dimensions = parsePrimePrintDimensions(printSize);
         if (!area || !dimensions || dimensions[0] > area.maxWidthCm || dimensions[1] > area.maxHeightCm) throw new Error('Área de estampa indisponível para este modelo.');
         if (isSleeve && (location !== 'Manga Esquerda' || !isCatalogSleeveSize(printSize))) throw new Error('Estampas do catálogo na manga devem ter 2 × 3 ou 3 × 2 cm no braço esquerdo.');
 
