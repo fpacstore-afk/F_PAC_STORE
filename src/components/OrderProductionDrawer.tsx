@@ -860,6 +860,7 @@ export const OrderProductionDrawer: React.FC<OrderProductionDrawerProps> = ({
                               <span className="bg-gray-200 px-1.5 py-0.5 font-mono text-[8px]">{pc.location || 'Peito'}</span>
                               {pc.color && <span className="bg-amber-100 px-1.5 py-0.5 font-mono text-[8px]">{pc.color}</span>}
                               <span className="bg-gray-200 px-1.5 py-0.5 font-mono text-[8px]">{pc.artSize || pc.printSize || 'Tamanho não informado'}</span>
+                              {pc.orientationInstruction && <span className="bg-amber-100 px-1.5 py-0.5 font-mono text-[8px]">{pc.orientationInstruction}</span>}
                             </div>
                           </div>
                         ))}

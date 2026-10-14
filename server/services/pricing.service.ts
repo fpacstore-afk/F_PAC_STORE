@@ -47,6 +47,8 @@ interface PricingInput {
       image?: string;
       background?: string;
       placement?: unknown;
+      rotationDeg?: number;
+      orientationInstruction?: string;
     }>;
     baseProductSlug?: string;
   }>;
@@ -153,6 +155,8 @@ export async function calculateOrderPricing(input: PricingInput): Promise<Calcul
           printSize: printSize.slice(0, 80),
           image: canonicalImage || undefined,
           ...(cfg?.placement != null ? { placement: validatePrimeArtworkPlacement(cfg.placement, customizationProfile.id, size, location, printSize, isSleeve) } : {}),
+          ...(area.rotationDeg === undefined ? {} : { rotationDeg: area.rotationDeg }),
+          ...(area.orientationInstruction ? { orientationInstruction: area.orientationInstruction } : {}),
           background: cfg?.background ? String(cfg.background).slice(0, 80) : undefined,
         });
       }

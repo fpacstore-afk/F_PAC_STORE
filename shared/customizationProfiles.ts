@@ -8,6 +8,9 @@ export interface CustomizationPrintArea {
   maxWidthCm: number;
   maxHeightCm: number;
   defaultSizeCm: string;
+  /** Fixed visual and production angle for areas aligned to garment details. */
+  rotationDeg?: number;
+  orientationInstruction?: string;
 }
 
 export interface CustomizationProductProfile {
@@ -15,6 +18,7 @@ export interface CustomizationProductProfile {
   label: string;
   shortLabel: string;
   enabled: boolean;
+  fixedSleeve: boolean;
   cartSlug: string;
   productSlug: string;
   parentSlug: string;
@@ -66,45 +70,49 @@ export const CUSTOMIZATION_PRODUCT_PROFILES: Readonly<Record<CustomizationProfil
     label: 'Camiseta Oversized PRIME',
     shortLabel: 'Oversized',
     enabled: true,
+    fixedSleeve: true,
     cartSlug: 'prime-custom',
     productSlug: 'prime',
     parentSlug: 'prime',
     pricingMode: 'graduated',
     fixedPrice: null,
     maxPrints: 3,
-    printAreas: [FRONT_30X40, BACK_30X40, { id: 'left-sleeve', positionId: 'manga_esquerda', label: 'Manga esquerda', viewSide: 'front', maxWidthCm: 10, maxHeightCm: 12, defaultSizeCm: '8x8' }],
+    printAreas: [FRONT_30X40, BACK_30X40, { id: 'left-sleeve', positionId: 'manga_esquerda', label: 'Manga esquerda', viewSide: 'front', maxWidthCm: 10, maxHeightCm: 12, defaultSizeCm: '2x3' }],
   },
   traditional: {
     id: 'traditional',
     label: 'Camiseta Tradicional Suedine',
     shortLabel: 'Tradicional',
     enabled: true,
+    fixedSleeve: true,
     cartSlug: 'traditional-custom',
     productSlug: 'traditional',
     parentSlug: 'prime',
     pricingMode: 'fixed',
     fixedPrice: 119.90,
     maxPrints: 3,
-    printAreas: [FRONT_30X40, BACK_30X40, { id: 'left-sleeve', positionId: 'manga_esquerda', label: 'Manga esquerda', viewSide: 'front', maxWidthCm: 10, maxHeightCm: 12, defaultSizeCm: '8x8' }],
+    printAreas: [FRONT_30X40, BACK_30X40, { id: 'left-sleeve', positionId: 'manga_esquerda', label: 'Manga esquerda', viewSide: 'front', maxWidthCm: 10, maxHeightCm: 12, defaultSizeCm: '2x3' }],
   },
   cropped: {
     id: 'cropped',
     label: 'Cropped Personalizado',
     shortLabel: 'Cropped',
     enabled: true,
+    fixedSleeve: true,
     cartSlug: 'cropped-custom',
     productSlug: 'cropped',
     parentSlug: 'prime',
     pricingMode: 'fixed',
     fixedPrice: 119.90,
     maxPrints: 3,
-    printAreas: [{ ...FRONT_30X40, maxHeightCm: 35 }, BACK_30X40, { id: 'left-sleeve', positionId: 'manga_esquerda', label: 'Manga esquerda', viewSide: 'front', maxWidthCm: 10, maxHeightCm: 12, defaultSizeCm: '8x8' }],
+    printAreas: [{ ...FRONT_30X40, maxHeightCm: 35 }, BACK_30X40, { id: 'left-sleeve', positionId: 'manga_esquerda', label: 'Manga esquerda', viewSide: 'front', maxWidthCm: 10, maxHeightCm: 12, defaultSizeCm: '2x3' }],
   },
   hoodie: {
     id: 'hoodie',
     label: 'Casaco / Moletom Personalizado',
     shortLabel: 'Casaco',
     enabled: true,
+    fixedSleeve: false,
     cartSlug: 'hoodie-custom',
     productSlug: 'hoodie',
     parentSlug: 'prime',
@@ -118,19 +126,21 @@ export const CUSTOMIZATION_PRODUCT_PROFILES: Readonly<Record<CustomizationProfil
     label: 'Bermuda Personalizada',
     shortLabel: 'Bermuda',
     enabled: true,
+    fixedSleeve: false,
     cartSlug: 'shorts-custom',
     productSlug: 'shorts',
     parentSlug: 'prime',
     pricingMode: 'fixed',
     fixedPrice: 119.90,
     maxPrints: 2,
-    printAreas: [{ id: 'front', positionId: 'bermuda_frente', label: 'Frente', viewSide: 'front', maxWidthCm: 3, maxHeightCm: 3, defaultSizeCm: '3x3' }, { id: 'back', positionId: 'bermuda_costas', label: 'Costas', viewSide: 'back', maxWidthCm: 10, maxHeightCm: 10, defaultSizeCm: '10x10' }],
+    printAreas: [{ id: 'front', positionId: 'bermuda_frente', label: 'Frente', viewSide: 'front', maxWidthCm: 3, maxHeightCm: 3, defaultSizeCm: '2x3', rotationDeg: -12, orientationInstruction: 'Inclinação de 12° para acompanhar o bolso cargo.' }, { id: 'back', positionId: 'bermuda_costas', label: 'Costas', viewSide: 'back', maxWidthCm: 10, maxHeightCm: 10, defaultSizeCm: '10x10' }],
   },
   cap: {
     id: 'cap',
     label: 'Boné Personalizado',
     shortLabel: 'Boné',
     enabled: true,
+    fixedSleeve: false,
     cartSlug: 'cap-custom',
     productSlug: 'cap',
     parentSlug: 'prime',
