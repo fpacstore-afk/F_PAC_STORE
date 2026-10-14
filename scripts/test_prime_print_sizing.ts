@@ -303,6 +303,13 @@ const portraitCapArt = { sourceWidth: 100, sourceHeight: 100, crop: { left: 0, t
 const capPrint = placePrimeArtwork('cap', 'M', 'front', '6x8', portraitCapArt);
 assert.deepEqual([capPrint.widthCm, capPrint.heightCm, capPrint.xCm, capPrint.yCm], [6, 8, 3, 0], 'A registered 6 × 8 portrait logo touches the top and bottom of the 8 cm tall cap area.');
 assert.deepEqual(validatePrimeArtworkPlacement(capPrint, 'cap', 'M', 'Boné Frontal', '6x8'), capPrint);
+const widePortraitLogo = { sourceWidth: 847, sourceHeight: 1000, crop: { left: 0, top: 0, width: 1, height: 1 } };
+const actualCapLogo = placePrimeArtwork('cap', 'M', 'front', '6x8', widePortraitLogo);
+assert.equal(actualCapLogo.heightCm, 8, 'The registered portrait logo fills the crown height without stretching.');
+assert.ok(actualCapLogo.widthCm > 6 && actualCapLogo.widthCm < 7 && actualCapLogo.xCm > 2.5, 'The actual proportional width is centered and recorded for production.');
+assert.deepEqual(validatePrimeArtworkPlacement(actualCapLogo, 'cap', 'M', 'Boné Frontal', '6x8'), actualCapLogo);
+assert.equal(placePrimeArtwork('cap', 'M', 'front', '8x6', widePortraitLogo).heightCm, 8, 'An 8 × 6 catalog label for a portrait logo also fills the 8 cm cap height.');
+assert.ok(placePrimeArtwork('cap', 'M', 'front', '2x3', widePortraitLogo).heightCm <= 3, 'Small cap stamps retain their registered dimensions.');
 const movedCap = placePrimeArtwork('cap', 'M', 'front', '6x8', portraitCapArt, { xCm: 50, yCm: 50 });
 assert.deepEqual([movedCap.xCm + movedCap.widthCm, movedCap.yCm + movedCap.heightCm], [12, 8], 'The cap print can be dragged to the edge without leaving its fixed area.');
 assert.deepEqual(validatePrimeArtworkPlacement(movedCap, 'cap', 'M', 'Boné Frontal', '6x8'), movedCap);

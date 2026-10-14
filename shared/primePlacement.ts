@@ -183,7 +183,15 @@ export function placePrimeArtwork(model: PrimePlacementModel, size: string, area
   const area = getPrimeAreaGeometry(model, size, areaId, catalogSleeve, printSize);
   const dimensions = parsePrimePrintSize(printSize);
   if (!dimensions || dimensions[0] > area.widthCm || dimensions[1] > area.heightCm) throw new Error('A estampa ultrapassa a área de impressão.');
-  const fitted = fitPrimeArtwork(printSize, artwork);
+  let fitted = fitPrimeArtwork(printSize, artwork);
+  // The cap's 8 cm crown height is the anchor for portrait logo sizes such as
+  // 6 × 8 and 8 × 6. Preserve the visible art's aspect, report its actual
+  // width to production, and never let it cross the 12 cm wide fixed area.
+  const capHeightCm = Math.max(dimensions[0], dimensions[1]);
+  if (model === 'cap' && capHeightCm === area.heightCm && fitted.widthCm < fitted.heightCm) {
+    const fullHeightWidthCm = capHeightCm * fitted.widthCm / fitted.heightCm;
+    if (fullHeightWidthCm <= area.widthCm) fitted = { widthCm: fullHeightWidthCm, heightCm: capHeightCm };
+  }
   const availableX = Math.max(0, area.widthCm - fitted.widthCm);
   const availableY = Math.max(0, area.heightCm - fitted.heightCm);
   const clamp = (value: number, max: number) => Math.max(0, Math.min(max, value));
