@@ -407,6 +407,7 @@ export default function PrimeCustomApproved() {
             <div className="mt-2.5 px-1 text-[10px] leading-relaxed text-black/60">
               {positionedModel && <><p>{catalogSleeve ? `Estampa fixa: ${areaWidth} × ${areaHeight} cm na manga esquerda. Prévia da manga levemente ampliada para facilitar a visualização.` : activeApplied ? 'Arraste a estampa dentro da área pontilhada. Use as setas do teclado para ajustes finos.' : 'A área pontilhada é fixa. Depois de aplicar a arte, arraste-a para posicionar dentro da área.'}</p>
                 {visiblePrint && <p>Arte visível: {money(visiblePrint.widthCm)} × {money(visiblePrint.heightCm)} cm{visualKind === 'cap' ? ' (largura × altura)' : ''}. Proporção original preservada.</p>}
+                {visualKind === 'cap' && visiblePrint && visiblePrint.heightCm === areaHeight && <p>Logo vertical ajustado aos 8 cm de altura do boné. A largura real aparece acima.</p>}
                 <p>A estampa mantém a proporção original. O mockup é ilustrativo; o tamanho escolhido define a peça do pedido.</p>
                 {activeApplied && !catalogSleeve && <button type="button" onClick={() => setApplied(current => ({ ...current, [activePlacement.id]: { ...current[activePlacement.id], position: undefined } }))} className="mt-1 min-h-9 underline font-bold">Restaurar posição</button>}
               </>}
