@@ -5,7 +5,7 @@
   width: 100%; height: 3px; background: #eab308; pointer-events: none;
   transform: scaleX(var(--home-scroll-progress)); transform-origin: left;
 }
-.fpac-motion-home #collections { scroll-margin-top: calc(var(--site-header-height) + 16px); }
+.fpac-motion-home #collections { scroll-margin-top: 16px; }
 .fpac-hero-media { transform: translate3d(0, var(--home-parallax-y, 0px), 0); }
 .fpac-hero-image { transform: translate3d(0, var(--home-parallax-y, 0px), 0) scale(1.07); }
 .fpac-hero-scroll {
