@@ -9,6 +9,7 @@ import {
 } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { useAuth } from '../context/AuthContext';
+import { buildConversionFunnel } from '../lib/analyticsFunnel';
 import { 
   Users, 
   Clock, 
@@ -574,21 +575,7 @@ export default function AdminAnalyticsDashboard({ embedded = false }: { embedded
   const COLORS = ['#f7c600', '#ffffff', '#eab308', '#2563eb', '#10b981', '#ef4444', '#a855f7', '#6b7280'];
 
   // 4. CONVERSION FUNNEL
-  const funnelData = useMemo(() => {
-    const total = filteredSessions.length;
-    const viewedProduct = filteredSessions.filter(s => (s.viewedProducts?.length || 0) > 0).length;
-    const addedToCart = filteredSessions.filter(s => s.cartStarted || (s.cartProducts?.length || 0) > 0).length;
-    const startedCheckout = filteredSessions.filter(s => s.checkoutStarted).length;
-    const purchased = filteredSessions.filter(s => s.purchaseCompleted).length;
-
-    return [
-      { name: '1. Acessou o site', count: total, rate: total > 0 ? 100 : 0, color: '#ffffff' },
-      { name: '2. Viu um produto', count: viewedProduct, rate: total > 0 ? Math.round((viewedProduct / total) * 100) : 0, color: '#d1d5db' },
-      { name: '3. Adicionou ao carrinho', count: addedToCart, rate: total > 0 ? Math.round((addedToCart / total) * 100) : 0, color: '#a1a1aa' },
-      { name: '4. Iniciou o checkout', count: startedCheckout, rate: total > 0 ? Math.round((startedCheckout / total) * 100) : 0, color: '#f7c600' },
-      { name: '5. Finalizou a compra', count: purchased, rate: total > 0 ? Math.round((purchased / total) * 100) : 0, color: '#10b981' }
-    ];
-  }, [filteredSessions]);
+  const funnelData = useMemo(() => buildConversionFunnel(filteredSessions), [filteredSessions]);
 
   // 5. RANKINGS (Products, Searches, Cities)
   const productRanking = useMemo(() => {
@@ -993,7 +980,7 @@ export default function AdminAnalyticsDashboard({ embedded = false }: { embedded
             Funil de <span className="text-[#f7c600]">Conversão</span>
           </h2>
           <p className="text-[8px] font-bold text-white/30 uppercase tracking-wider mb-6">
-            Conversão e abandono por etapas da jornada de compra
+            Sessões em cada etapa. Cor e tamanho só aparecem com rastreamento ativo; os valores escolhidos não são armazenados.
           </p>
 
           <div className="space-y-5">
@@ -1316,6 +1303,16 @@ export default function AdminAnalyticsDashboard({ embedded = false }: { embedded
                 {(selectedSession.events || []).map((ev, idx) => {
                   const d = new Date(ev.timestamp);
                   const timeStr = `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}:${d.getSeconds().toString().padStart(2, '0')}`;
+                  const eventLabel: Record<string, string> = {
+                    product_color_select: 'Escolheu uma cor',
+                    product_size_select: 'Escolheu um tamanho',
+                    cart_start: 'Iniciou a sacola',
+                    cart_add: 'Adicionou à sacola',
+                    checkout_start: 'Iniciou o checkout',
+                    purchase: 'Compra aprovada',
+                    product_view: 'Viu um produto',
+                    page_view: 'Acessou uma página',
+                  };
                   
                   return (
                     <div key={idx} className="pt-2 flex items-start justify-between text-[9px] uppercase">
@@ -1326,10 +1323,11 @@ export default function AdminAnalyticsDashboard({ embedded = false }: { embedded
                             ev.type === 'purchase' ? 'bg-green-500 text-black' :
                             ev.type === 'checkout_start' ? 'bg-[#f7c600] text-black' :
                             ev.type === 'cart_add' ? 'bg-[#f7c600]/10 border border-[#f7c600]/20 text-[#f7c600]' :
+                            ev.type === 'product_color_select' || ev.type === 'product_size_select' ? 'bg-white/5 border border-white/10 text-white' :
                             ev.type === 'product_view' ? 'bg-white/5 border border-white/10 text-white' :
                             'bg-white/5 text-white/40'
                           }`}>
-                            {ev.type}
+                            {eventLabel[ev.type] || ev.type}
                           </span>
                         </div>
                         <p className="text-[10px] font-mono text-white/80 tracking-wider font-bold">{ev.path}</p>

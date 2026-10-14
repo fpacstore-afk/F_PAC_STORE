@@ -8,6 +8,7 @@ import { convertDriveUrlToDirect, isMediaVideo } from '../../lib/utils';
 import { uploadAdminArtwork, uploadAdminVideo } from '../../services/cloudinary';
 import { MediaSlotConfig, MediaType, MediaObjectFit } from '../../types/mediaSlot';
 import { MediaSlot } from '../MediaSlot';
+import { InstagramMediaLibrary } from './InstagramMediaLibrary';
 
 interface InstagramItem { id: string; mediaUrl: string; permalink: string; caption?: string; }
 interface InstagramStatus { configured: boolean; stale: boolean; fetchedAt: string | null; items: InstagramItem[]; }
@@ -192,7 +193,7 @@ export const AdminSiteMediaManager: React.FC = () => {
   return (
     <div className="space-y-5 text-black">
       <header className="flex flex-col gap-4 border-b-2 border-[#eab308] bg-black px-4 py-5 text-white md:flex-row md:items-center md:justify-between md:px-8">
-        <div><p className="flex items-center gap-2 text-[9px] font-black uppercase tracking-[0.2em] text-white/45"><Layers size={14} className="text-[#eab308]" /> Site & mídia</p><h1 className="mt-2 text-2xl font-black uppercase italic">Central de <span className="text-[#eab308]">mídias da loja</span></h1><p className="mt-1 text-xs text-white/55">Controle visual da Home e diagnóstico do feed oficial.</p></div>
+        <div><p className="flex items-center gap-2 text-[9px] font-black uppercase tracking-[0.2em] text-white/45"><Layers size={14} className="text-[#eab308]" /> Site & mídia</p><h1 className="mt-2 text-2xl font-black uppercase italic">Central de <span className="text-[#eab308]">mídias da loja</span></h1><p className="mt-1 text-xs text-white/55">Mídias da Home, biblioteca manual para Instagram e diagnóstico do feed oficial.</p></div>
         <button type="button" onClick={saveAll} disabled={saving} className="flex min-h-11 items-center justify-center gap-2 bg-[#eab308] px-5 text-[10px] font-black uppercase text-black disabled:opacity-50">{saving ? <RefreshCw size={14} className="animate-spin" /> : <Save size={14} />} Salvar alterações</button>
       </header>
 
@@ -208,6 +209,8 @@ export const AdminSiteMediaManager: React.FC = () => {
         <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><h2 className="flex items-center gap-2 text-sm font-black uppercase"><Instagram size={17} className="text-[#eab308]" /> Instagram · últimos 5 feeds</h2><p className="mt-1 text-xs text-gray-500">A Home lê as publicações oficiais automaticamente, da mais recente para a mais antiga.</p></div><button type="button" onClick={loadInstagram} disabled={instagramLoading} className="flex min-h-10 items-center justify-center gap-2 border border-black/10 px-4 text-[9px] font-black uppercase"><RefreshCw size={13} className={instagramLoading ? 'animate-spin' : ''} /> Verificar agora</button></div>
         {instagramError ? <div className="flex items-center gap-2 bg-red-50 p-3 text-xs text-red-700"><XCircle size={16} /> {instagramError}</div> : instagramLoading ? <div className="h-24 animate-pulse bg-black/5" /> : instagram?.configured ? <div><div className="mb-3 flex flex-wrap gap-2 text-[9px] font-black uppercase"><span className="flex items-center gap-1 bg-emerald-50 px-2 py-1 text-emerald-700"><CheckCircle size={12} /> Conectado</span><span className="bg-black/5 px-2 py-1">{instagram.items.length} de 5 publicações</span>{instagram.stale && <span className="bg-amber-50 px-2 py-1 text-amber-700">Cache anterior</span>}</div><div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">{instagram.items.map(item => <a key={item.id} href={item.permalink} target="_blank" rel="noreferrer" className="group relative aspect-square overflow-hidden bg-black"><img src={item.mediaUrl} alt="Publicação do Instagram" className="h-full w-full object-cover" /><ExternalLink size={14} className="absolute right-2 top-2 text-white opacity-0 group-hover:opacity-100" /></a>)}</div></div> : <div className="border border-amber-200 bg-amber-50 p-4 text-xs text-amber-800"><strong className="block uppercase">Integração ainda sem credencial</strong><span className="mt-1 block">Cole o token de acesso acima e selecione Conectar Instagram para exibir os cinco posts reais. A Home mantém o acesso direto ao perfil enquanto isso.</span></div>}
       </section>
+
+      <InstagramMediaLibrary />
 
       <section><h2 className="mb-3 border-l-4 border-[#eab308] bg-black/5 p-2 text-xs font-black uppercase">Mídias principais da Home</h2><div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">{renderCard(hero, setHero, 'aspect-[16/9]')}{renderCard(heroMobile, setHeroMobile, 'aspect-[9/16]')}{renderCard(logo, setLogo)}{renderCard(about, setAbout)}{renderCard(catalog1, setCatalog1)}{renderCard(catalog2, setCatalog2)}</div></section>
     </div>

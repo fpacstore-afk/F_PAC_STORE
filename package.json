@@ -14,6 +14,7 @@
     "test:stage-notification-message": "node --import tsx scripts/test_stage_notification_message.ts",
     "test:auth-session-ready": "node --import tsx scripts/test_auth_session_ready.ts",
     "test:storefront-feedback": "node --import tsx scripts/test_storefront_feedback.ts",
+    "test:analytics-funnel": "node --import tsx scripts/test_analytics_funnel.ts",
     "test:ecommerce-security": "NODE_ENV=test node --import tsx scripts/test_ecommerce_security.ts",
     "test:public-catalog-security": "NODE_ENV=test node --import tsx scripts/test_public_catalog_security.ts",
     "test:privacy-safety": "NODE_ENV=test node --import tsx scripts/test_privacy_safety.ts",

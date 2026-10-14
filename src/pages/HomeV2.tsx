@@ -46,7 +46,7 @@ export default function HomeV2() {
   const [carouselProducts, setCarouselProducts] = useState<any[]>([]);
   const [publicStampNames, setPublicStampNames] = useState<Record<string, string>>({});
   const [instagramItems, setInstagramItems] = useState<InstagramFeedItem[]>([]);
-  const [instagramLoading, setInstagramLoading] = useState(true);
+  const [instagramLoading, setInstagramLoading] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -74,19 +74,40 @@ export default function HomeV2() {
       ].filter(Boolean));
     });
 
+    let feedRequested = false;
     const instagramAbort = new AbortController();
-    fetch(getPublicApiUrl('/api/instagram/feed?limit=5'), { signal: instagramAbort.signal })
-      .then((response) => response.ok ? response.json() : Promise.reject(new Error('Instagram feed unavailable')))
-      .then((payload) => setInstagramItems(Array.isArray(payload?.items) ? payload.items : []))
-      .catch((error) => {
-        if (error?.name !== 'AbortError') setInstagramItems([]);
-      })
-      .finally(() => setInstagramLoading(false));
+    let feedObserver: IntersectionObserver | null = null;
+    const loadInstagramFeed = () => {
+      if (feedRequested) return;
+      feedRequested = true;
+      setInstagramLoading(true);
+      fetch(getPublicApiUrl('/api/instagram/feed?limit=5'), { signal: instagramAbort.signal })
+        .then((response) => response.ok ? response.json() : Promise.reject(new Error('Instagram feed unavailable')))
+        .then((payload) => { if (active) setInstagramItems(Array.isArray(payload?.items) ? payload.items : []); })
+        .catch((error) => {
+          if (active && error?.name !== 'AbortError') setInstagramItems([]);
+        })
+        .finally(() => { if (active) setInstagramLoading(false); });
+    };
+
+    const instagramSection = document.querySelector('[data-home-instagram]');
+    if (!instagramSection || typeof IntersectionObserver === 'undefined') {
+      loadInstagramFeed();
+    } else {
+      feedObserver = new IntersectionObserver((entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          feedObserver?.disconnect();
+          loadInstagramFeed();
+        }
+      }, { rootMargin: '320px 0px' });
+      feedObserver.observe(instagramSection);
+    }
 
     return () => {
       active = false;
       unsubProducts();
       unsubBrand();
+      feedObserver?.disconnect();
       instagramAbort.abort();
     };
   }, []);
@@ -124,7 +145,7 @@ export default function HomeV2() {
         return (
           <article key={product.id || product.slug} className="group overflow-hidden rounded-2xl border border-black/10 bg-white shadow-sm transition-all hover:-translate-y-1 hover:shadow-xl">
             <Link to={target} className="relative block aspect-[4/5] overflow-hidden bg-black">
-              <img src={product.images?.[0] || '/estampas/logo-fpac.png'} alt={productTitle} loading="lazy" className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" onError={event => { event.currentTarget.src = '/estampas/logo-fpac.png'; }} />
+              <img src={product.images?.[0] || '/estampas/logo-fpac.png'} alt={productTitle} loading="lazy" decoding="async" className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" onError={event => { event.currentTarget.src = '/estampas/logo-fpac.png'; }} />
               {product.isBestseller === true && <span className="absolute left-3 top-3 rounded-full bg-[#eab308] px-3 py-1.5 text-[8px] font-black uppercase tracking-wider text-black">Mais vendido</span>}
               {product.isNew === true && <span className="absolute right-3 top-3 rounded-full bg-white px-3 py-1.5 text-[8px] font-black uppercase tracking-wider text-black">Lançamento</span>}
             </Link>
@@ -294,7 +315,7 @@ export default function HomeV2() {
             <div className="grid md:grid-cols-2 gap-4">
               {catalogImages.map((src, index) => (
                 <Link key={index} to="/estampas" aria-label="Abrir catálogo de estampas" className="group relative aspect-video bg-black overflow-hidden rounded-2xl border border-black/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#eab308]">
-                  <img src={src} alt="Catálogo F PAC STORE" className="w-full h-full object-contain transition-transform duration-300 group-hover:scale-[1.02]" />
+                  <img src={src} alt="Catálogo F PAC STORE" loading="lazy" decoding="async" className="w-full h-full object-contain transition-transform duration-300 group-hover:scale-[1.02]" />
                   <span className="absolute right-3 bottom-3 inline-flex items-center gap-2 rounded-full bg-black/85 text-white px-4 py-2 text-[9px] font-black uppercase tracking-[0.16em] backdrop-blur-sm">Abrir catálogo <ArrowRight size={13} /></span>
                 </Link>
               ))}
@@ -318,38 +339,7 @@ export default function HomeV2() {
             <p className="mt-5 text-white/65 leading-relaxed max-w-xl text-sm md:text-base">Qualidade, presença e liberdade para construir um visual com a sua assinatura.</p>
             <Link to="/produtos" className="mt-6 inline-flex items-center gap-2 text-[#eab308] font-black uppercase tracking-[0.2em] text-[10px]">Encontrar minha peça <ArrowRight size={15} /></Link>
           </div>
-          {aboutImage && <div className="aspect-square bg-neutral-900 overflow-hidden border border-white/10 rounded-2xl"><img src={aboutImage} alt="F PAC STORE" className="w-full h-full object-cover" /></div>}
-        </div>
-      </section>
-
-      <section data-home-community aria-labelledby="home-community-heading" className="bg-[#f7f7f5] py-12 md:py-16">
-        <div className="mx-auto max-w-7xl px-5">
-          <div className="mb-7 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-            <div className="max-w-2xl">
-              <p className="text-[9px] font-black uppercase tracking-[0.28em] text-[#9a7100]">F PAC em movimento</p>
-              <h2 id="home-community-heading" className="mt-2 text-3xl font-black uppercase italic text-black md:text-5xl">F PAC no seu estilo</h2>
-              <p className="mt-2 text-sm leading-relaxed text-black/55 md:text-base">Inspire-se em diferentes formas de vestir a marca e encontre a peça que combina com você.</p>
-            </div>
-            <Link to="/catalog/all" className="inline-flex min-h-11 items-center gap-2 self-start text-[9px] font-black uppercase tracking-[0.16em] text-black transition-colors hover:text-[#9a7100] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#eab308] sm:self-auto">
-              Encontrar minha peça <ArrowRight size={15} />
-            </Link>
-          </div>
-          <div className="grid grid-cols-2 gap-3 md:grid-cols-3 md:gap-4">
-            {[
-              { src: '/customer-looks/01-1000036405.jpg', alt: 'Pessoa usando camiseta preta com estampa rosa da F PAC', label: 'Identidade em cada detalhe' },
-              { src: '/customer-looks/02-1000036407.jpg', alt: 'Pessoa vestindo camiseta branca com estampa azul-turquesa da F PAC', label: 'Estilo para o dia a dia' },
-              { src: '/customer-looks/03-1000023507.jpg', alt: 'Pessoa vestindo camiseta preta com estampa azul-turquesa da F PAC', label: 'Vista do seu jeito' },
-            ].map((photo) => (
-              <figure key={photo.src} className="group overflow-hidden rounded-2xl border border-black/10 bg-white shadow-sm">
-                <div className="aspect-[4/5] overflow-hidden bg-neutral-200">
-                  <img src={photo.src} alt={photo.alt} loading="lazy" decoding="async" className="h-full w-full object-cover transition-transform duration-500 motion-reduce:transition-none group-hover:scale-[1.03]" />
-                </div>
-                <figcaption className="px-3 py-3 text-[9px] font-black uppercase tracking-[0.12em] text-black/65 md:px-4 md:text-[10px]">
-                  {photo.label}
-                </figcaption>
-              </figure>
-            ))}
-          </div>
+          {aboutImage && <div className="aspect-square bg-neutral-900 overflow-hidden border border-white/10 rounded-2xl"><img src={aboutImage} alt="F PAC STORE" loading="lazy" decoding="async" className="w-full h-full object-cover" /></div>}
         </div>
       </section>
 
@@ -381,7 +371,7 @@ export default function HomeV2() {
                   aria-label={`Abrir publicação da F PAC no Instagram${item.caption ? `: ${item.caption.slice(0, 80)}` : ''}`}
                   className="group relative aspect-square overflow-hidden rounded-2xl bg-black focus:outline-none focus-visible:ring-2 focus-visible:ring-[#eab308] focus-visible:ring-offset-2"
                 >
-                  <img src={item.mediaUrl} alt="Publicação real da F PAC STORE no Instagram" loading="lazy" className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" />
+                  <img src={item.mediaUrl} alt="Publicação real da F PAC STORE no Instagram" loading="lazy" decoding="async" className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" />
                   <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-transparent to-black/10 opacity-80 transition-opacity group-hover:opacity-100" />
                   <div className="absolute inset-x-0 bottom-0 flex items-end justify-between gap-2 p-3 text-white">
                     <span className="text-[9px] font-black uppercase tracking-[0.16em]">Ver no Instagram</span>

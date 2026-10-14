@@ -148,6 +148,11 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    // Imagens e legendas ainda não publicadas ficam restritas à gestão.
+    match /instagram_media_library/{mediaId} {
+      allow read, write: if isAdmin();
+    }
+
     match /history_cards/{cardId} {
       allow read: if true;
       allow write: if isAdmin();

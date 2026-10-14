@@ -35,12 +35,21 @@ assert.match(radioPage, /Baixar música/, 'a rádio pública deve oferecer downl
 
 const home = read('src/pages/HomeV2.tsx');
 assert.match(home, /instagram\/feed\?limit=5/, 'a Home deve pedir exatamente cinco feeds');
+assert.doesNotMatch(home, /data-home-community|customer-looks/, 'as fotos fixas de clientes não devem aparecer na Home');
+assert.match(home, /new IntersectionObserver/, 'o feed do Instagram deve ser carregado quando a seção se aproximar da tela');
 assert.match(home, /Array\.from\(\{ length: 5 \}\)/, 'o carregamento deve reservar cinco itens');
 assert.match(home, /lg:grid-cols-5/, 'o grid deve apresentar cinco feeds no desktop');
 const media = read('src/components/admin/AdminSiteMediaManager.tsx');
 assert.doesNotMatch(media, /history_cards|communitySlots|communityMedia/, 'a Central de Mídias não deve manter a antiga vitrine de Histórias');
 assert.match(media, /heroMobileUrl/, 'a Central deve controlar o Hero mobile separadamente');
 assert.match(media, /instagram\/feed\?limit=5/, 'a Central deve diagnosticar a integração do Instagram');
+assert.match(media, /InstagramMediaLibrary/, 'a Central deve incluir a biblioteca de mídia manual do Instagram');
+const instagramMedia = read('src/components/admin/InstagramMediaLibrary.tsx');
+assert.match(instagramMedia, /multiple/, 'a biblioteca deve aceitar upload de várias imagens');
+assert.match(instagramMedia, /instagram_media_library/, 'a biblioteca manual deve usar uma coleção própria');
+assert.match(instagramMedia, /não aparecem na Home nem são publicadas automaticamente/, 'a biblioteca não deve publicar nem exibir imagens automaticamente');
+const rules = read('firestore.rules');
+assert.match(rules, /match \/instagram_media_library\/\{mediaId\}[\s\S]*?allow read, write: if isAdmin\(\);/, 'rascunhos de mídia do Instagram devem ser privados para administradores');
 
 const identity = read('src/components/AdminCustomerIdentity.tsx');
 assert.match(identity, /timeScopedSessions/, 'os indicadores devem seguir apenas o período selecionado');

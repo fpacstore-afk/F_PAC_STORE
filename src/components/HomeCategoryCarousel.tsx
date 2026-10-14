@@ -127,7 +127,7 @@ export function HomeCategoryCarousel({ products }: { products: CatalogProduct[] 
                 <div className="absolute inset-0 flex items-center justify-center bg-[radial-gradient(circle_at_50%_32%,rgba(234,179,8,0.28),#141414_70%)] text-[#eab308]">
                   <Icon size={80} strokeWidth={1} aria-hidden="true" />
                 </div>
-                <img src={image} alt="" loading="lazy" className="absolute inset-0 h-full w-full object-cover transition-transform duration-700 ease-out motion-safe:group-hover:scale-105" onError={event => { event.currentTarget.style.display = 'none'; }} />
+                <img src={image} alt="" loading="lazy" decoding="async" className="absolute inset-0 h-full w-full object-cover transition-transform duration-700 ease-out motion-safe:group-hover:scale-105" onError={event => { event.currentTarget.style.display = 'none'; }} />
                 <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/10 to-transparent transition-opacity duration-300 group-hover:opacity-90" />
                 <div className="absolute inset-x-0 bottom-0 flex items-end justify-between gap-3 p-5 sm:p-6">
                   <div className="min-w-0">
