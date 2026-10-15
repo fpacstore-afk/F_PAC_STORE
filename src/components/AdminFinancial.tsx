@@ -327,11 +327,15 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
       );
 
       // 3. Fetch investments
-      const qInv = query(collection(db, 'financial_investments'), orderBy('date', 'desc'));
+      // A Firestore orderBy('date') omits legacy documents without that field.
+      // Load the complete source, then sort locally using createdAt as fallback.
+      const newestFirst = (a: any, b: any) =>
+        (financialDateKey(b.date || b.createdAt) || '').localeCompare(financialDateKey(a.date || a.createdAt) || '');
+      const qInv = collection(db, 'financial_investments');
       unsubscribeInv = onSnapshot(qInv, 
         (snapshot) => {
           const dbItems = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Investment));
-          setInvestments(dbItems.filter(isActiveFinancialRecord));
+          setInvestments(dbItems.filter(isActiveFinancialRecord).sort(newestFirst));
           markReady('investments');
         },
         (error) => {
@@ -340,11 +344,11 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
       );
 
       // 4. Fetch cashflow
-      const qCf = query(collection(db, 'financial_cashflow'), orderBy('date', 'desc'));
+      const qCf = collection(db, 'financial_cashflow');
       unsubscribeCf = onSnapshot(qCf, 
         (snapshot) => {
           const dbItems = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as CashFlowEntry));
-          setCashflow(dbItems.filter(isActiveFinancialRecord));
+          setCashflow(dbItems.filter(isActiveFinancialRecord).sort(newestFirst));
           markReady('cashflow');
         },
         (error) => {
@@ -353,11 +357,11 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
       );
 
       // 5. Fetch traffic
-      const qTr = query(collection(db, 'financial_traffic'), orderBy('date', 'desc'));
+      const qTr = collection(db, 'financial_traffic');
       unsubscribeTr = onSnapshot(qTr, 
         (snapshot) => {
           const dbItems = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as TrafficCamp));
-          setTraffic(dbItems.filter(t => (t as any).status !== 'voided'));
+          setTraffic(dbItems.filter(t => (t as any).status !== 'voided').sort(newestFirst));
           markReady('traffic');
         },
         (error) => {
