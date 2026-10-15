@@ -200,7 +200,9 @@ export function ExpenseCenter({ cashflow, investments, traffic }: {
             <input required inputMode="decimal" className={`${inputClass} mt-1`} placeholder="0,00" value={form.amount} onChange={event => changeForm({ amount: event.target.value.replace(/[^0-9,.]/g, '') })} />
           </label>
           <label className="block text-xs font-bold">Data
-            <input required type="date" className={`${inputClass} mt-1`} value={form.date} onChange={event => changeForm({ date: event.target.value })} />
+            <input required type="date" className={`${inputClass} mt-1`} value={form.date}
+              onInput={event => changeForm({ date: event.currentTarget.value })}
+              onChange={event => changeForm({ date: event.target.value })} />
           </label>
         </div>
         <label className="block text-xs font-bold">Descrição <span className="font-normal text-gray-500">(opcional)</span>
@@ -277,14 +279,16 @@ export function ExpenseCenter({ cashflow, investments, traffic }: {
         <p className="text-xs text-gray-500">Origem: {SOURCE_LABEL[editing.recordSource]}. O histórico original será preservado.</p>
         {editing.recordSource === 'financial_cashflow' ? <label className="block text-xs font-bold">Categoria
           <select className={`${inputClass} mt-1`} value={editForm.category} onChange={event => setEditForm(previous => ({ ...previous, category: event.target.value }))}>
-            {!CATEGORIES.some(value => value.toLowerCase() === editForm.category.toLowerCase()) && <option value={editForm.category}>{editForm.category}</option>}
+            {!CATEGORIES.includes(editForm.category) && <option value={editForm.category}>{editForm.category}</option>}
             {CATEGORIES.map(value => <option key={value} value={value}>{value}</option>)}
           </select>
         </label> : <p className="text-xs font-bold">Categoria: {editForm.category}</p>}
         <label className="block text-xs font-bold">Descrição<input required className={`${inputClass} mt-1`} value={editForm.description} onChange={event => setEditForm(previous => ({ ...previous, description: event.target.value }))} /></label>
         <div className="grid grid-cols-2 gap-3">
           <label className="block text-xs font-bold">Valor (R$)<input required inputMode="decimal" className={`${inputClass} mt-1`} value={editForm.amount} onChange={event => setEditForm(previous => ({ ...previous, amount: event.target.value.replace(/[^0-9,.]/g, '') }))} /></label>
-          <label className="block text-xs font-bold">Data<input required type="date" className={`${inputClass} mt-1`} value={editForm.date} onChange={event => setEditForm(previous => ({ ...previous, date: event.target.value }))} /></label>
+          <label className="block text-xs font-bold">Data<input required type="date" className={`${inputClass} mt-1`} value={editForm.date}
+            onInput={event => { const date = event.currentTarget.value; setEditForm(previous => ({ ...previous, date })); }}
+            onChange={event => setEditForm(previous => ({ ...previous, date: event.target.value }))} /></label>
         </div>
         <label className="block text-xs font-bold">Forma de pagamento (opcional)<input className={`${inputClass} mt-1`} value={editForm.paymentMethod} onChange={event => setEditForm(previous => ({ ...previous, paymentMethod: event.target.value }))} /></label>
         <div className="flex justify-end gap-2 pt-2">
