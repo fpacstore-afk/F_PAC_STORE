@@ -27,7 +27,10 @@ export function PlayerMini() {
       className="fixed bottom-3 left-3 z-40 w-[calc(100vw-6.5rem)] max-w-none bg-black text-white border border-white/10 shadow-[0_15px_50px_-15px_rgba(0,0,0,0.8)] flex items-center p-2 rounded-none gap-2 md:bottom-6 md:left-6 md:w-auto md:max-w-[400px] md:gap-3"
       data-floating-control="radio-player"
     >
-      <div
+      <button
+        type="button"
+        aria-label="Abrir Rádio F PAC"
+        data-radio-cover
         onClick={() => navigate('/radio')}
         className="relative group cursor-pointer w-11 h-11 md:w-12 md:h-12 shrink-0 bg-neutral-900 border border-white/5 overflow-hidden flex items-center justify-center"
       >
@@ -45,35 +48,35 @@ export function PlayerMini() {
           <Radio size={20} className="text-gray-400 group-hover:text-white transition-colors" />
         )}
 
-        <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+        <span className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
           <Maximize2 size={14} className="text-white" />
-        </div>
+        </span>
 
-        <div className="absolute top-1 left-1 flex items-center gap-1 bg-red-600 px-1 py-[1.5px] rounded-none">
+        <span className="absolute top-1 left-1 flex items-center gap-1 bg-red-600 px-1 py-[1.5px] rounded-none">
           <span className="w-1.5 h-1.5 rounded-full bg-white animate-ping" />
           <span className="text-[6.5px] font-black uppercase tracking-widest text-white">AO VIVO</span>
-        </div>
-      </div>
+        </span>
+      </button>
 
-      <div className="flex-1 min-w-0 pr-1 cursor-pointer" onClick={() => navigate('/radio')}>
-        <div className="flex items-center gap-2">
-          <p className="text-[9px] md:text-[10px] font-black uppercase tracking-widest text-white truncate leading-tight">
+      <button type="button" aria-label={`Abrir rádio: ${currentTrack.title}`} className="flex-1 min-w-0 pr-1 cursor-pointer text-left" onClick={() => navigate('/radio')}>
+        <span className="flex items-center gap-2">
+          <span className="block text-[9px] md:text-[10px] font-black uppercase tracking-widest text-white truncate leading-tight">
             {currentTrack.title}
-          </p>
+          </span>
           {isPlaying && (
-            <div className="hidden sm:flex items-end gap-[2px] h-2 shrink-0">
+            <span className="hidden sm:flex items-end gap-[2px] h-2 shrink-0">
               <span className="w-[1.5px] h-full bg-[#eab308] animate-[bounce_0.8s_infinite]" style={{ animationDelay: '0.1s' }} />
               <span className="w-[1.5px] h-3/4 bg-[#eab308] animate-[bounce_0.8s_infinite]" style={{ animationDelay: '0.3s' }} />
               <span className="w-[1.5px] h-1/2 bg-[#eab308] animate-[bounce_0.8s_infinite]" style={{ animationDelay: '0.5s' }} />
-            </div>
+            </span>
           )}
-        </div>
-        <p className="text-[8px] md:text-[8.5px] text-gray-400 font-bold tracking-wider uppercase truncate leading-none mt-1">
+        </span>
+        <span className="block text-[8px] md:text-[8.5px] text-gray-400 font-bold tracking-wider uppercase truncate leading-none mt-1">
           {currentTrack.artist || 'F PAC SOUND'}
-        </p>
-      </div>
+        </span>
+      </button>
 
-      <div className="flex items-center gap-0.5 md:gap-1.5 border-l border-white/10 pl-1 md:pl-2 shrink-0">
+      <div data-radio-actions className="flex items-center gap-0.5 md:gap-1.5 border-l border-white/10 pl-1 md:pl-2 shrink-0">
         <button
           onClick={togglePlay}
           disabled={isLoading}

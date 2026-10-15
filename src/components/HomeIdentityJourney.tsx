@@ -2,40 +2,33 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowUpRight } from 'lucide-react';
 
-const chapters = [
-  { label: 'Caimento', title: 'Seu estilo começa no corte.', copy: 'Tradicional, oversized e outras formas de vestir a sua identidade.' },
-  { label: 'Tecido', title: 'O detalhe faz a diferença.', copy: 'Conheça o tecido, as medidas e o acabamento de cada peça no catálogo.' },
-  { label: 'Estampa', title: 'Presença em cada escolha.', copy: 'Do visual discreto da FORCE às estampas de presença da MARK.' },
-  { label: 'Personalização', title: 'Sua assinatura. Sua PRIME.', copy: 'Combine modelo, cor e arte. Ajuste a posição e confira a prévia da sua peça.' },
+const fallback = '/product-visuals/fpac-products-front-v1.webp';
+const details = [
+  { title: 'O caimento', copy: 'Veja a peça no corpo.' },
+  { title: 'De perto', copy: 'Explore os detalhes de cada modelo.' },
+  { title: 'Sua identidade', copy: 'Escolha a estampa que combina com você.' },
 ];
 
-export function HomeIdentityJourney({ image }: { image?: string }) {
+export function HomeIdentityJourney({ image, detailImage }: { image?: string; detailImage?: string }) {
+  const handleError = (event: React.SyntheticEvent<HTMLImageElement>) => {
+    if (!event.currentTarget.src.endsWith(fallback)) event.currentTarget.src = fallback;
+  };
   return (
-    <section className="fpac-identity-journey" data-home-identity-journey data-motion-scene aria-labelledby="identity-journey-title">
-      <div className="fpac-journey-heading" data-motion-reveal="title">
-        <p className="fpac-motion-eyebrow">Do primeiro olhar à sua peça</p>
-        <h2 id="identity-journey-title">Identidade em<br /><span>cada detalhe.</span></h2>
-      </div>
-      <div className="fpac-journey-layout">
-        <div className="fpac-journey-visual">
-          <div className="fpac-journey-orbit" aria-hidden="true"><span /><span /></div>
-          <div className="fpac-journey-picture" data-motion-reveal="image">
-            <img src={image || '/product-visuals/fpac-products-front-v1.webp'} alt="Peças da F PAC STORE" loading="lazy" decoding="async"
-              onError={event => {
-                if (!event.currentTarget.src.endsWith('/product-visuals/fpac-products-front-v1.webp')) event.currentTarget.src = '/product-visuals/fpac-products-front-v1.webp';
-              }} />
+    <section className="fpac-detail-section" data-home-identity-journey aria-labelledby="identity-journey-title">
+      <div className="fpac-detail-panel">
+        <div className="fpac-detail-copy" data-motion-reveal>
+          <p className="fpac-detail-eyebrow">Olhe mais de perto</p>
+          <h2 id="identity-journey-title">Identidade em<br /><span>cada detalhe.</span></h2>
+          <p className="fpac-detail-intro">O corte, a estampa e o jeito de vestir.<br />Descubra os detalhes da sua próxima peça.</p>
+          <div className="fpac-detail-points">
+            {details.map((detail, index) => <div key={detail.title}><span>0{index + 1}</span><h3>{detail.title}</h3><p>{detail.copy}</p></div>)}
           </div>
-          <span className="fpac-journey-caption" aria-hidden="true">NÃO É SÓ ROUPA. É IDENTIDADE!</span>
+          <Link to="/catalog/all" className="fpac-detail-link">Explore as peças <ArrowUpRight size={16} /></Link>
         </div>
-        <div className="fpac-journey-chapters">
-          {chapters.map((chapter, index) => (
-            <article key={chapter.label} className="fpac-journey-chapter" data-motion-reveal>
-              <p className="fpac-motion-eyebrow"><span>{String(index + 1).padStart(2, '0')}</span> / {chapter.label}</p>
-              <h3>{chapter.title}</h3>
-              <p className="fpac-journey-copy">{chapter.copy}</p>
-              {index === chapters.length - 1 && <Link to="/prime" className="fpac-motion-link">Criar minha PRIME <ArrowUpRight size={20} /></Link>}
-            </article>
-          ))}
+        <div className="fpac-detail-images" data-motion-reveal="image">
+          <img className="fpac-detail-main" src={image || fallback} alt="Peça da coleção F PAC" loading="lazy" decoding="async" onError={handleError} />
+          <figure><img src={image || fallback} alt="Aproximação da peça F PAC" loading="lazy" decoding="async" onError={handleError} /><figcaption>Detalhe da peça</figcaption></figure>
+          <figure><img src={detailImage || image || fallback} alt="Visual da coleção F PAC" loading="lazy" decoding="async" onError={handleError} /><figcaption>Estampa em foco</figcaption></figure>
         </div>
       </div>
     </section>

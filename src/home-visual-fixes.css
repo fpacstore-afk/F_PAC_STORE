@@ -1,107 +1,139 @@
-/* Storefront-specific production fixes. Kept separate so they are easy to review/revert. */
+/* Coordinated fixed UI. The radio and WhatsApp stay visible in their own row;
+   buying, offers and navigation use separate space instead of covering them. */
+:root {
+  --floating-control-edge: max(12px, env(safe-area-inset-bottom));
+  --floating-control-left: max(12px, env(safe-area-inset-left));
+  --floating-control-right: max(12px, env(safe-area-inset-right));
+  --floating-control-row: 56px;
+  --floating-control-clearance: calc(var(--floating-control-edge) + var(--floating-control-row) + 12px);
+  --purchase-control-height: 0px;
+  --flash-control-height: 0px;
+  --fixed-ui-clearance: calc(var(--floating-control-clearance) + var(--purchase-control-height) + var(--flash-control-height) + 24px);
+  scroll-padding-bottom: var(--fixed-ui-clearance);
+}
 
-/* Keep configured hero artwork stable on phones without reserving space when it fails. */
+html [data-floating-control="radio-player"] {
+  left: var(--floating-control-left);
+  bottom: var(--floating-control-edge);
+  width: min(352px, calc(100vw - var(--floating-control-left) - var(--floating-control-right) - 68px));
+  max-width: 352px;
+  height: var(--floating-control-row);
+  min-height: var(--floating-control-row);
+  gap: 6px;
+  padding: 6px;
+  z-index: 45;
+}
+
+[data-radio-cover] { width: 40px; height: 40px; }
+[data-radio-actions] { gap: 0; padding-left: 2px; }
+[data-radio-actions] button { min-width: 36px; min-height: 40px; padding: 6px; }
+
+html [data-floating-control="whatsapp"] {
+  right: var(--floating-control-right);
+  bottom: var(--floating-control-edge);
+  width: var(--floating-control-row);
+  height: var(--floating-control-row);
+  padding: 14px;
+  z-index: 45;
+}
+
+/* Only navigation lifts the dock. Product dialogs retain their existing layer
+   priority everywhere else. */
+body:has([data-mobile-menu]) [data-floating-control="radio-player"],
+body:has([data-mobile-menu]) [data-floating-control="whatsapp"] { z-index: 90; }
+
+html [data-floating-control="whatsapp"] > svg { width: 26px; height: 26px; }
+/* A hover scale must not intrude into the adjacent radio or purchase row. */
+html [data-floating-control="whatsapp"]:hover { transform: none; }
+
+html [data-floating-control="flash-sale"] {
+  right: calc(var(--floating-control-right) + var(--floating-control-row) + 12px);
+  bottom: var(--floating-control-edge);
+  max-width: calc(100vw - 460px);
+  z-index: 40;
+}
+
+[data-floating-control="flash-sale"] button {
+  min-width: 32px;
+  min-height: 32px;
+}
+
+html [data-purchase-bar] {
+  bottom: var(--floating-control-clearance);
+  z-index: 35;
+}
+
+html [data-privacy-notice] {
+  bottom: var(--fixed-ui-clearance);
+  max-height: max(120px, calc(100dvh - var(--fixed-ui-clearance) - 24px));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+/* Content and focused actions can always scroll clear of the fixed rows. */
+[data-site-main] :is(button, a, input, select, textarea) {
+  scroll-margin-bottom: var(--fixed-ui-clearance);
+}
+
+[data-footer-version] { padding-bottom: var(--fixed-ui-clearance); }
+
+[data-mobile-menu] {
+  z-index: 80;
+  height: 100dvh;
+  padding-top: max(20px, env(safe-area-inset-top));
+  padding-left: max(20px, env(safe-area-inset-left));
+  padding-right: max(20px, env(safe-area-inset-right));
+  padding-bottom: var(--floating-control-clearance);
+  overscroll-behavior: contain;
+}
+
+[data-mobile-menu] > :first-child,
+[data-mobile-menu] > :last-child { flex-shrink: 0; }
+[data-mobile-menu] > :last-child { padding-block: 12px; }
+[data-mobile-menu] button[aria-label="Fechar menu"] { min-width: 44px; min-height: 44px; }
+[data-mobile-menu-scroll] { overscroll-behavior: contain; }
+
+[data-search-drawer] {
+  max-height: calc(100dvh - var(--site-header-height) - var(--floating-control-clearance));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
 @media (max-width: 767px) {
   [data-home-version="canonical-v6"] #collections a img {
     object-position: center center !important;
   }
 
-  main {
-    scroll-padding-bottom: 8rem;
-  }
+  [data-prime-builder] { padding-bottom: var(--fixed-ui-clearance); }
 
-  /* One coordinated floating-control zone: player on the left, WhatsApp on the right, offer above both. */
-  [data-floating-control="radio-player"] {
-    left: max(0.75rem, env(safe-area-inset-left)) !important;
-    bottom: max(0.75rem, env(safe-area-inset-bottom)) !important;
-    width: calc(100vw - 5.75rem) !important;
-    max-width: 22rem !important;
-    min-height: 3.35rem;
-  }
-
-  a[aria-label="WhatsApp"] {
-    right: max(0.75rem, env(safe-area-inset-right)) !important;
-    bottom: max(0.75rem, env(safe-area-inset-bottom)) !important;
-    padding: 0.78rem !important;
-    z-index: 45 !important;
-  }
-
-  [data-floating-control="flash-sale"] {
-    left: 50% !important;
-    right: auto !important;
-    bottom: max(4.85rem, calc(env(safe-area-inset-bottom) + 4.1rem)) !important;
-    width: min(calc(100vw - 1.5rem), 30rem) !important;
-    transform: translateX(-50%) !important;
-    z-index: 46 !important;
+  html [data-floating-control="flash-sale"] {
+    left: var(--floating-control-left);
+    right: var(--floating-control-right);
+    bottom: calc(var(--floating-control-clearance) + var(--purchase-control-height) + 12px);
+    width: auto;
+    max-width: none;
   }
 
   [data-floating-control="flash-sale"] > div > div:last-child {
     width: 100%;
-    min-height: 3.7rem;
-    padding: 0.7rem 2.1rem 0.7rem 0.75rem !important;
-    gap: 0.7rem !important;
-    border-width: 1px !important;
+    min-height: 58px;
+    padding: 10px 28px 10px 12px;
+    gap: 10px;
+    border-width: 1px;
   }
 
-  [data-floating-control="flash-sale"] > div > div:last-child > div:first-child {
-    padding: 0.55rem !important;
-  }
-
-  [data-floating-control="flash-sale"] h4 {
-    font-size: 1.05rem !important;
-    margin-top: 0.15rem !important;
-  }
-
-  [data-floating-control="flash-sale"] p {
-    display: none !important;
-  }
-
-  [data-floating-control="flash-sale"] span {
-    letter-spacing: 0.12em !important;
-  }
-
-  /* Navigation takes priority: floating sales tools must never cover the open menu. */
-  body:has(div.fixed.inset-0.z-\[60\].bg-\[\#ffffff\]) [data-floating-control="flash-sale"],
-  body:has(div.fixed.inset-0.z-\[60\].bg-\[\#ffffff\]) [data-floating-control="radio-player"],
-  body:has(div.fixed.inset-0.z-\[60\].bg-\[\#ffffff\]) a[aria-label="WhatsApp"] {
-    opacity: 0 !important;
-    pointer-events: none !important;
-    visibility: hidden !important;
-  }
+  [data-floating-control="flash-sale"] > div > div:last-child > div:first-child { padding: 8px; }
+  [data-floating-control="flash-sale"] h4 { font-size: 17px; margin-top: 3px; }
+  [data-floating-control="flash-sale"] p { display: none; }
+  [data-floating-control="flash-sale"] span { letter-spacing: 0.08em; }
+  [data-purchase-bar] > div { gap: 8px; }
+  [data-purchase-bar] > div > div { min-width: 94px; }
 }
 
-/* Prevent fixed radio/WhatsApp controls from covering footer content on any screen. */
-footer {
-  padding-bottom: max(6.5rem, calc(env(safe-area-inset-bottom) + 5.5rem));
-}
-
-@media (min-width: 640px) {
-  footer {
-    padding-bottom: 7.5rem;
-  }
-}
-
-@media (min-width: 1280px) {
-  footer {
-    padding-bottom: 6rem;
-  }
-}
-
-@media (max-width: 767px) {
-  div.fixed.inset-0.z-\[60\].bg-\[\#ffffff\] {
-    gap: 0 !important;
-  }
-}
-
-/* Tablet / iPad: use compact/mobile header and reduce vertical information density. */
+/* Tablet / iPad: keep the compact header and the same reachable dock. */
 @media (min-width: 768px) and (max-width: 1024px) {
-  nav div[class*="hidden md:grid"] {
-    display: none !important;
-  }
-
-  nav div[class*="flex md:hidden"] {
-    display: flex !important;
-  }
+  nav div[class*="hidden md:grid"] { display: none !important; }
+  nav div[class*="flex md:hidden"] { display: flex !important; }
 
   [data-home-version="canonical-v6"] [data-home-values],
   [data-home-version="canonical-v6"] [data-home-catalog],
@@ -121,51 +153,15 @@ footer {
     padding-bottom: 2rem !important;
   }
 
-  [data-floating-control="radio-player"] {
-    left: 1rem !important;
-    bottom: 1rem !important;
-    width: clamp(18rem, 40vw, 25rem) !important;
-    max-width: 25rem !important;
-  }
-
-  a[aria-label="WhatsApp"] {
-    right: 1rem !important;
-    bottom: 1rem !important;
-    padding: 0.875rem !important;
-  }
-
-  [data-floating-control="flash-sale"] {
-    left: calc(1.75rem + clamp(18rem, 40vw, 25rem)) !important;
-    right: 5rem !important;
-    bottom: 1rem !important;
-    width: auto !important;
-    transform: none !important;
-  }
-
-  [data-floating-control="flash-sale"] > div,
   [data-floating-control="flash-sale"] > div > div:last-child {
-    width: 100%;
+    min-height: 56px;
+    padding: 10px 26px 10px 12px;
+    gap: 10px;
   }
+  [data-floating-control="flash-sale"] h4 { font-size: 18px; }
+  [data-floating-control="flash-sale"] p { display: none; }
+}
 
-  [data-floating-control="flash-sale"] > div > div:last-child {
-    min-height: 4rem;
-    padding: 0.65rem 2rem 0.65rem 0.75rem !important;
-    gap: 0.65rem !important;
-  }
-
-  [data-floating-control="flash-sale"] h4 {
-    font-size: 1.15rem !important;
-  }
-
-  [data-floating-control="flash-sale"] p {
-    display: none;
-  }
-
-  body:has(div.fixed.inset-0.z-\[60\].bg-\[\#ffffff\]) [data-floating-control="flash-sale"],
-  body:has(div.fixed.inset-0.z-\[60\].bg-\[\#ffffff\]) [data-floating-control="radio-player"],
-  body:has(div.fixed.inset-0.z-\[60\].bg-\[\#ffffff\]) a[aria-label="WhatsApp"] {
-    opacity: 0 !important;
-    pointer-events: none !important;
-    visibility: hidden !important;
-  }
+@media (prefers-reduced-motion: reduce) {
+  [data-floating-control] *, [data-floating-control] { animation: none !important; }
 }

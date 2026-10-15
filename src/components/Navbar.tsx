@@ -31,6 +31,8 @@ export function Navbar() {
   const location = useLocation();
   const navigate = useNavigate();
   const authMenuRef = useRef<HTMLDivElement>(null);
+  const mobileMenuRef = useRef<HTMLDivElement>(null);
+  const mobileMenuButtonRef = useRef<HTMLButtonElement>(null);
 
   // Search real-time states
   const [isSearchOpen, setIsSearchOpen] = useState(false);
@@ -43,7 +45,8 @@ export function Navbar() {
 
   useEffect(() => {
     const handleClickOutsideSearch = (event: MouseEvent) => {
-      if (searchRef.current && !searchRef.current.contains(event.target as Node)) {
+      if (searchRef.current && !searchRef.current.contains(event.target as Node) &&
+        !(event.target as Element).closest('[data-search-toggle]')) {
         setIsSearchOpen(false);
       }
     };
@@ -53,9 +56,8 @@ export function Navbar() {
 
   useEffect(() => {
     if (isSearchOpen && searchInputRef.current) {
-      setTimeout(() => {
-        searchInputRef.current?.focus();
-      }, 50);
+      const timeout = window.setTimeout(() => searchInputRef.current?.focus(), 50);
+      return () => window.clearTimeout(timeout);
     }
   }, [isSearchOpen]);
 
@@ -63,6 +65,63 @@ export function Navbar() {
     if (!isSearchOpen) return;
     return observeHeaderCatalog(setSearchCatalog);
   }, [isSearchOpen, searchRetry]);
+
+  // A newer route (including Back/Forward or query-only navigation) owns the
+  // screen. Never leave a stale menu/search layer on top of it.
+  useEffect(() => {
+    setMobileMenuOpen(false);
+    setIsSearchOpen(false);
+    setAuthMenuOpen(false);
+  }, [location.key]);
+
+  useEffect(() => {
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      setMobileMenuOpen(false);
+      setIsSearchOpen(false);
+      setAuthMenuOpen(false);
+    };
+    document.addEventListener('keydown', closeOnEscape);
+    return () => document.removeEventListener('keydown', closeOnEscape);
+  }, []);
+
+  useEffect(() => {
+    if (!mobileMenuOpen) return;
+    const originalOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const background = Array.from(document.querySelectorAll<HTMLElement>('[data-site-main], [data-footer-version], [data-site-header]'));
+    const previousInert = background.map(element => element.inert);
+    background.forEach(element => { element.inert = true; });
+    mobileMenuRef.current?.querySelector<HTMLButtonElement>('[aria-label="Fechar menu"]')?.focus();
+
+    const keepFocusInMenu = (event: KeyboardEvent) => {
+      if (event.key !== 'Tab') return;
+      // The persistent radio and WhatsApp remain usable while navigation is open.
+      const roots = Array.from(document.querySelectorAll<HTMLElement>('[data-mobile-menu], [data-floating-control="radio-player"], [data-floating-control="whatsapp"], [data-privacy-notice]'));
+      const controls = roots.flatMap(root => root ? [root, ...root.querySelectorAll<HTMLElement>('a[href], button:not([disabled]), input, [tabindex="0"]')] : [])
+        .filter(element => element.tabIndex >= 0 && element.getClientRects().length > 0 && getComputedStyle(element).visibility !== 'hidden');
+      const current = controls.indexOf(document.activeElement as HTMLElement);
+      if (!controls.length) return;
+      if (event.shiftKey && current <= 0) {
+        event.preventDefault(); controls.at(-1)?.focus();
+      } else if (!event.shiftKey && (current === controls.length - 1 || current < 0)) {
+        event.preventDefault(); controls[0].focus();
+      }
+    };
+    document.addEventListener('keydown', keepFocusInMenu);
+    const wideViewport = window.matchMedia('(min-width: 1025px)');
+    const closeOnDesktop = () => { if (wideViewport.matches) setMobileMenuOpen(false); };
+    wideViewport.addEventListener('change', closeOnDesktop);
+    return () => {
+      document.body.style.overflow = originalOverflow;
+      background.forEach((element, index) => { element.inert = previousInert[index]; });
+      document.removeEventListener('keydown', keepFocusInMenu);
+      wideViewport.removeEventListener('change', closeOnDesktop);
+      if (mobileMenuRef.current?.contains(document.activeElement) || document.activeElement === document.body) {
+        mobileMenuButtonRef.current?.focus();
+      }
+    };
+  }, [mobileMenuOpen]);
 
   const filteredProducts = allProducts.filter(product => matchesStorefrontSearch(product, searchQuery));
 
@@ -345,11 +404,14 @@ export function Navbar() {
                 {/* Search Trigger */}
                 <button 
                   onClick={() => {
-                    setIsSearchOpen(!isSearchOpen);
+                    setIsSearchOpen(open => !open);
                     setAuthMenuOpen(false);
                     setMobileMenuOpen(false);
                   }}
                   className="relative text-[#eab308] hover:text-white transition-all duration-300 flex items-center group cursor-pointer bg-transparent border-0 focus:outline-none"
+                  data-search-toggle
+                  aria-expanded={isSearchOpen}
+                  aria-controls="site-search-drawer"
                   aria-label="Pesquisar produtos"
                   title="Pesquisar produtos"
                 >
@@ -467,8 +529,11 @@ export function Navbar() {
             {/* Mobile Hamburger Toggle */}
             <button 
               id="navbar-mobile-toggle"
+              ref={mobileMenuButtonRef}
               aria-label="Abrir menu"
-              onClick={() => setMobileMenuOpen(true)}
+              aria-expanded={mobileMenuOpen}
+              aria-controls="site-mobile-menu"
+              onClick={() => { setIsSearchOpen(false); setAuthMenuOpen(false); setMobileMenuOpen(true); }}
               className="w-10 h-10 flex items-center justify-center cursor-pointer bg-transparent border-0 focus:outline-none"
             >
               <div className="w-5 h-4 flex flex-col justify-between">
@@ -486,8 +551,11 @@ export function Navbar() {
             {/* Mobile Right Action Icons */}
             <div className="flex items-center gap-3">
               <button 
-                onClick={() => setIsSearchOpen(!isSearchOpen)}
+                onClick={() => { setIsSearchOpen(open => !open); setAuthMenuOpen(false); }}
                 className="p-1 text-[#eab308] bg-transparent border-0 cursor-pointer"
+                data-search-toggle
+                aria-expanded={isSearchOpen}
+                aria-controls="site-search-drawer"
                 aria-label="Pesquisar"
               >
                 <Search size={20} />
@@ -510,6 +578,8 @@ export function Navbar() {
           {isSearchOpen && (
             <motion.div
               ref={searchRef}
+              id="site-search-drawer"
+              data-search-drawer
               initial={{ opacity: 0, height: 0 }}
               animate={{ opacity: 1, height: 'auto' }}
               exit={{ opacity: 0, height: 0 }}
@@ -517,6 +587,7 @@ export function Navbar() {
               className="w-full bg-[#0a0a0f]/98 border-b border-white/10 shadow-2xl overflow-hidden backdrop-blur-lg"
             >
               <div className="max-w-3xl mx-auto px-4 py-6 md:py-8 flex flex-col gap-5">
+                <button type="button" onClick={() => setIsSearchOpen(false)} className="self-end min-h-11 px-3 text-xs font-bold text-white" aria-label="Fechar pesquisa">Fechar pesquisa <X size={16} className="inline-block" /></button>
                 {/* Search input field */}
                 <div className="relative flex items-center">
                   <Search className="absolute left-4 text-[#eab308]" size={18} />
@@ -662,20 +733,24 @@ export function Navbar() {
       <AnimatePresence>
         {mobileMenuOpen && (
           <motion.div
+            ref={mobileMenuRef}
+            id="site-mobile-menu"
+            data-mobile-menu
+            role="dialog"
+            aria-labelledby="mobile-menu-heading"
             initial={{ x: '-100%' }}
             animate={{ x: 0 }}
-            exit={{ x: '-100%' }}
             transition={{ type: 'tween', duration: 0.3 }}
-            className="fixed inset-0 z-[60] bg-[#ffffff] flex flex-col pt-6 px-6"
+            className="fixed inset-0 z-[80] bg-[#ffffff] flex flex-col pt-6 px-6"
           >
             <div className="flex justify-between items-center mb-6">
-              <h2 className="font-heading font-bold text-xl">Menu</h2>
+              <h2 id="mobile-menu-heading" className="font-heading font-bold text-xl">Menu</h2>
               <button onClick={() => setMobileMenuOpen(false)} className="bg-black/5 p-2 rounded-full hover:bg-black/10 transition-colors" aria-label="Fechar menu">
                 <X size={20} />
               </button>
             </div>
             
-            <div className="min-h-0 flex-1 flex flex-col gap-5 text-sm overflow-y-auto pb-4">
+            <div data-mobile-menu-scroll className="min-h-0 flex-1 flex flex-col gap-5 text-sm overflow-y-auto pb-4">
               <section aria-labelledby="mobile-shop-heading">
                 <p id="mobile-shop-heading" className="mb-2 text-[10px] font-black uppercase tracking-[0.22em] text-black/40">Comprar</p>
                 <div className="grid grid-cols-2 gap-2">

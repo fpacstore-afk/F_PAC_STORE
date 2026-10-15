@@ -3,6 +3,8 @@ import { HomeCategoryCarousel } from '../components/HomeCategoryCarousel';
 import { HomeIdentityJourney } from '../components/HomeIdentityJourney';
 import { useHomeMotion } from '../hooks/useHomeMotion';
 import '../home-motion.css';
+import '../home-refresh.css';
+import { HomeCollectionStrip } from '../components/HomeCollectionStrip';
 import { resolveBrandMedia } from '../lib/brandMedia';
 import type { MediaSlotConfig } from '../types/mediaSlot';
 import { subscribePublicProductSnapshot } from '../services/publicProducts';
@@ -148,13 +150,13 @@ export default function HomeV2() {
         const target = isPrimeProduct ? `/prime?product=${encodeURIComponent(product.id || product.slug)}` : getProductUrl(product);
         const productTitle = getStorefrontProductTitle(product, publicStampNames);
         return (
-          <article key={product.id || product.slug} data-motion-reveal data-motion-delay={index * 70} className="group overflow-hidden rounded-2xl border border-black/10 bg-white shadow-sm transition-all hover:-translate-y-1 hover:shadow-xl">
-            <Link to={target} className="relative block aspect-[4/5] overflow-hidden bg-black">
+          <article key={product.id || product.slug} data-motion-reveal data-motion-delay={index * 70} className="fpac-home-product group overflow-hidden bg-white">
+            <Link to={target} className="relative block aspect-[4/5] overflow-hidden rounded-lg bg-[#f3f2ee]">
               <img src={product.images?.[0] || '/estampas/logo-fpac.png'} alt={productTitle} loading="lazy" decoding="async" className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" onError={event => { event.currentTarget.src = '/estampas/logo-fpac.png'; }} />
               {product.isBestseller === true && <span className="absolute left-3 top-3 rounded-full bg-[#eab308] px-3 py-1.5 text-[8px] font-black uppercase tracking-wider text-black">Mais vendido</span>}
               {product.isNew === true && <span className="absolute right-3 top-3 rounded-full bg-white px-3 py-1.5 text-[8px] font-black uppercase tracking-wider text-black">Lançamento</span>}
             </Link>
-            <div className="p-3 md:p-4">
+            <div className="py-3">
               <p className="text-[8px] font-black uppercase tracking-[0.16em] text-[#9a7100]">{isPrimeProduct ? 'PRIME' : String(product.collection || product.category || 'F PAC').toUpperCase()}</p>
               <Link to={target} className="mt-1 block min-h-10 text-xs font-black uppercase leading-tight text-black line-clamp-2 md:text-sm">{productTitle}</Link>
               <div className="mt-3 flex items-end justify-between gap-2">
@@ -183,7 +185,7 @@ export default function HomeV2() {
   );
 
   return (
-    <div ref={homeRef} className="fpac-motion-home w-full bg-white" data-home-version="canonical-v6">
+    <div ref={homeRef} className="fpac-motion-home w-full bg-white" data-home-version="canonical-v6" data-home-refresh="identity-2026-10">
       <span className="fpac-home-progress" aria-hidden="true" />
       <Helmet>
         <title>F PAC STORE | Não é só roupa. É identidade!</title>
@@ -205,28 +207,21 @@ export default function HomeV2() {
 
       <HomeHeroCarousel slides={heroSlides} />
  
-      <section id="collections" data-home-collections className="border-b border-black/5 bg-[#f7f7f5] py-5 md:py-7">
-        <div className="mx-auto max-w-7xl px-5">
-          <div data-motion-reveal="title" className="mb-3 flex items-center justify-between gap-3">
-            <div><p className="text-[8px] font-black uppercase tracking-[0.22em] text-[#9a7100]">Encontre seu estilo</p><h2 className="text-lg font-black uppercase text-black md:text-2xl">Acesse uma linha</h2></div>
-            <Link to="/catalog/all" className="inline-flex min-h-10 items-center gap-2 text-[8px] font-black uppercase tracking-wider text-black md:text-[10px]">Ver catálogo <ArrowRight size={14} /></Link>
+      <HomeCollectionStrip />
+
+      {bestSellingProducts.length > 0 && (
+        <section className="bg-white py-10 md:py-14" data-home-bestsellers>
+          <div className="mx-auto max-w-7xl px-5">
+            <div data-motion-reveal="title" className="mb-6 flex items-end justify-between gap-3">
+              <div><p className="text-[9px] font-black uppercase tracking-[0.24em] text-[#9a7100]">Destaques da loja</p><h2 className="mt-1 text-2xl font-black tracking-tight md:text-3xl">Mais vendidos</h2></div>
+              <Link to="/catalog/all" className="inline-flex min-h-10 items-center gap-1 text-[8px] font-black uppercase tracking-wider text-black md:text-[10px]">Ver todos <ArrowRight size={14} /></Link>
+            </div>
+            {renderProductCards(bestSellingProducts)}
           </div>
-          <div className="grid grid-cols-2 gap-2 md:grid-cols-4 md:gap-3">
-            {[
-              { label: 'FORCE', detail: 'Visual limpo e discreto', to: '/catalog/all?line=force' },
-              { label: 'MARK', detail: 'Estampas de presença', to: '/catalog/all?line=mark' },
-              { label: 'PRIME', detail: 'Personalize sua peça', to: '/prime' },
-            ].map((item, index) => (
-              <Link key={item.label} to={item.to} data-motion-reveal data-motion-delay={index * 70} className="fpac-collection-link flex min-h-[76px] flex-col justify-center rounded-xl border border-black/10 bg-white px-4 py-3 transition-colors hover:border-[#eab308]">
-                <span className="text-xs font-black uppercase tracking-[0.14em]">{item.label}</span><span className="mt-1 text-[9px] text-black/50">{item.detail}</span>
-              </Link>
-            ))}
-            <a href="https://wa.me/5547997465602?text=Ol%C3%A1%2C%20quero%20um%20or%C3%A7amento%20para%20uniformes%20personalizados." target="_blank" rel="noreferrer" className="flex min-h-[76px] flex-col justify-center rounded-xl border border-black bg-black px-4 py-3 text-white transition-colors hover:border-[#eab308]">
-              <span className="text-xs font-black uppercase tracking-[0.14em] text-[#eab308]">Empresas / Uniformes</span><span className="mt-1 text-[9px] text-white/65">Solicitar orçamento no WhatsApp</span>
-            </a>
-          </div>
-        </div>
-      </section>
+        </section>
+      )}
+
+      <HomeIdentityJourney image={carouselProducts[0]?.images?.[0] || aboutImage} detailImage={carouselProducts.find(product => productMatchesCommercialLine(product, 'mark'))?.images?.[0]} />
 
       <section className="overflow-hidden border-b border-black/5 py-7 md:py-10" data-home-values>
         <div className="fpac-benefits-viewport mx-auto max-w-7xl px-5" role="region" aria-roledescription="carrossel" aria-label="Benefícios F PAC STORE" tabIndex={0}>
@@ -258,20 +253,6 @@ export default function HomeV2() {
       </section>
 
       <HomeCategoryCarousel products={carouselProducts} />
-
-      <HomeIdentityJourney image={aboutImage || carouselProducts[0]?.images?.[0]} />
-
-      {bestSellingProducts.length > 0 && (
-        <section className="bg-white py-10 md:py-14" data-home-bestsellers>
-          <div className="mx-auto max-w-7xl px-5">
-            <div data-motion-reveal="title" className="mb-6 flex items-end justify-between gap-3">
-              <div><p className="text-[9px] font-black uppercase tracking-[0.24em] text-[#9a7100]">Destaques da loja</p><h2 className="mt-1 text-2xl font-black uppercase italic md:text-4xl">Mais vendidos</h2></div>
-              <Link to="/catalog/all" className="inline-flex min-h-10 items-center gap-1 text-[8px] font-black uppercase tracking-wider text-black md:text-[10px]">Ver todos <ArrowRight size={14} /></Link>
-            </div>
-            {renderProductCards(bestSellingProducts)}
-          </div>
-        </section>
-      )}
 
       {newProducts.length > 0 && (
         <section className="bg-[#f7f7f5] py-10 md:py-14" data-home-launches>
@@ -339,15 +320,19 @@ export default function HomeV2() {
         </div>
       </section>
 
-      <section className="fpac-section-transition py-12 md:py-16 bg-black text-white" data-home-brand data-motion-scene>
-        <div className="max-w-6xl mx-auto px-5 grid lg:grid-cols-2 gap-8 md:gap-10 items-center">
+      <section className="fpac-home-history" data-home-brand aria-labelledby="home-history-title">
+        <div className="fpac-home-history-inner">
           <div data-motion-reveal="title">
-            <p className="text-[#eab308] text-[10px] md:text-xs font-black uppercase tracking-[0.3em]">Mais que vestir</p>
-            <h2 className="mt-3 text-4xl md:text-6xl font-black uppercase italic leading-none">Estilo que fala<br />antes de <span className="text-[#eab308]">você.</span></h2>
-            <p className="mt-5 text-white/65 leading-relaxed max-w-xl text-sm md:text-base">Qualidade, presença e liberdade para construir um visual com a sua assinatura.</p>
-            <Link to="/produtos" className="mt-6 inline-flex items-center gap-2 text-[#eab308] font-black uppercase tracking-[0.2em] text-[10px]">Encontrar minha peça <ArrowRight size={15} /></Link>
+            <p className="fpac-detail-eyebrow">F PAC · Desde junho de 2026</p>
+            <h2 id="home-history-title">Nossa história</h2>
           </div>
-          {aboutImage && <div data-motion-reveal="image" className="aspect-square bg-neutral-900 overflow-hidden border border-white/10 rounded-2xl"><img src={aboutImage} alt="F PAC STORE" loading="lazy" decoding="async" className="w-full h-full object-cover" /></div>}
+          <div className="fpac-home-history-copy" data-motion-reveal>
+            <p>A F PAC nasceu em junho de 2026, fundada por Fábio Oliveira João. A ideia era criar uma marca do zero e construir uma história própria.</p>
+            <p>A escolha pelas roupas veio de algo que já fazia parte da sua vida: o estilo que ele veste e gosta. Criar a F PAC foi uma forma de explorar esse universo e oferecer peças que ele próprio usa.</p>
+            <p>O nome F PAC tem origem em um apelido que acompanhou Fábio durante o serviço militar e que, depois, deu nome à marca.</p>
+            <p>Hoje, a proposta é que cada pessoa encontre nas peças uma forma de expressar sua autenticidade — e se reconheça no que veste.</p>
+            <p className="fpac-home-history-signature">Não é só roupa. É identidade!</p>
+          </div>
         </div>
       </section>
 

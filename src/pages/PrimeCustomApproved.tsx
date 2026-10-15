@@ -11,6 +11,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Helmet } from 'react-helmet-async';
 import toast from 'react-hot-toast';
 import { useCart } from '../hooks/useCart';
+import { useFixedControlHeight } from '../hooks/useFixedControlHeight';
 import { calculatePrimePrice } from '../../shared/primePricing';
 import { primeBaseOptions } from '../../shared/primeBaseOptions';
 import { getPrimeFabricColor } from '../lib/primeMockupColors';
@@ -90,6 +91,7 @@ function getPlacements(kind: ProductVisualKind): Placement[] {
 }
 
 export default function PrimeCustomApproved() {
+  const purchaseBarRef = useFixedControlHeight('--purchase-control-height');
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { addItem } = useCart();
@@ -329,7 +331,7 @@ export default function PrimeCustomApproved() {
   const previewOverlay = previewArts(activePlacement.side, true);
 
   return (
-    <div className="min-h-screen bg-[#f4f3ef] text-[#111] pb-48 md:pb-16">
+    <div data-prime-builder className="min-h-screen bg-[#f4f3ef] text-[#111] pb-48 md:pb-16">
       <Helmet>
         <title>PRIME Custom | Personalize sua peça F PAC</title>
         <meta name="description" content="Escolha o produto, a cor, o tamanho e a estampa. Visualize sua peça PRIME antes de adicionar à sacola." />
@@ -453,7 +455,7 @@ export default function PrimeCustomApproved() {
         <section className="mt-4 grid grid-cols-3 gap-2 rounded-2xl border border-black/10 bg-white p-3 text-center">{[['Mockup', 'Visualize sua peça'], ['Área máxima', visualKind === 'cap' ? `${areaHeight} × ${areaWidth} cm (altura × largura)` : `${areaWidth} × ${areaHeight} cm`], ['Compra segura', 'Checkout F PAC']].map(([title, text]) => <div key={title} className="px-1"><b className="block text-[8px] md:text-[10px] uppercase">{title}</b><span className="text-[7px] md:text-[9px] text-black/45">{text}</span></div>)}</section>
       </div>
 
-      <div className="fixed inset-x-0 bottom-0 z-[70] border-t border-black/10 bg-white/95 px-3 py-2.5 shadow-[0_-12px_35px_rgba(0,0,0,.16)] backdrop-blur-xl md:hidden">
+      <div ref={purchaseBarRef} data-purchase-bar="prime" className="fixed inset-x-0 bottom-0 z-[35] border-t border-black/10 bg-white/95 px-3 py-2.5 shadow-[0_-12px_35px_rgba(0,0,0,.16)] backdrop-blur-xl md:hidden">
         <div className="mx-auto flex max-w-lg items-center gap-3">
           <div className="min-w-[108px]">
             <p className="text-[7px] font-black uppercase tracking-[0.14em] text-black/40">PRIME CUSTOM</p>
