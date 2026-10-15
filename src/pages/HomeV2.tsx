@@ -185,7 +185,7 @@ export default function HomeV2() {
   );
 
   return (
-    <div ref={homeRef} className="fpac-motion-home w-full bg-white" data-home-version="canonical-v6">
+    <div ref={homeRef} className="fpac-motion-home w-full bg-white" data-home-version="canonical-v6" data-home-refresh="identity-2026-10">
       <span className="fpac-home-progress" aria-hidden="true" />
       <Helmet>
         <title>F PAC STORE | Não é só roupa. É identidade!</title>

@@ -3,9 +3,11 @@ import { getFlashSaleInfo, FlashSaleInfo } from '../lib/flashSale';
 import { Timer, Zap, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useCart } from '../hooks/useCart';
+import { useFixedControlHeight } from '../hooks/useFixedControlHeight';
 import { getActivePromotion } from '../services/promotions/getActivePromotion';
 
 export function FlashSaleBadge() {
+  const flashSaleRef = useFixedControlHeight('--flash-control-height');
   const [info, setInfo] = useState<FlashSaleInfo>(getFlashSaleInfo());
   const [isVisible, setIsVisible] = useState(true);
   const [hasActivePromo, setHasActivePromo] = useState(false);
@@ -35,6 +37,7 @@ export function FlashSaleBadge() {
   return (
     <AnimatePresence>
       <motion.div
+        ref={flashSaleRef}
         initial={{ y: 100, opacity: 0, scale: 0.8 }}
         animate={{ y: 0, opacity: 1, scale: 1 }}
         exit={{ y: 100, opacity: 0, scale: 0.8 }}
