@@ -1,9 +1,17 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Link2, Plus, Trash2, Upload } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { buildManualCustomOrderLines, filterManualCustomArtworkRows, inferManualStampPrintColor, type ManualCustomArtworkInput, type ManualCustomSizeInput } from '../../lib/manualCustomOrder';
 import { uploadArtworkToCloudinary, uploadArtworkUrlToCloudinary } from '../../services/cloudinary';
 import { stampImage, StampThumb } from './ManualStampPicker';
+import { ManualChoiceWithOther } from './ManualChoiceWithOther';
+
+const PRODUCT_OPTIONS = ['Camiseta tradicional', 'Camiseta oversized', 'Cropped oversized', 'Moletom / casaco', 'Bermuda', 'Boné', 'Touca'];
+const MODEL_OPTIONS = ['Tradicional', 'Oversized', 'Cropped', 'Moletom', 'Cargo'];
+const COLOR_OPTIONS = ['Preto', 'Branco', 'Off White', 'Bege', 'Areia', 'Verde Militar', 'Marrom', 'Azul Marinho'];
+const SIZE_OPTIONS = ['PP', 'P', 'M', 'G', 'GG', 'XG', 'Único'];
+const LOCATION_OPTIONS = ['Frente', 'Costas', 'Peito esquerdo', 'Peito direito', 'Manga esquerda', 'Manga direita', 'Bolso frontal', 'Bolso traseiro'];
+const ART_SIZE_OPTIONS = ['2 × 3 cm', '3 × 3 cm', '8 × 6 cm', '10 × 10 cm', '12 × 9 cm', '15 × 15 cm', '20 × 20 cm', '30 × 30 cm', '30 × 40 cm'];
 
 function newRowId(prefix: string) {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
@@ -14,9 +22,12 @@ interface ManualCustomProductFormProps {
   disabled?: boolean;
   isGift: boolean;
   onAdd: (items: any[]) => void;
+  onUploadStateChange?: (uploading: boolean) => void;
+  onDraftStateChange?: (dirty: boolean) => void;
 }
 
-export function ManualCustomProductForm({ stamps, disabled = false, isGift, onAdd }: ManualCustomProductFormProps) {
+export function ManualCustomProductForm({ stamps, disabled = false, isGift, onAdd, onUploadStateChange, onDraftStateChange }: ManualCustomProductFormProps) {
+  const [draftVersion, setDraftVersion] = useState(0);
   const [companyName, setCompanyName] = useState('');
   const [productName, setProductName] = useState('');
   const [model, setModel] = useState('');
@@ -28,6 +39,20 @@ export function ManualCustomProductForm({ stamps, disabled = false, isGift, onAd
   const [artworks, setArtworks] = useState<ManualCustomArtworkInput[]>([]);
   const [artworkLinks, setArtworkLinks] = useState<Record<string, string>>({});
   const [uploadingArtworkId, setUploadingArtworkId] = useState<string | null>(null);
+  const [batchProgress, setBatchProgress] = useState<{ current: number; total: number } | null>(null);
+  const isUploading = Boolean(uploadingArtworkId || batchProgress);
+  const hasUnaddedProduct = Boolean(productName.trim() || model.trim() || garmentColor.trim() || productionNotes.trim()
+    || unitPrice.trim() || unitCost.trim() || sizeRows.some((row) => row.size.trim()) || artworks.length);
+
+  useEffect(() => {
+    onUploadStateChange?.(isUploading);
+    return () => onUploadStateChange?.(false);
+  }, [isUploading, onUploadStateChange]);
+
+  useEffect(() => {
+    onDraftStateChange?.(hasUnaddedProduct);
+    return () => onDraftStateChange?.(false);
+  }, [hasUnaddedProduct, onDraftStateChange]);
 
   const updateSize = (id: string, field: 'size' | 'quantity', value: string) => {
     setSizeRows((current) => current.map((row) => row.id !== id ? row : {
@@ -41,6 +66,7 @@ export function ManualCustomProductForm({ stamps, disabled = false, isGift, onAd
   };
 
   const attachArtwork = async (rowId: string, source: File | string) => {
+    if (isUploading) return;
     setUploadingArtworkId(rowId);
     try {
       const uploaded = typeof source === 'string'
@@ -57,6 +83,31 @@ export function ManualCustomProductForm({ stamps, disabled = false, isGift, onAd
       toast.error(error instanceof Error ? error.message : 'Não foi possível anexar a arte.');
     } finally {
       setUploadingArtworkId(null);
+    }
+  };
+
+  const attachMultipleArtworks = async (files: FileList | null) => {
+    if (!files?.length || isUploading) return;
+    const selected = Array.from(files);
+    setBatchProgress({ current: 0, total: selected.length });
+    let failed = 0;
+    try {
+      for (const [index, file] of selected.entries()) {
+        setBatchProgress({ current: index + 1, total: selected.length });
+        try {
+          const uploaded = await uploadArtworkToCloudinary(file);
+          setArtworks((current) => [...current, {
+            id: newRowId('art'), name: file.name.replace(/\.[^.]+$/, ''), location: '', color: '', artSize: '',
+            notes: '', image: uploaded.secure_url,
+          }]);
+        } catch {
+          failed += 1;
+        }
+      }
+      if (failed) toast.error(`${failed} imagem(ns) não foram enviadas. Verifique o formato e tente novamente.`);
+      if (selected.length > failed) toast.success(`${selected.length - failed} imagem(ns) adicionadas. Informe a posição e medida de cada estampa.`);
+    } finally {
+      setBatchProgress(null);
     }
   };
 
@@ -77,7 +128,7 @@ export function ManualCustomProductForm({ stamps, disabled = false, isGift, onAd
   };
 
   const handleAdd = () => {
-    if (uploadingArtworkId) {
+    if (isUploading) {
       toast.error('Aguarde o envio da arte terminar.');
       return;
     }
@@ -136,6 +187,17 @@ export function ManualCustomProductForm({ stamps, disabled = false, isGift, onAd
       return;
     }
     onAdd(items);
+    // Cada inclusão cria um novo grupo de produto; os itens anteriores ficam no carrinho.
+    setProductName('');
+    setModel('');
+    setGarmentColor('');
+    setProductionNotes('');
+    setUnitPrice('');
+    setUnitCost('');
+    setSizeRows([{ id: newRowId('size'), size: '', quantity: 1 }]);
+    setArtworks([]);
+    setArtworkLinks({});
+    setDraftVersion((current) => current + 1);
   };
 
   return (
@@ -155,18 +217,9 @@ export function ManualCustomProductForm({ stamps, disabled = false, isGift, onAd
               Empresa / equipe (opcional)
               <input value={companyName} onChange={(event) => setCompanyName(event.target.value)} placeholder="Nome da empresa do cliente" className="border border-black/15 bg-white px-3 py-2.5 text-xs font-bold normal-case text-black" />
             </label>
-            <label className="flex flex-col gap-1 text-[9px] font-black uppercase text-gray-500">
-              Produto *
-              <input value={productName} onChange={(event) => setProductName(event.target.value)} placeholder="Camiseta personalizada" className="border border-black/15 bg-white px-3 py-2.5 text-xs font-bold normal-case text-black" />
-            </label>
-            <label className="flex flex-col gap-1 text-[9px] font-black uppercase text-gray-500">
-              Modelo / corte (opcional)
-              <input value={model} onChange={(event) => setModel(event.target.value)} placeholder="Oversized" className="border border-black/15 bg-white px-3 py-2.5 text-xs font-bold normal-case text-black" />
-            </label>
-            <label className="flex flex-col gap-1 text-[9px] font-black uppercase text-gray-500">
-              Cor da peça (opcional)
-              <input value={garmentColor} onChange={(event) => setGarmentColor(event.target.value)} placeholder="Bege" className="border border-black/15 bg-white px-3 py-2.5 text-xs font-bold normal-case text-black" />
-            </label>
+            <ManualChoiceWithOther key={`${draftVersion}-product`} label="Produto" value={productName} onChange={setProductName} options={PRODUCT_OPTIONS} required />
+            <ManualChoiceWithOther key={`${draftVersion}-model`} label="Modelo / corte (opcional)" value={model} onChange={setModel} options={MODEL_OPTIONS} />
+            <ManualChoiceWithOther key={`${draftVersion}-color`} label="Cor da peça (opcional)" value={garmentColor} onChange={setGarmentColor} options={COLOR_OPTIONS} />
             {!isGift && <label className="flex flex-col gap-1 text-[9px] font-black uppercase text-gray-500">
               Preço por peça (R$) *
               <input type="number" min="0" step="0.01" value={unitPrice} onChange={(event) => setUnitPrice(event.target.value)} placeholder="0,00" className="border border-black/15 bg-white px-3 py-2.5 text-xs font-bold font-mono text-black" />
@@ -187,8 +240,8 @@ export function ManualCustomProductForm({ stamps, disabled = false, isGift, onAd
               <button type="button" onClick={() => setSizeRows((current) => [...current, { id: newRowId('size'), size: '', quantity: 1 }])} className="flex min-h-9 items-center gap-1 border border-black/15 px-2 text-[9px] font-black uppercase"><Plus size={13} /> Adicionar tamanho</button>
             </div>
             {sizeRows.map((row) => (
-              <div key={row.id} className="grid grid-cols-[1fr_110px_38px] gap-2">
-                <input aria-label="Tamanho da peça" value={row.size} onChange={(event) => updateSize(row.id, 'size', event.target.value)} placeholder="P, M, G, GG..." className="min-h-10 border border-black/15 px-3 text-xs font-bold uppercase" />
+              <div key={row.id} className="grid grid-cols-[minmax(0,1fr)_70px_38px] gap-2 sm:grid-cols-[minmax(0,1fr)_110px_38px]">
+                <ManualChoiceWithOther label="Tamanho da peça" value={row.size} onChange={(value) => updateSize(row.id, 'size', value)} options={SIZE_OPTIONS} required />
                 <input aria-label={`Quantidade do tamanho ${row.size || 'novo'}`} type="number" min="1" value={row.quantity} onChange={(event) => updateSize(row.id, 'quantity', event.target.value)} className="min-h-10 border border-black/15 px-3 text-center text-xs font-bold" />
                 <button type="button" aria-label="Remover tamanho" disabled={sizeRows.length === 1} onClick={() => setSizeRows((current) => current.filter((item) => item.id !== row.id))} className="grid min-h-10 place-items-center border border-black/10 text-red-600 disabled:opacity-30"><Trash2 size={14} /></button>
               </div>
@@ -196,10 +249,15 @@ export function ManualCustomProductForm({ stamps, disabled = false, isGift, onAd
           </section>
 
           <section className="space-y-3 rounded border border-black/10 bg-white p-3">
-            <div className="flex items-center justify-between gap-2">
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <h4 className="text-[10px] font-black uppercase tracking-wider">Artes, posições e medidas (opcional)</h4>
               <button type="button" onClick={() => setArtworks((current) => [...current, { id: newRowId('art'), name: '', location: '', color: '', artSize: '', notes: '' }])} className="flex min-h-9 items-center gap-1 border border-black/15 px-2 text-[9px] font-black uppercase"><Plus size={13} /> Adicionar arte</button>
             </div>
+            <label className="flex min-h-11 cursor-pointer items-center justify-center gap-2 border border-black/15 bg-white px-3 text-center text-[10px] font-bold">
+              <Upload size={15} /> {batchProgress ? `Enviando ${batchProgress.current} de ${batchProgress.total} imagens...` : 'Selecionar várias imagens das estampas'}
+              <input type="file" accept="image/png,image/jpeg,image/webp" multiple disabled={isUploading} className="sr-only" onChange={(event) => { const files = event.target.files; void attachMultipleArtworks(files); event.currentTarget.value = ''; }} />
+            </label>
+            <p className="text-[9px] text-gray-600">Cada imagem cria uma estampa separada para informar o local e o tamanho. Você pode substituir ou remover uma imagem abaixo.</p>
             {artworks.map((art, index) => {
               const selectedStamp = stamps.find((item) => item.id === art.catalogStampId);
               const availableSizes = Array.isArray(selectedStamp?.availableSizes) ? selectedStamp.availableSizes : [];
@@ -228,26 +286,18 @@ export function ManualCustomProductForm({ stamps, disabled = false, isGift, onAd
                         <input value={art.name} onChange={(event) => updateArtwork(art.id, 'name', event.target.value)} placeholder="Logo da empresa" className="min-h-10 border border-black/15 bg-white px-3 text-[11px] font-bold normal-case text-black" />
                       </label>
                       <label className="flex min-h-10 cursor-pointer items-center justify-center gap-2 border border-black/15 bg-white px-3 text-[10px] font-bold">
-                        <Upload size={14} /> {uploadingArtworkId === art.id ? 'Enviando arte...' : 'Anexar imagem do cliente'}
-                        <input type="file" accept="image/png,image/jpeg,image/webp" disabled={Boolean(uploadingArtworkId)} className="sr-only" onChange={(event) => { const file = event.target.files?.[0]; event.currentTarget.value = ''; if (file) void attachArtwork(art.id, file); }} />
+                        <Upload size={14} /> {uploadingArtworkId === art.id ? 'Enviando arte...' : art.image ? 'Substituir imagem' : 'Anexar imagem do cliente'}
+                        <input type="file" accept="image/png,image/jpeg,image/webp" disabled={isUploading} className="sr-only" onChange={(event) => { const file = event.target.files?.[0]; event.currentTarget.value = ''; if (file) void attachArtwork(art.id, file); }} />
                       </label>
                       <div className="flex gap-2">
                         <input aria-label={`Link da arte ${index + 1}`} type="url" value={artworkLinks[art.id] || ''} onChange={(event) => setArtworkLinks((current) => ({ ...current, [art.id]: event.target.value }))} placeholder="Ou cole um link HTTPS direto para a imagem" className="min-h-10 min-w-0 flex-1 border border-black/15 bg-white px-3 text-[11px]" />
-                        <button type="button" disabled={Boolean(uploadingArtworkId) || !artworkLinks[art.id]?.trim()} onClick={() => void attachArtwork(art.id, artworkLinks[art.id].trim())} className="flex min-h-10 items-center gap-1 border border-black/15 bg-white px-3 text-[9px] font-black uppercase disabled:opacity-40"><Link2 size={13} /> Importar</button>
+                        <button type="button" disabled={isUploading || !artworkLinks[art.id]?.trim()} onClick={() => void attachArtwork(art.id, artworkLinks[art.id].trim())} className="flex min-h-10 items-center gap-1 border border-black/15 bg-white px-3 text-[9px] font-black uppercase disabled:opacity-40"><Link2 size={13} /> Importar</button>
                       </div>
-                      {art.image && <div className="flex items-center gap-2 border border-emerald-200 bg-emerald-50 p-2"><img src={art.image} alt={`Arte do cliente: ${art.name || index + 1}`} className="h-14 w-14 shrink-0 bg-white object-contain" referrerPolicy="no-referrer" /><span className="min-w-0 text-[10px] font-bold text-emerald-900">Imagem anexada. Ela ficará no pedido e poderá ser aberta na produção.</span></div>}
+                      {art.image && <div className="flex items-center gap-2 border border-emerald-200 bg-emerald-50 p-2"><img src={art.image} alt={`Arte do cliente: ${art.name || index + 1}`} className="h-14 w-14 shrink-0 bg-white object-contain" referrerPolicy="no-referrer" /><span className="min-w-0 flex-1 text-[10px] font-bold text-emerald-900">Imagem {index + 1} anexada para a produção.</span><button type="button" aria-label={`Remover imagem da arte ${index + 1}`} onClick={() => updateArtwork(art.id, 'image', '')} className="min-h-9 px-2 text-red-700"><Trash2 size={15} /></button></div>}
                     </div>
                   )}
                   <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                    <label className="flex flex-col gap-1 text-[8px] font-black uppercase text-gray-500">
-                      Posição na peça (opcional)
-                      <input value={art.location} onChange={(event) => updateArtwork(art.id, 'location', event.target.value)} placeholder="Peito esquerdo / costas" className="min-h-10 border border-black/15 bg-white px-3 text-[11px] font-bold normal-case text-black" />
-                    </label>
-                    <label className="flex flex-col gap-1 text-[8px] font-black uppercase text-gray-500">
-                      Cor da estampa (opcional)
-                      <input value={selectedStamp ? inferManualStampPrintColor(selectedStamp) || art.color : art.color} readOnly={Boolean(selectedStamp && inferManualStampPrintColor(selectedStamp))} onChange={(event) => updateArtwork(art.id, 'color', event.target.value)} placeholder="Preta / branca" className="min-h-10 border border-black/15 bg-white px-3 text-[11px] font-bold normal-case text-black read-only:bg-amber-50" />
-                      {selectedStamp && inferManualStampPrintColor(selectedStamp) && <span className="font-bold normal-case text-amber-800">Cor identificada pela variante do catálogo.</span>}
-                    </label>
+                    <ManualChoiceWithOther label="Local da estampa (opcional)" value={art.location} onChange={(value) => updateArtwork(art.id, 'location', value)} options={LOCATION_OPTIONS} />
                     {selectedStamp && availableSizes.length > 0 ? (
                       <label className="flex flex-col gap-1 text-[8px] font-black uppercase text-gray-500 sm:col-span-2">
                         Medida da estampa (obrigatória para baixar estoque)
@@ -260,10 +310,7 @@ export function ManualCustomProductForm({ stamps, disabled = false, isGift, onAd
                         </select>
                       </label>
                     ) : (
-                      <label className="flex flex-col gap-1 text-[8px] font-black uppercase text-gray-500 sm:col-span-2">
-                        Tamanho da arte (opcional)
-                        <input value={art.artSize} onChange={(event) => updateArtwork(art.id, 'artSize', event.target.value)} placeholder="Ex.: 10 × 10 cm" className="min-h-10 border border-black/15 bg-white px-3 text-[11px] font-bold normal-case text-black" />
-                      </label>
+                      <ManualChoiceWithOther label="Tamanho da arte (opcional)" value={art.artSize} onChange={(value) => updateArtwork(art.id, 'artSize', value)} options={ART_SIZE_OPTIONS} className="sm:col-span-2" />
                     )}
                     <label className="flex flex-col gap-1 text-[8px] font-black uppercase text-gray-500 sm:col-span-2">
                       Observação da arte (opcional)
@@ -274,8 +321,8 @@ export function ManualCustomProductForm({ stamps, disabled = false, isGift, onAd
               );
             })}
           </section>
-          <button type="button" disabled={Boolean(uploadingArtworkId)} onClick={handleAdd} className="flex min-h-12 w-full items-center justify-center gap-2 bg-black px-4 py-3 text-[10px] font-black uppercase tracking-widest text-[#eab308] hover:bg-[#eab308] hover:text-black disabled:opacity-50">
-            <Plus size={15} /> Adicionar peças ao pedido
+          <button type="button" disabled={isUploading} onClick={handleAdd} className="flex min-h-12 w-full items-center justify-center gap-2 bg-black px-4 py-3 text-[10px] font-black uppercase tracking-widest text-[#eab308] hover:bg-[#eab308] hover:text-black disabled:opacity-50">
+            <Plus size={15} /> Adicionar produto e continuar
           </button>
         </>
       )}
