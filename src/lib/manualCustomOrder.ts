@@ -19,6 +19,7 @@ export interface ManualCustomSizeInput {
 }
 
 export interface ManualCustomOrderInput {
+  groupId?: string;
   companyName?: string;
   productName: string;
   model: string;
@@ -105,6 +106,7 @@ export function buildManualCustomOrderLines(input: ManualCustomOrderInput) {
     };
   });
   const customDetails = {
+    groupId: input.groupId || `custom-${input.sizeRows[0]?.id || productName}`,
     companyName,
     productName,
     model,
@@ -130,4 +132,19 @@ export function buildManualCustomOrderLines(input: ManualCustomOrderInput) {
       customDetails,
       stamps: artworks,
     }));
+}
+
+/** Keep every personalized product's own size grid and artwork in the order-level
+ * production summary. Older consumers can still read the first group's fields. */
+export function buildManualCustomProduction(lines: Array<{ mode?: string; size: string; quantity: number; customDetails?: any }>) {
+  const groups = new Map<string, any>();
+  for (const item of lines) {
+    if (item.mode !== 'custom' || !item.customDetails) continue;
+    const details = item.customDetails;
+    const key = String(details.groupId || `${details.productName}|${details.model}|${details.garmentColor}|${JSON.stringify(details.artworks || [])}`);
+    if (!groups.has(key)) groups.set(key, { ...details, sizes: [] as Array<{ size: string; quantity: number }> });
+    groups.get(key).sizes.push({ size: item.size, quantity: Number(item.quantity) || 1 });
+  }
+  const products = [...groups.values()];
+  return products.length ? { ...products[0], groups: products } : null;
 }

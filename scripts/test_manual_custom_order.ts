@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
-import { buildManualCustomOrderLines, filterManualCustomArtworkRows, inferManualStampPrintColor, isPrivateManualArtworkUrl } from '../src/lib/manualCustomOrder.ts';
+import { buildManualCustomOrderLines, buildManualCustomProduction, filterManualCustomArtworkRows, inferManualStampPrintColor, isPrivateManualArtworkUrl } from '../src/lib/manualCustomOrder.ts';
 import { stampRequirementsInTransaction } from '../server/services/stampStock.service.ts';
+import { requireIsolatedTestDb } from './requireIsolatedTestDb.ts';
 
 const customerArtworkUrl = `https://fpacstore.com.br/api/artwork/12345678-1234-1234-1234-123456789abc?token=${'a'.repeat(64)}`;
 
@@ -93,4 +94,75 @@ const fakeTransaction = { get: async () => ({ exists: false, data: () => undefin
 const requirements = await stampRequirementsInTransaction(fakeTransaction as any, fakeDb as any, orderItems);
 assert.deepEqual(requirements, [{ stampId: 'FP-PRETA', printSize: '10x10', quantity: 5 }]);
 
-console.log('PASS: custom order lines preserve precise print-stock debit and allow optional artwork details.');
+const secondProduct = buildManualCustomOrderLines({
+  groupId: 'another-garment',
+  companyName: 'Equipe Alpha',
+  productName: 'Boné',
+  model: 'Aba curva',
+  garmentColor: 'Preto',
+  unitPrice: 39.9,
+  sizeRows: [{ id: 'size-unique', size: 'Único', quantity: 1 }],
+  artworks: [{ id: 'second-logo', name: 'Logo boné', location: 'Acima da aba', color: '', artSize: '8 × 6 cm', image: customerArtworkUrl }],
+});
+const otherColor = buildManualCustomOrderLines({
+  groupId: 'third-garment',
+  productName: 'Camisa de uniforme',
+  model: 'Oversized',
+  garmentColor: 'Branco',
+  unitPrice: 89.9,
+  sizeRows: [{ id: 'size-other-m', size: 'M', quantity: 1 }],
+  artworks: [],
+});
+const summary = buildManualCustomProduction([...lines, ...secondProduct, ...otherColor]);
+assert.equal(summary?.groups.length, 3, 'one order may contain different products, colors and sizes');
+assert.deepEqual(summary?.groups.map(group => [group.productName, group.garmentColor, group.sizes]), [
+  ['Camisa de uniforme', 'Bege', [{ size: 'P', quantity: 2 }, { size: 'M', quantity: 3 }]],
+  ['Boné', 'Preto', [{ size: 'Único', quantity: 1 }]],
+  ['Camisa de uniforme', 'Branco', [{ size: 'M', quantity: 1 }]],
+]);
+assert.deepEqual(summary?.groups.map(group => group.artworks.map((art: any) => [art.location, art.artSize, art.image])), [
+  [['Peito esquerdo', '10 × 10 cm', ''], ['Costas', '28 × 20 cm', customerArtworkUrl]],
+  [['Acima da aba', '8 × 6 cm', customerArtworkUrl]],
+  [],
+], 'artwork, position and dimensions must remain attached to the correct product');
+assert.equal(summary?.productName, 'Camisa de uniforme', 'legacy single-product consumers still see the first product');
+assert.equal(buildManualCustomProduction([]), null);
+
+// Exercise the real manual-order endpoint against an isolated in-memory database.
+// Two products and an uploaded image must survive saving without creating a live order.
+const isolatedDb = requireIsolatedTestDb();
+const { createManualOrderController } = await import('../server/controllers/admin.controller.ts');
+const customItems = [...secondProduct, ...otherColor].map((item) => ({
+  id: item.product.id,
+  productId: item.product.id,
+  manualLineId: item.id,
+  name: item.displayName,
+  color: item.color,
+  size: item.size,
+  quantity: item.quantity,
+  price: item.price,
+  customProduct: true,
+  customDetails: item.customDetails,
+  customization: { prints: item.stamps.map((art) => ({ stampId: art.id, printSize: art.printSize })) },
+}));
+const customOrder = {
+  id: 'MANUAL-MULTI-ISOLATED',
+  items: customItems,
+  customProduction: buildManualCustomProduction([...secondProduct, ...otherColor]),
+  total: customItems.reduce((total, item) => total + item.price * item.quantity, 0),
+  stockControl: 'no_move',
+  shippingStatus: 'pending',
+};
+const response: any = { statusCode: 200, status(code: number) { this.statusCode = code; return this; }, json(body: any) { this.body = body; return this; } };
+await createManualOrderController({ body: { order: customOrder }, user: { uid: 'isolated-test', email: 'isolated@example.invalid' } } as any, response);
+assert.equal(response.statusCode, 201);
+const saved = (await isolatedDb.collection('orders').doc(customOrder.id).get()).data();
+assert.equal(saved.items.length, 2);
+assert.deepEqual(saved.items.map((item: any) => [item.name, item.color, item.size]), [
+  ['Boné · Aba curva', 'Preto', 'Único'], ['Camisa de uniforme · Oversized', 'Branco', 'M'],
+]);
+assert.deepEqual(saved.customProduction.groups.map((group: any) => [group.productName, group.artworks.map((art: any) => art.image)]), [
+  ['Boné', [customerArtworkUrl]], ['Camisa de uniforme', []],
+]);
+
+console.log('PASS: custom order lines preserve per-product artwork, multi-product production details and precise stock debit.');

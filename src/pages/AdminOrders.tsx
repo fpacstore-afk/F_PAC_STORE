@@ -8,6 +8,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { OrderFinancialDrawer } from '../components/admin/financial/OrderFinancialDrawer';
 import { ManualProductPicker } from '../components/admin/ManualProductPicker';
 import { ManualCustomProductForm } from '../components/admin/ManualCustomProductForm';
+import { ManualChoiceWithOther } from '../components/admin/ManualChoiceWithOther';
 import { ManualStampPicker, stampImage, StampThumb } from '../components/admin/ManualStampPicker';
 import { AbandonedCartsRecovery } from '../components/admin/orders/AbandonedCartsRecovery';
 import { OrderProductionDrawer } from '../components/OrderProductionDrawer';
@@ -22,7 +23,7 @@ import { mergeProductsWithPrivateCosts, usePrivateProductCosts } from '../hooks/
 import { authenticatedFetch, parseApiJson } from '../lib/api';
 import { db } from '../lib/firebase';
 import { manualProductIdentity } from '../lib/manualProductIdentity';
-import { isPrivateManualArtworkUrl } from '../lib/manualCustomOrder';
+import { buildManualCustomProduction, isPrivateManualArtworkUrl } from '../lib/manualCustomOrder';
 import { isJoinvilleCEP } from '../lib/shipping';
 import { cn } from '../lib/utils';
 import { resolveProductStampRecipe, resolveProductStampRecipeEntries } from '../../shared/productStampRecipe';
@@ -421,6 +422,8 @@ function AdminOrdersInner() {
   const [itemQty, setItemQty] = useState(1);
   const [itemPrice, setItemPrice] = useState(0);
   const [tempItems, setTempItems] = useState<any[]>([]);
+  const [isManualArtworkUploading, setIsManualArtworkUploading] = useState(false);
+  const [isManualProductDraftDirty, setIsManualProductDraftDirty] = useState(false);
   const hasCustomManualItems = tempItems.some((item) => item.mode === 'custom');
   const hasCatalogManualItems = tempItems.some((item) => item.mode !== 'custom');
 
@@ -1363,43 +1366,55 @@ function AdminOrdersInner() {
     }[character] || character));
     const items = Array.isArray(order.items) ? order.items : [];
     const customProduction = order.customProduction || {};
-    const sizes = Array.isArray(customProduction.sizes) && customProduction.sizes.length
-      ? customProduction.sizes
-      : items.map((item: any) => ({ size: item.size, quantity: item.quantity }));
-    const rawArtworks = Array.isArray(customProduction.artworks) && customProduction.artworks.length
-      ? customProduction.artworks
-      : items.flatMap((item: any) => Array.isArray(item.customization?.prints) ? item.customization.prints : Array.isArray(item.printConfigs) ? item.printConfigs : []);
-    const artworks = rawArtworks.filter((art: any, index: number, all: any[]) => all.findIndex((other) => (
-      `${other.stampId || other.id || other.stamp}|${other.location || ''}|${other.artSize || other.printSize || ''}`
-      === `${art.stampId || art.id || art.stamp}|${art.location || ''}|${art.artSize || art.printSize || ''}`
-    )) === index);
-    const artworkQrCodes = await Promise.all(artworks.map(async (art: any) => {
-      if (art.source !== 'own_art' || !isPrivateManualArtworkUrl(art.image)) return '';
-      try { return await QRCode.toDataURL(art.image, { width: 180, margin: 1 }); }
-      catch { return ''; }
+    const groups = Array.isArray(customProduction.groups) && customProduction.groups.length
+      ? customProduction.groups
+      : [{
+          ...customProduction,
+          sizes: Array.isArray(customProduction.sizes) && customProduction.sizes.length
+            ? customProduction.sizes : items.map((item: any) => ({ size: item.size, quantity: item.quantity })),
+          artworks: Array.isArray(customProduction.artworks) && customProduction.artworks.length
+            ? customProduction.artworks
+            : items.flatMap((item: any) => Array.isArray(item.customization?.prints) ? item.customization.prints : Array.isArray(item.printConfigs) ? item.printConfigs : []),
+        }];
+    const productionBlocks = await Promise.all(groups.map(async (group: any, groupIndex: number) => {
+      const rawArtworks = Array.isArray(group.artworks) ? group.artworks : [];
+      const artworks = rawArtworks.filter((art: any, index: number, all: any[]) => all.findIndex((other) => (
+        `${other.stampId || other.id || other.stamp}|${other.location || ''}|${other.artSize || other.printSize || ''}`
+        === `${art.stampId || art.id || art.stamp}|${art.location || ''}|${art.artSize || art.printSize || ''}`
+      )) === index);
+      const artworkQrCodes = await Promise.all(artworks.map(async (art: any) => {
+        if (art.source !== 'own_art' || !isPrivateManualArtworkUrl(art.image)) return '';
+        try { return await QRCode.toDataURL(art.image, { width: 180, margin: 1 }); }
+        catch { return ''; }
+      }));
+      const itemRows = group.productName ? '' : items.map((item: any) => `
+        <div class="item"><div class="item-name">${escapeHtml(item.name || 'Produto')}</div>
+        <div class="meta">${escapeHtml(item.color || group.garmentColor || 'Cor não informada')} · TAMANHO ${escapeHtml(item.size || '—')} · <b>${escapeHtml(item.quantity || 1)} UN.</b></div></div>`).join('');
+      const sizeRows = (Array.isArray(group.sizes) ? group.sizes : []).map((entry: any) => `
+        <div class="size-row"><b>${escapeHtml(entry.size || '—')}</b><span>${escapeHtml(entry.quantity || 1)} peça(s)</span></div>`).join('');
+      const artworkRows = artworks.length ? artworks.map((art: any, index: number) => `
+        <section class="art">
+          <div class="art-title">ARTE ${index + 1}: ${escapeHtml(art.name || art.stamp || art.code || 'Arte')}</div>
+          ${art.source === 'catalog' && art.code ? `<div><b>Variante/código:</b> ${escapeHtml(art.code)}</div>` : ''}
+          <div><b>Aplicação:</b> ${escapeHtml(art.location || 'Não informada')}</div>
+          ${art.color ? `<div><b>Cor da estampa:</b> ${escapeHtml(art.color)}</div>` : ''}
+          <div><b>Tamanho:</b> ${escapeHtml(art.artSize || art.printSize || 'Não informado')}</div>
+          ${art.orientationInstruction ? `<div><b>Orientação:</b> ${escapeHtml(art.orientationInstruction)}</div>` : ''}
+          ${art.stockPrintSize && art.stockPrintSize !== (art.artSize || art.printSize) ? `<div><b>Medida do estoque:</b> ${escapeHtml(art.stockPrintSize)}</div>` : ''}
+          ${art.notes ? `<div class="note"><b>Detalhe:</b> ${escapeHtml(art.notes)}</div>` : ''}
+          ${art.source === 'own_art' ? '<div class="own-art">ARTE PRÓPRIA — SEM BAIXA NO CATÁLOGO</div>' : ''}
+          ${artworkQrCodes[index] ? `<div class="art-qr"><img src="${escapeHtml(artworkQrCodes[index])}" alt="QR da arte ${index + 1}" /><span>Escaneie para abrir a imagem enviada pelo cliente.</span></div>` : ''}
+        </section>`).join('') : '<div class="empty">Nenhuma especificação de estampa cadastrada.</div>';
+      return `<div class="section"><div class="section-title">Produto${groups.length > 1 ? ` ${groupIndex + 1}` : ''}</div>
+        ${group.companyName ? `<div class="meta"><b>Empresa/equipe:</b> ${escapeHtml(group.companyName)}</div>` : ''}
+        <div class="item-name">${escapeHtml(group.productName || items[0]?.name || 'Pedido')}</div>
+        ${group.model ? `<div class="model">Modelo/corte: ${escapeHtml(group.model)}</div>` : ''}
+        <div class="meta">Cor da peça: <b>${escapeHtml(group.garmentColor || items[0]?.color || 'Não informada')}</b></div>
+        ${group.notes ? `<div class="note"><b>Tecido/acabamento:</b> ${escapeHtml(group.notes)}</div>` : ''}${itemRows}</div>
+        <div class="section"><div class="section-title">Grade de tamanhos</div>${sizeRows || '<div class="empty">Tamanhos não informados.</div>'}</div>
+        <div class="section"><div class="section-title">Artes e aplicações</div>${artworkRows}</div>`;
     }));
-    const itemRows = customProduction.productName ? '' : items.map((item: any) => `
-      <div class="item">
-        <div class="item-name">${escapeHtml(item.name || 'Produto')}</div>
-        <div class="meta">${escapeHtml(item.color || customProduction.garmentColor || 'Cor não informada')} · TAMANHO ${escapeHtml(item.size || '—')} · <b>${escapeHtml(item.quantity || 1)} UN.</b></div>
-      </div>`).join('');
-    const sizeRows = sizes.map((entry: any) => `
-      <div class="size-row"><b>${escapeHtml(entry.size || '—')}</b><span>${escapeHtml(entry.quantity || 1)} peça(s)</span></div>`).join('');
-    const artworkRows = artworks.length ? artworks.map((art: any, index: number) => `
-      <section class="art">
-        <div class="art-title">ARTE ${index + 1}: ${escapeHtml(art.name || art.stamp || art.code || 'Arte')}</div>
-        ${art.source === 'catalog' && art.code ? `<div><b>Variante/código:</b> ${escapeHtml(art.code)}</div>` : ''}
-        <div><b>Aplicação:</b> ${escapeHtml(art.location || 'Não informada')}</div>
-        <div><b>Cor da estampa:</b> ${escapeHtml(art.color || 'Não informada')}</div>
-        <div><b>Tamanho:</b> ${escapeHtml(art.artSize || art.printSize || 'Não informado')}</div>
-        ${art.orientationInstruction ? `<div><b>Orientação:</b> ${escapeHtml(art.orientationInstruction)}</div>` : ''}
-        ${art.stockPrintSize && art.stockPrintSize !== (art.artSize || art.printSize) ? `<div><b>Medida do estoque:</b> ${escapeHtml(art.stockPrintSize)}</div>` : ''}
-        ${art.notes ? `<div class="note"><b>Detalhe:</b> ${escapeHtml(art.notes)}</div>` : ''}
-        ${art.source === 'own_art' ? '<div class="own-art">ARTE PRÓPRIA — SEM BAIXA NO CATÁLOGO</div>' : ''}
-        ${artworkQrCodes[index] ? `<div class="art-qr"><img src="${escapeHtml(artworkQrCodes[index])}" alt="QR da arte ${index + 1}" /><span>Escaneie para abrir a imagem enviada pelo cliente.</span></div>` : ''}
-      </section>`).join('') : '<div class="empty">Nenhuma especificação de estampa cadastrada.</div>';
     const dueDate = order.deliveryDate ? new Date(`${order.deliveryDate}T12:00:00`).toLocaleDateString('pt-BR') : '';
-    const itemName = customProduction.productName || items[0]?.name || 'Pedido';
 
     printWindow.document.write(`<!doctype html>
       <html lang="pt-BR">
@@ -1449,9 +1464,7 @@ function AdminOrdersInner() {
           <header><h1>F PAC STORE</h1><p>FICHA INTERNA DE PRODUÇÃO</p></header>
           <div class="order"><strong>PEDIDO #${escapeHtml(order.id)}</strong><span>${escapeHtml(new Date().toLocaleString('pt-BR'))}${dueDate ? ` · ENTREGA: ${escapeHtml(dueDate)}` : ''}</span></div>
           <div class="section"><div class="section-title">Cliente</div><div class="customer">${escapeHtml(order.customerName || 'Cliente')}</div><div class="meta">${escapeHtml(order.customerPhone || 'Telefone não informado')}</div></div>
-          <div class="section"><div class="section-title">Produto</div>${customProduction.companyName ? `<div class="meta"><b>Empresa/equipe:</b> ${escapeHtml(customProduction.companyName)}</div>` : ''}<div class="item-name">${escapeHtml(itemName)}</div>${customProduction.model ? `<div class="model">Modelo/corte: ${escapeHtml(customProduction.model)}</div>` : ''}<div class="meta">Cor da peça: <b>${escapeHtml(customProduction.garmentColor || items[0]?.color || 'Não informada')}</b></div>${customProduction.notes ? `<div class="note"><b>Tecido/acabamento:</b> ${escapeHtml(customProduction.notes)}</div>` : ''}${itemRows}</div>
-          <div class="section"><div class="section-title">Grade de tamanhos</div>${sizeRows || '<div class="empty">Tamanhos não informados.</div>'}</div>
-          <div class="section"><div class="section-title">Artes e aplicações</div>${artworkRows}</div>
+          ${productionBlocks.join('')}
           ${order.observations ? `<div class="section"><div class="section-title">Observações de produção</div><div class="observations">${escapeHtml(order.observations)}</div></div>` : ''}
           <footer>CONFERIR PEÇA, TAMANHO, COR E POSIÇÃO DAS ARTES ANTES DA PRODUÇÃO</footer>
           </main>
@@ -1701,6 +1714,14 @@ function AdminOrdersInner() {
 
   const handleSaveManualOrder = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isManualArtworkUploading) {
+      toast.error('Aguarde o envio das imagens antes de salvar.');
+      return;
+    }
+    if (manualProductMode === 'custom' && isManualProductDraftDirty) {
+      toast.error('Clique em “Adicionar produto e continuar” para incluir a peça preenchida antes de salvar.');
+      return;
+    }
     if (!custName.trim()) {
       toast.error("Por favor, preencha o nome do cliente.");
       return;
@@ -1711,6 +1732,10 @@ function AdminOrdersInner() {
     }
     if (tempItems.length === 0) {
       toast.error("Adicione pelo menos um produto ao pedido.");
+      return;
+    }
+    if (!orderOrigin.trim() || (manualOrderKind === 'sale' && !paymentMethodForm.trim())) {
+      toast.error('Informe o canal de origem e a forma de pagamento.');
       return;
     }
 
@@ -1730,6 +1755,7 @@ function AdminOrdersInner() {
         const isCustomProduct = item.mode === 'custom';
         return {
           id: item.product.id,
+          ...(isCustomProduct ? { manualLineId: item.id } : {}),
           productId: item.product.id,
           slug: item.product.slug,
           parentSlug: item.product.parentSlug || item.product.slug || item.product.id,
@@ -1816,7 +1842,7 @@ function AdminOrdersInner() {
       });
 
       const customLines = tempItems.filter((item) => item.mode === 'custom');
-      const customOrderDetails = customLines[0]?.customDetails;
+      const customOrderDetails = buildManualCustomProduction(customLines);
       const orderStockControl = customLines.length ? 'no_move' : stockControl;
 
       const orderPayload = {
@@ -1833,12 +1859,7 @@ function AdminOrdersInner() {
         state: isRetirada ? 'RET' : custState,
         cep: isRetirada ? '' : custCep,
         items: finalItems,
-        ...(customOrderDetails ? {
-          customProduction: {
-            ...customOrderDetails,
-            sizes: customLines.map((item) => ({ size: item.size, quantity: Number(item.quantity) || 1 })),
-          }
-        } : {}),
+        ...(customOrderDetails ? { customProduction: customOrderDetails } : {}),
         subtotal: subTotalSum,
         shipping: Number(manualOrderShipping),
         couponDiscount: Number(manualOrderDiscount),
@@ -4163,16 +4184,17 @@ Total: R$ ${totalSum.toFixed(2)}`;
                         <button type="button" disabled={hasCatalogManualItems} onClick={() => { setManualProductMode('custom'); setSelectedProduct(null); updateSelectedManualStamps([]); setStockControl('no_move'); }} className={cn('min-h-14 border px-3 py-2 text-left text-[10px] font-black uppercase disabled:cursor-not-allowed disabled:opacity-40', manualProductMode === 'custom' ? 'border-black bg-black text-[#eab308]' : 'border-black/15 bg-white text-gray-600')}><span className="block text-xs">3. Personalizados</span><span className="mt-1 block text-[8px] font-medium normal-case opacity-75">Descreva a peça, tamanhos e, se houver, as artes</span></button>
                       </div>
                       {manualProductMode === 'custom' ? (
-                        <ManualCustomProductForm
+                        <><ManualCustomProductForm
                           stamps={catalogStamps}
-                          disabled={tempItems.length > 0}
                           isGift={manualOrderKind === 'gift'}
+                          onUploadStateChange={setIsManualArtworkUploading}
+                          onDraftStateChange={setIsManualProductDraftDirty}
                           onAdd={(items) => {
-                            setTempItems(items);
+                            setTempItems((current) => [...current, ...items]);
                             setStockControl('no_move');
-                            toast.success('Peças personalizadas adicionadas ao pedido.');
+                            toast.success('Produto adicionado. Você pode incluir outra peça, cor ou tamanho.');
                           }}
-                        />
+                        />{hasCustomManualItems && <p className="text-[10px] font-bold text-gray-600">Produtos já adicionados ao carrinho: {tempItems.filter((item) => item.mode === 'custom').length} linha(s). Preencha e adicione outra peça se precisar.</p>}</>
                       ) : (
                         <>
                       <ManualProductPicker key={manualProductMode} label={manualProductMode === 'ready' ? 'Produto pronto do catálogo' : 'Peça base do estoque'} products={manualProductMode === 'ready' ? readyManualProducts : assembledManualProducts} selected={selectedProduct} formatPrice={formatManualMoney} onSelect={found => {
@@ -4416,37 +4438,9 @@ Total: R$ ${totalSum.toFixed(2)}`;
 
                 {/* ORIGEM / METODO PAGAMENTO / STATUS */}
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4 bg-gray-50 border border-black/5 p-4 text-xs font-black uppercase tracking-wider">
-                  <div className="flex flex-col gap-1.5">
-                    <label className="text-[8px] font-black text-gray-400">Canal de Origem</label>
-                    <select 
-                      value={orderOrigin} 
-                      onChange={e => setOrderOrigin(e.target.value)}
-                      className="py-2 px-3 bg-white border border-black/10 text-[11px] font-bold cursor-pointer"
-                    >
-                      <option value="WhatsApp">🟢 WhatsApp</option>
-                      <option value="Instagram">📸 Instagram</option>
-                      <option value="Facebook">🔵 Facebook</option>
-                      <option value="Loja Física">🏠 Loja Física</option>
-                      <option value="Indicação">🤝 Indicação</option>
-                      <option value="Venda Direta">🚪 Venda Direta</option>
-                      <option value="Marketplace">🛒 Marketplace</option>
-                    </select>
-                  </div>
+                  <ManualChoiceWithOther label="Canal de Origem" value={orderOrigin} onChange={setOrderOrigin} options={['WhatsApp', 'Instagram', 'Facebook', 'Loja Física', 'Indicação', 'Venda Direta', 'Marketplace']} required />
 
-                  {manualOrderKind === 'sale' && <div className="flex flex-col gap-1.5">
-                    <label className="text-[8px] font-black text-gray-400">Forma de Pagamento</label>
-                    <select 
-                      value={paymentMethodForm} 
-                      onChange={e => setPaymentMethodForm(e.target.value)}
-                      className="py-2 px-3 bg-white border border-black/10 text-[11px] font-bold cursor-pointer"
-                    >
-                      <option value="PIX">⚡ PIX</option>
-                      <option value="Cartão de Crédito">💳 Cartão de Crédito</option>
-                      <option value="Dinheiro">💵 Dinheiro (Física/Direta)</option>
-                      <option value="Boleto">📄 Boleto Bancário</option>
-                      <option value="Transferência">🏦 Transferência</option>
-                    </select>
-                  </div>}
+                  {manualOrderKind === 'sale' && <ManualChoiceWithOther label="Forma de Pagamento" value={paymentMethodForm} onChange={setPaymentMethodForm} options={['PIX', 'Cartão de Crédito', 'Dinheiro', 'Boleto', 'Transferência']} required />}
 
                   <div className="flex flex-col gap-1.5">
                     <label className="text-[8px] font-black text-gray-400">Etapa operacional do pedido</label>
@@ -4618,7 +4612,7 @@ Total: R$ ${totalSum.toFixed(2)}`;
                   </button>
                   <button 
                     type="submit" 
-                    disabled={savingManualOrder}
+                    disabled={savingManualOrder || isManualArtworkUploading}
                     className="px-10 py-3 bg-black border-2 border-black text-[#eab308] hover:bg-[#eab308] hover:text-black uppercase text-[11px] font-black tracking-[0.15em] transition-all cursor-pointer disabled:bg-gray-300 disabled:text-gray-500 disabled:border-transparent font-sans text-center"
                   >
                     {savingManualOrder ? 'Confirmando...' : (manualOrderKind === 'gift' ? 'Salvar Brinde' : 'Salvar Pedido Manual')}
