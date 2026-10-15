@@ -1,7 +1,8 @@
 import { FieldValue } from 'firebase-admin/firestore';
 import { calculateCashForecast } from '../../shared/cashForecast';
 import { roundMoney } from '../../shared/financialDefaults';
-import { MANUAL_CASH_FLOW_CATEGORIES } from '../../shared/cashFlowOptions';
+import { MANUAL_CASH_FLOW_CATEGORIES, QUICK_EXPENSE_CATEGORIES } from '../../shared/cashFlowOptions';
+import { financialDateKey } from '../../shared/cashFlow';
 import { isSalesCashFlowEntry, SALES_MOVEMENT_MESSAGE } from '../../shared/financialMovementScope';
 import { Request, Response } from 'express';
 import { getDb } from '../firebase.js';
@@ -2241,7 +2242,7 @@ export async function getFinancialLedgerController(req: Request, res: Response) 
  */
 export async function createFinancialExpenseController(req: Request, res: Response) {
   try {
-    const { category, subcategory, description, amount, date, type, paymentMethod, idempotencyKey } = req.body;
+    const { category, subcategory, description, amount, date, type, paymentMethod, idempotencyKey, sourceType, preventSameDayDuplicate, allowDuplicate } = req.body;
     const user = (req as any).user;
 
     // Check the original category before normalization can erase a sales marker.
@@ -2259,13 +2260,16 @@ export async function createFinancialExpenseController(req: Request, res: Respon
       return res.status(400).json({ error: 'INVALID_AMOUNT', message: 'O valor da despesa/lançamento deve ser um número positivo maior que zero.' });
     }
 
-    const validCategories = ['RECEITA', 'COGS', 'DESPESA_VARIAVEL', 'DESPESA_FIXA', 'MARKETING', 'FRETE', 'TAXA_GATEWAY', 'INVESTIMENTO', 'AJUSTE', ...MANUAL_CASH_FLOW_CATEGORIES.map(category => category.value.toUpperCase())];
+    const validCategories = ['RECEITA', 'COGS', 'DESPESA_VARIAVEL', 'DESPESA_FIXA', 'MARKETING', 'FRETE', 'TAXA_GATEWAY', 'INVESTIMENTO', 'AJUSTE', ...MANUAL_CASH_FLOW_CATEGORIES.map(category => category.value.toUpperCase()), ...QUICK_EXPENSE_CATEGORIES.map(category => category.toUpperCase())];
     const rawCategory = String(category || 'DESPESA_FIXA').trim().toUpperCase();
     const normalizedCategory = validCategories.includes(rawCategory) ? rawCategory : 'DESPESA_FIXA';
 
     const entryType: 'in' | 'out' = type === 'in' || normalizedCategory === 'RECEITA' ? 'in' : 'out';
-    const entryDate = date && !isNaN(new Date(date).getTime()) ? new Date(date).toISOString().split('T')[0] : new Date().toISOString().split('T')[0];
-    const effectiveDesc = String(description || '').trim() || 'Lançamento financeiro manual';
+    const entryDate = date ? financialDateKey(date) : financialDateKey(new Date());
+    if (!entryDate || (date && (typeof date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(date)))) {
+      return res.status(400).json({ error: 'INVALID_DATE', message: 'Informe uma data válida.' });
+    }
+    const effectiveDesc = String(description || '').trim() || (sourceType === 'quick_expense' ? String(category || 'Despesa') : 'Lançamento financeiro manual');
     const effectiveKey = idempotencyKey.trim();
 
     const db = getDb();
@@ -2278,6 +2282,29 @@ export async function createFinancialExpenseController(req: Request, res: Respon
         return { idempotentReplay: true, id: docId, data: snap.data() };
       }
 
+      if (preventSameDayDuplicate && !allowDuplicate && entryType === 'out') {
+        const normalized = (value: any) => String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toUpperCase();
+        const [cashflowOnDate, investmentsOnDate, trafficOnDate] = await Promise.all([
+          transaction.get(db.collection('financial_cashflow').where('date', '==', entryDate)),
+          transaction.get(db.collection('financial_investments').where('date', '==', entryDate)),
+          transaction.get(db.collection('financial_traffic').where('date', '==', entryDate))
+        ]);
+        const active = (entry: any) => !['voided', 'cancelled', 'canceled', 'cancelado'].includes(String(entry.status || '').toLowerCase());
+        const matchesAmount = (value: any) => Math.round(Number(value || 0) * 100) === Math.round(parsedAmount * 100);
+        const duplicate = cashflowOnDate.docs.find((item: any) => {
+          const existing = item.data() || {};
+          return item.id !== docId && existing.type === 'out' && active(existing) &&
+            normalized(existing.category) === normalized(normalizedCategory) && matchesAmount(existing.amount);
+        }) || (normalized(normalizedCategory) === 'TRAFEGO PAGO' && trafficOnDate.docs.find((item: any) => {
+          const existing = item.data() || {};
+          return active(existing) && matchesAmount(existing.amountSpent ?? existing.amount);
+        })) || investmentsOnDate.docs.find((item: any) => {
+          const existing = item.data() || {};
+          return active(existing) && normalized(existing.category) === normalized(normalizedCategory) && matchesAmount(existing.amount);
+        });
+        if (duplicate) return { possibleDuplicate: true, id: duplicate.id };
+      }
+
       const timestamp = new Date().toISOString();
       const payload = {
         id: docId,
@@ -2287,7 +2314,8 @@ export async function createFinancialExpenseController(req: Request, res: Respon
         description: effectiveDesc,
         amount: Number(parsedAmount.toFixed(2)),
         date: entryDate,
-        paymentMethod: paymentMethod ? String(paymentMethod).trim() : 'Manual',
+        paymentMethod: paymentMethod ? String(paymentMethod).trim() : '',
+        ...(sourceType === 'quick_expense' ? { sourceType: 'quick_expense' } : {}),
         status: 'paid',
         idempotencyKey: effectiveKey,
         actorEmail: user?.email || 'admin@fpacstore.com.br',
@@ -2321,6 +2349,9 @@ export async function createFinancialExpenseController(req: Request, res: Respon
       logger.info(`⏹️ [CASHFLOW-REPLAY] Idempotent replay for key '${effectiveKey}'`);
       return res.json({ success: true, idempotentReplay: true, entry: result.data });
     }
+    if (result.possibleDuplicate) {
+      return res.status(409).json({ error: 'POSSIBLE_DUPLICATE', message: 'Já existe uma despesa com a mesma data, categoria e valor.', existingId: result.id });
+    }
 
     await recordAuditLog({
       userId: user?.uid,
@@ -2337,6 +2368,78 @@ export async function createFinancialExpenseController(req: Request, res: Respon
   } catch (error: any) {
     logger.error(`❌ [CREATE-EXPENSE-ERR] ${error.message}`, error);
     return res.status(500).json({ error: error.message || 'Erro ao criar despesa/lançamento financeiro.' });
+  }
+}
+
+/** Update the original document in place; immutable before/after evidence is
+ * written in the ledger. Payable mirrors are maintained by their own workflow.
+ */
+export async function updateFinancialExpenseController(req: Request, res: Response) {
+  try {
+    const { source, id } = req.params;
+    const collectionName: Record<string, string> = { cashflow: 'financial_cashflow', investments: 'financial_investments', traffic: 'financial_traffic' };
+    if (!collectionName[source] || !id) return res.status(400).json({ error: 'INVALID_SOURCE', message: 'Origem da despesa inválida.' });
+    const { amount, date, description, category, paymentMethod, idempotencyKey, expectedUpdatedAt } = req.body;
+    const user = (req as any).user;
+    if (typeof idempotencyKey !== 'string' || !idempotencyKey.trim()) return res.status(400).json({ error: 'IDEMPOTENCY_KEY_REQUIRED' });
+    const parsedAmount = Number(amount);
+    if (!Number.isFinite(parsedAmount) || parsedAmount <= 0 || Math.round(parsedAmount * 100) !== parsedAmount * 100) {
+      return res.status(400).json({ error: 'INVALID_AMOUNT', message: 'Informe um valor positivo com no máximo duas casas decimais.' });
+    }
+    if (typeof date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(date) || financialDateKey(date) !== date) {
+      return res.status(400).json({ error: 'INVALID_DATE', message: 'Informe uma data válida.' });
+    }
+    const effectiveDesc = String(description || '').trim();
+    if (!effectiveDesc) return res.status(400).json({ error: 'DESCRIPTION_REQUIRED' });
+    const db = getDb();
+    const docRef = db.collection(collectionName[source]).doc(id);
+    const eventId = deriveLedgerEventId(idempotencyKey.trim());
+    const eventRef = db.collection('financial_events').doc(eventId);
+    const result = await db.runTransaction(async transaction => {
+      const previousEvent = await transaction.get(eventRef);
+      if (previousEvent.exists) return { idempotentReplay: true };
+      const snap = await transaction.get(docRef);
+      if (!snap.exists) return { error: 'EXPENSE_NOT_FOUND', status: 404 };
+      const current = snap.data() || {};
+      if (!['voided', 'cancelled', 'canceled'].includes(String(current.status || '').toLowerCase()) &&
+        !(source === 'cashflow' && (current.type !== 'out' || isSalesCashFlowEntry(current) || current.sourceType === 'accounts_payable'))) {
+        if (expectedUpdatedAt && current.updatedAt && String(expectedUpdatedAt) !== String(current.updatedAt)) {
+          return { error: 'EXPENSE_CHANGED', status: 409 };
+        }
+        let changes: Record<string, any>;
+        if (source === 'cashflow') {
+          const allowed = [...MANUAL_CASH_FLOW_CATEGORIES.map(value => value.value.toUpperCase()), ...QUICK_EXPENSE_CATEGORIES.map(value => value.toUpperCase()), 'COGS', 'DESPESA_VARIAVEL', 'DESPESA_FIXA', 'MARKETING', 'FRETE', 'INVESTIMENTO'];
+          const selected = String(category || '').trim().toUpperCase();
+          if (!allowed.includes(selected) && selected !== String(current.category || '').toUpperCase()) return { error: 'INVALID_CATEGORY', status: 400 };
+          changes = { amount: parsedAmount, date, description: effectiveDesc, category: selected, paymentMethod: String(paymentMethod || '').trim() };
+        } else if (source === 'traffic') {
+          changes = { amountSpent: parsedAmount, date, campaignName: effectiveDesc, paymentMethod: String(paymentMethod || '').trim() };
+        } else {
+          changes = { amount: parsedAmount, date, title: effectiveDesc, description: effectiveDesc, paymentMethod: String(paymentMethod || '').trim() };
+        }
+        const timestamp = new Date().toISOString();
+        transaction.update(docRef, { ...changes, updatedAt: timestamp });
+        transaction.set(eventRef, {
+          id: eventId, orderId: id, type: 'expense_updated', amount: parsedAmount,
+          previousAmount: Number(current.amountSpent ?? current.amount ?? 0),
+          previousDate: current.date || '', newDate: date,
+          previousCategory: current.category || (source === 'traffic' ? 'MARKETING' : ''),
+          newCategory: changes.category || current.category || (source === 'traffic' ? 'MARKETING' : ''),
+          sourceCollection: collectionName[source], actorId: user?.uid || 'admin', actorEmail: user?.email || '',
+          reason: effectiveDesc, idempotencyKey: idempotencyKey.trim(), createdAt: timestamp,
+          recordedAt: FieldValue.serverTimestamp()
+        });
+        return { entry: { ...current, ...changes, updatedAt: timestamp }, idempotentReplay: false };
+      }
+      return { error: 'EXPENSE_NOT_EDITABLE', status: 409 };
+    });
+    if (result.error) return res.status(result.status).json({ error: result.error, message: result.error === 'EXPENSE_CHANGED' ? 'Esta despesa mudou. Atualize a página antes de editar novamente.' : 'Esta despesa não pode ser editada.' });
+    if (result.idempotentReplay) return res.json({ success: true, idempotentReplay: true });
+    await recordAuditLog({ userId: user?.uid, userEmail: user?.email, action: 'UPDATE_FINANCIAL_EXPENSE', resource: collectionName[source], resourceId: id, metadata: { amount: parsedAmount, idempotencyKey }, ip: req.ip });
+    return res.json({ success: true, entry: result.entry });
+  } catch (error: any) {
+    logger.error(`❌ [UPDATE-EXPENSE-ERR] ${error.message}`, error);
+    return res.status(500).json({ error: 'UPDATE_EXPENSE_FAILED', message: 'Erro ao editar despesa.' });
   }
 }
 

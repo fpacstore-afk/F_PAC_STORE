@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 import AdminAccountsReceivable from './AdminAccountsReceivable';
 import { FinancialLedgerView } from './admin/financial/FinancialLedgerView';
+import { ExpenseCenter } from './admin/financial/ExpenseCenter';
 import { AccountsPayableManager } from './admin/financial/AccountsPayableManager';
 import { SuppliersManager } from './admin/financial/SuppliersManager';
 import { CashForecastView } from './admin/financial/CashForecastView';
@@ -105,6 +106,7 @@ export type FinancialSubTab =
   | 'suppliers'
   | 'goals'
   | 'cashflow' 
+  | 'expenses'
   | 'traffic' 
   | 'products' 
   | 'sheets' 
@@ -203,7 +205,7 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
   }, [newProductAutomaticCost]);
 
   // Form states for adding items
-  const [cfForm, setCfForm] = useState({ description: '', amount: '', type: 'out' as 'in' | 'out', category: 'Outros', date: financialDateKey(new Date()) || '' });
+  const [cfForm, setCfForm] = useState({ description: '', amount: '', type: 'in' as 'in' | 'out', category: 'Outros', date: financialDateKey(new Date()) || '' });
   const [cfDescriptionOption, setCfDescriptionOption] = useState('');
   const [savingCashflow, setSavingCashflow] = useState(false);
   const [trafficForm, setTrafficForm] = useState({ campaignName: '', amountSpent: '', clicks: '', conversions: '', date: new Date().toISOString().split('T')[0] });
@@ -478,7 +480,7 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
     const manualIn = filteredCashflow.filter(c => c.type === 'in' && (c as any).status !== 'voided').reduce((acc, current) => acc + Number(current.amount || 0), 0);
     const manualOut = filteredCashflow.filter(c => c.type === 'out' && (c as any).status !== 'voided').reduce((acc, current) => acc + Number(current.amount || 0), 0);
     
-    const trafficAdsSpent = filteredTraffic.reduce((acc, t) => acc + Number(t.amountSpent || 0), 0);
+    const trafficAdsSpent = dreStats.marketingExpenses;
 
     const totalEntradas = dreStats.cashIn;
     const totalSaidas = dreStats.cashOut;
@@ -672,7 +674,7 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
       }
 
       toast.success('Lançamento inserido no Fluxo de Caixa!');
-      setCfForm({ description: '', amount: '', type: 'out', category: 'Outros', date: financialDateKey(new Date()) || '' });
+      setCfForm({ description: '', amount: '', type: 'in', category: 'Outros', date: financialDateKey(new Date()) || '' });
       setCfDescriptionOption('');
     } catch (err: any) {
       toast.error(err.message || 'Erro ao registrar despesa.');
@@ -721,6 +723,7 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
   };
 
   const handleVoidExpense = async (expenseId: string) => {
+    if (!window.confirm('Anular esta movimentação? O registro será mantido para auditoria.')) return;
     try {
       const idempotencyKey = `void_exp_${expenseId}_${Date.now()}`;
       const res = await authenticatedFetch('/api/admin/financial/expenses/void', {
@@ -745,6 +748,7 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
   };
 
   const handleVoidInvestment = async (investmentId: string) => {
+    if (!window.confirm('Anular este investimento? O registro será mantido para auditoria.')) return;
     try {
       const idempotencyKey = `void_inv_${investmentId}_${Date.now()}`;
       const res = await authenticatedFetch('/api/admin/financial/investments/void', {
@@ -769,6 +773,7 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
   };
 
   const handleVoidTraffic = async (trafficId: string) => {
+    if (!window.confirm('Anular esta campanha? O registro será mantido para auditoria.')) return;
     try {
       const idempotencyKey = `void_trf_${trafficId}_${Date.now()}`;
       const res = await authenticatedFetch('/api/admin/financial/traffic/void', {
@@ -1194,15 +1199,16 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
         {[
           { id: 'dashboard', label: '1. Visão Geral', icon: <PieChart size={14} /> },
           { id: 'orders', label: '2. Vendas e pedidos', icon: <ShoppingBag size={14} /> },
-          { id: 'cashflow', label: '3. Entradas e saídas', icon: <Clock size={14} /> },
-          { id: 'receivables', label: '4. Contas a Receber', icon: <CreditCard size={14} /> },
-          { id: 'payables', label: '5. Contas a Pagar', icon: <Building2 size={14} /> },
-          { id: 'goals', label: '6. Metas', icon: <Target size={14} /> },
-          { id: 'suppliers', label: '7. Fornecedores', icon: <Truck size={14} /> },
-          { id: 'ledger', label: '8. Histórico', icon: <FileText size={14} /> },
-          { id: 'traffic', label: '9. Tráfego Ads', icon: <BarChart3 size={14} /> },
-          { id: 'products', label: '10. Margem por produto', icon: <Package size={14} /> },
-          { id: 'sheets', label: '11. Integração Sheets', icon: <FileSpreadsheet size={14} /> }
+          { id: 'expenses', label: '3. Despesas', icon: <Receipt size={14} /> },
+          { id: 'cashflow', label: '4. Entradas e saídas', icon: <Clock size={14} /> },
+          { id: 'receivables', label: '5. Contas a Receber', icon: <CreditCard size={14} /> },
+          { id: 'payables', label: '6. Contas a Pagar', icon: <Building2 size={14} /> },
+          { id: 'goals', label: '7. Metas', icon: <Target size={14} /> },
+          { id: 'suppliers', label: '8. Fornecedores', icon: <Truck size={14} /> },
+          { id: 'ledger', label: '9. Histórico', icon: <FileText size={14} /> },
+          { id: 'traffic', label: '10. Tráfego Ads', icon: <BarChart3 size={14} /> },
+          { id: 'products', label: '11. Margem por produto', icon: <Package size={14} /> },
+          { id: 'sheets', label: '12. Integração Sheets', icon: <FileSpreadsheet size={14} /> }
         ].map(tab => (
           <button
             key={tab.id}
@@ -1219,6 +1225,8 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
           </button>
         ))}
       </div>
+
+      {activeSubTab === 'expenses' && <ExpenseCenter cashflow={cashflow} investments={investments} traffic={traffic} />}
 
       {/* ----------------------------------------------------
           SUBTAB 1: DASHBOARD
@@ -2070,7 +2078,8 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
               {/* Insert Form */}
               <div className="bg-white border p-8 space-y-6 h-fit relative">
                  <div className="absolute top-0 left-0 w-1.5 h-full bg-[#eab308]" />
-                 <h4 className="text-xs font-black uppercase tracking-widest italic border-b border-black/5 pb-3">Lançamento de Entrada / Saída</h4>
+                 <h4 className="text-xs font-black uppercase tracking-widest italic border-b border-black/5 pb-3">Entrada da empresa</h4>
+                 <button type="button" onClick={() => setActiveSubTab('expenses')} className="text-xs font-bold text-amber-700 underline">Para registrar despesas, abra a Central de Despesas.</button>
                  
                  <form onSubmit={handleAddCashFlow} className="space-y-4">
                      <div className="space-y-1">
@@ -2111,7 +2120,6 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
                        <div className="space-y-1">
                           <label className="text-[9px] font-black uppercase text-gray-400 tracking-wider">Tipo Fluxo</label>
                           <select value={cfForm.type} onChange={e => setCfForm({...cfForm, type: e.target.value as any})} className="w-full bg-[#fcfcfc] border border-black/10 px-4 py-3 text-xs uppercase font-extrabold focus:outline-none focus:ring-1 focus:ring-[#eab308] cursor-pointer">
-                             <option value="out">Saída (Gasto)</option>
                              <option value="in">Entrada (Não é venda)</option>
                           </select>
                        </div>

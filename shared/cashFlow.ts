@@ -20,7 +20,10 @@ export function calculateRecordedCashFlow(orders: any[], cashflow: any[] = [], t
     if (!fee.isExact) estimatedFeeOrders++;
   }
   const linkedPayments = new Map<string, number>();
-  for (const entry of companyMovements(cashflow, investments).filter(isActiveFinancialRecord)) {
+  const movements = companyMovements(cashflow, investments).filter(isActiveFinancialRecord);
+  const representedTraffic = new Set(movements.filter(entry => entry.sourceType === 'traffic' && entry.sourceReferenceId)
+    .map(entry => String(entry.sourceReferenceId)));
+  for (const entry of movements) {
     // Historical sales mirrors must not be added on top of order receipts.
     if (isSalesCashFlowEntry(entry)) continue;
     const amount = Number(entry.amount ?? 0);
@@ -33,7 +36,9 @@ export function calculateRecordedCashFlow(orders: any[], cashflow: any[] = [], t
       }
     }
   }
-  for (const entry of traffic.filter(isActiveFinancialRecord)) cashOut += Number(entry.amountSpent ?? entry.amount ?? 0);
+  for (const entry of traffic.filter(isActiveFinancialRecord)) {
+    if (!representedTraffic.has(String(entry.id))) cashOut += Number(entry.amountSpent ?? entry.amount ?? 0);
+  }
   // Include only the portion of an actual payable settlement not already mirrored in cashflow.
   for (const payable of payables.filter(isActiveFinancialRecord)) {
     cashOut += Math.max(0, Number(payable.amountPaid ?? 0) - (linkedPayments.get(String(payable.id)) || 0));

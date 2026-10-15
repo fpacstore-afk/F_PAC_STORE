@@ -78,7 +78,7 @@ assert.equal(calculateCashForecast([order], [], [oldSale, fuel, capital], [], ne
 const financialUI = readFileSync('src/components/AdminFinancial.tsx', 'utf8');
 assert.doesNotMatch(financialUI, /activeSubTab === 'investments'|id: 'investments'|handleAddInvestment|invForm/);
 const tabNumbers = [...financialUI.matchAll(/id: '[a-z]+', label: '(\d+)\. /g)].map(match => Number(match[1]));
-assert.deepEqual(tabNumbers, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]);
+assert.deepEqual(tabNumbers, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]);
 
 async function main() {
   const db = requireIsolatedTestDb();

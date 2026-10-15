@@ -83,6 +83,7 @@ import {
   getOrderFinancialEventsController,
   getFinancialLedgerController,
   createFinancialExpenseController,
+  updateFinancialExpenseController,
   voidFinancialExpenseController,
   createFinancialInvestmentController,
   voidFinancialInvestmentController,
@@ -518,6 +519,7 @@ apiRouter.post("/admin/orders/:orderId/correct-refund-reversal-total", adminApiL
 apiRouter.get("/admin/orders/:orderId/financial-events", adminApiLimiter, authenticateAdmin, getOrderFinancialEventsController);
 apiRouter.get("/admin/financial/ledger", adminApiLimiter, authenticateAdmin, getFinancialLedgerController);
 apiRouter.post("/admin/financial/expenses", adminApiLimiter, authenticateAdmin, createFinancialExpenseController);
+apiRouter.patch("/admin/financial/expenses/:source/:id", adminApiLimiter, authenticateAdmin, updateFinancialExpenseController);
 apiRouter.post("/admin/financial/expenses/void", adminApiLimiter, authenticateAdmin, voidFinancialExpenseController);
 apiRouter.post("/admin/financial/investments", adminApiLimiter, authenticateAdmin, createFinancialInvestmentController);
 apiRouter.post("/admin/financial/investments/void", adminApiLimiter, authenticateAdmin, voidFinancialInvestmentController);

@@ -21,6 +21,11 @@ export const MANUAL_CASH_FLOW_CATEGORIES = [
   { value: 'Outros', label: 'Outros' }
 ] as const;
 
+export const QUICK_EXPENSE_CATEGORIES = [
+  'Combustível', 'DTF', 'Tráfego Pago', 'Embalagens', 'Materiais',
+  'Fornecedores', 'Manutenção', 'Outros'
+] as const;
+
 export const CASH_FLOW_DESCRIPTION_OPTIONS = [
   'Pagamento de fornecedor',
   'Compra de peças lisas',
