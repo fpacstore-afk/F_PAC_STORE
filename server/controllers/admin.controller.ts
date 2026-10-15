@@ -2383,7 +2383,7 @@ export async function updateFinancialExpenseController(req: Request, res: Respon
     const user = (req as any).user;
     if (typeof idempotencyKey !== 'string' || !idempotencyKey.trim()) return res.status(400).json({ error: 'IDEMPOTENCY_KEY_REQUIRED' });
     const parsedAmount = Number(amount);
-    if (!Number.isFinite(parsedAmount) || parsedAmount <= 0 || Math.round(parsedAmount * 100) !== parsedAmount * 100) {
+    if (!Number.isFinite(parsedAmount) || parsedAmount <= 0 || Math.abs(Math.round(parsedAmount * 100) - parsedAmount * 100) > 1e-6) {
       return res.status(400).json({ error: 'INVALID_AMOUNT', message: 'Informe um valor positivo com no máximo duas casas decimais.' });
     }
     if (typeof date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(date) || financialDateKey(date) !== date) {

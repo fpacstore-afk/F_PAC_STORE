@@ -54,13 +54,13 @@ assert.equal(secondRealPurchase.statusCode, 200, 'a separately confirmed real pu
 await invoke(voidFinancialExpenseController, { expenseId: secondRealPurchase.body.entry.id, idempotencyKey: 'void-confirmed-second', reason: 'Teste' });
 
 const updated = await invoke(updateFinancialExpenseController, {
-  amount: 55, date: '2026-10-15', description: 'Combustível para entrega', category: 'Combustível', paymentMethod: '',
+  amount: 55.19, date: '2026-10-15', description: 'Combustível para entrega', category: 'Combustível', paymentMethod: '',
   expectedUpdatedAt: initial.body.entry.updatedAt, idempotencyKey: 'edit-fuel-once'
 }, { source: 'cashflow', id: initial.body.entry.id });
 assert.equal(updated.statusCode, 200);
-assert.equal(updated.body.entry.amount, 55);
+assert.equal(updated.body.entry.amount, 55.19);
 assert.equal((await invoke(updateFinancialExpenseController, {
-  amount: 55, date: '2026-10-15', description: 'Combustível para entrega', category: 'Combustível',
+  amount: 55.19, date: '2026-10-15', description: 'Combustível para entrega', category: 'Combustível',
   idempotencyKey: 'edit-fuel-once'
 }, { source: 'cashflow', id: initial.body.entry.id })).body.idempotentReplay, true);
 const stale = await invoke(updateFinancialExpenseController, {
@@ -87,17 +87,17 @@ const activeTraffic = (await db.collection('financial_traffic').get()).docs.map(
 const activeInvestments = (await db.collection('financial_investments').get()).docs.map((item: any) => item.data());
 const after = companyExpenses(activeCashflow, activeInvestments, activeTraffic);
 assert.equal(after.length, 4, 'voided row remains stored but leaves the active history');
-assert.equal(after.reduce((total, item) => total + Number(item.amount), 0), 831);
+assert.equal(Number(after.reduce((total, item) => total + Number(item.amount), 0).toFixed(2)), 831.19);
 assert.equal((await db.collection('financial_cashflow').get()).size, 3, 'original docs remain; no copied historical expenses');
 for (const engine of [clientDRE, serverDRE]) {
   const summary = engine([], activeCashflow, activeInvestments, activeTraffic);
-  assert.equal(summary.cashOut, 831);
+  assert.equal(summary.cashOut, 831.19);
   assert.equal(summary.marketingExpenses, 305);
 }
 const quickAds = { id: 'quick-ads', type: 'out', category: 'TRÁFEGO PAGO', amount: 20, date: '2026-10-15', description: 'Tráfego do dia' };
 for (const engine of [clientDRE, serverDRE]) {
   const summary = engine([], [...activeCashflow, quickAds], activeInvestments, activeTraffic);
-  assert.equal(summary.cashOut, 851);
+  assert.equal(summary.cashOut, 851.19);
   assert.equal(summary.marketingExpenses, 325);
   assert.equal(summary.operatingProfit, engine([], activeCashflow, activeInvestments, activeTraffic).operatingProfit - 20);
 }
