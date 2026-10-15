@@ -33,4 +33,8 @@ assert.match(read('src/components/Navbar.tsx'), /data-mobile-menu/);
 assert.match(read('src/components/Navbar.tsx'), /location.key/);
 assert.match(controls, /bottom: var\(--floating-control-clearance\)/);
 assert.doesNotMatch(controls, /visibility:\s*hidden|opacity:\s*0\s*!important/);
+const navbar = read('src/components/Navbar.tsx');
+assert.equal((navbar.match(/searchToggleRef.current = event.currentTarget/g) || []).length, 2, 'both desktop and mobile search must remember their own trigger');
+assert.match(navbar, /drawer\?\.contains\(document.activeElement\)/, 'closing search must restore focus only from inside the drawer');
+assert.match(navbar, /trigger.focus\(\{ preventScroll: true \}\)/, 'search close and Escape must restore visible trigger focus');
 console.log('Approved home identity layout contracts passed.');

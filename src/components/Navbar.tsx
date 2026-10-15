@@ -42,6 +42,7 @@ export function Navbar() {
   const allProducts = searchCatalog.products;
   const searchRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const searchToggleRef = useRef<HTMLButtonElement | null>(null);
 
   useEffect(() => {
     const handleClickOutsideSearch = (event: MouseEvent) => {
@@ -56,8 +57,17 @@ export function Navbar() {
 
   useEffect(() => {
     if (isSearchOpen && searchInputRef.current) {
+      const drawer = searchRef.current;
+      const trigger = searchToggleRef.current;
       const timeout = window.setTimeout(() => searchInputRef.current?.focus(), 50);
-      return () => window.clearTimeout(timeout);
+      return () => {
+        window.clearTimeout(timeout);
+        // AnimatePresence retains the closing drawer briefly. Move focus before
+        // its input/buttons become invisible, without stealing outside focus.
+        if (drawer?.contains(document.activeElement) && trigger?.isConnected && trigger.getClientRects().length > 0) {
+          trigger.focus({ preventScroll: true });
+        }
+      };
     }
   }, [isSearchOpen]);
 
@@ -403,7 +413,8 @@ export function Navbar() {
               <div className="flex items-center gap-4 lg:gap-5 pl-2 border-l border-white/10">
                 {/* Search Trigger */}
                 <button 
-                  onClick={() => {
+                  onClick={event => {
+                    searchToggleRef.current = event.currentTarget;
                     setIsSearchOpen(open => !open);
                     setAuthMenuOpen(false);
                     setMobileMenuOpen(false);
@@ -551,7 +562,7 @@ export function Navbar() {
             {/* Mobile Right Action Icons */}
             <div className="flex items-center gap-3">
               <button 
-                onClick={() => { setIsSearchOpen(open => !open); setAuthMenuOpen(false); }}
+                onClick={event => { searchToggleRef.current = event.currentTarget; setIsSearchOpen(open => !open); setAuthMenuOpen(false); }}
                 className="p-1 text-[#eab308] bg-transparent border-0 cursor-pointer"
                 data-search-toggle
                 aria-expanded={isSearchOpen}
