@@ -1,0 +1,68 @@
+/* Approved light home composition. Commerce data and configured video stay intact. */
+.fpac-lines { padding: 32px 0 12px; background: #fff; }
+.fpac-lines-heading { max-width: 1280px; margin: 0 auto 18px; padding: 0 20px; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.fpac-lines-heading h2 { font-size: clamp(24px, 2.5vw, 32px); font-weight: 900; letter-spacing: -.035em; }
+.fpac-lines-toggle { display: flex; align-items: center; gap: 8px; min-height: 44px; padding: 8px; font-size: 12px; }
+.fpac-lines-viewport { overflow: hidden; }
+.fpac-lines-track { display: flex; width: max-content; animation: fpac-lines-left 32s linear infinite; }
+.fpac-lines-group { display: flex; flex-shrink: 0; gap: 20px; padding-right: 20px; }
+.fpac-line-card { position: relative; display: flex; flex-direction: column; justify-content: center; width: clamp(260px, 30vw, 400px); min-height: 132px; padding: 20px 24px; background: #f2f1ec; color: #191919; }
+.fpac-line-prime { background: #f0ce29; }
+.fpac-line-number { font-size: 10px; text-transform: uppercase; color: #615e54; }
+.fpac-line-card strong { font-size: 28px; line-height: 1.3; margin: 6px 0; }
+.fpac-line-detail { font-size: 12px; }
+.fpac-line-card > svg { position: absolute; right: 24px; top: 54px; }
+.fpac-line-card:hover { background: #e8e4d8; }
+.fpac-line-prime:hover { background: #e9c216; }
+.fpac-lines-viewport:is(:hover, :focus-within, :active) .fpac-lines-track, .fpac-lines-viewport[data-paused="true"] .fpac-lines-track { animation-play-state: paused; }
+/* Keyboard users get all three original links in stable document order. */
+.fpac-lines-viewport:focus-within { overflow-x: auto; }
+.fpac-lines-viewport:focus-within .fpac-lines-track { animation: none; }
+.fpac-lines-toggle:focus-visible, .fpac-line-card:focus-visible, .fpac-detail-link:focus-visible { outline: 3px solid #9a7100; outline-offset: -3px; }
+@keyframes fpac-lines-left { to { transform: translateX(-33.333333%); } }
+.fpac-detail-section { max-width: 1280px; margin: 0 auto; padding: 12px 20px 40px; }
+.fpac-detail-panel { display: grid; grid-template-columns: 1fr 1fr; gap: 36px; padding: 30px; background: #f4f2eb; color: #191919; }
+.fpac-detail-eyebrow { font-size: 10px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: #716b5e; }
+.fpac-detail-copy h2 { margin-top: 16px; font-size: clamp(28px, 3vw, 44px); font-weight: 900; line-height: 1.05; letter-spacing: -.04em; }
+.fpac-detail-copy h2 span { background: linear-gradient(transparent 82%, #efd02a 82%); }
+.fpac-detail-intro { margin-top: 20px; font-size: 14px; line-height: 1.65; color: #655f53; }
+.fpac-detail-points { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin-top: 24px; }
+.fpac-detail-points > div { border-top: 1px solid #d7d1c5; padding-top: 12px; }
+.fpac-detail-points span { color: #7d7462; font-size: 10px; }
+.fpac-detail-points h3 { margin: 8px 0; font-size: 12px; font-weight: 800; }
+.fpac-detail-points p { font-size: 12px; line-height: 1.6; color: #655f53; }
+.fpac-detail-link { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; margin-top: 12px; font-size: 12px; font-weight: 700; }
+.fpac-detail-images { display: grid; grid-template-columns: 1.5fr 1fr; grid-template-rows: 1fr 1fr; gap: 12px; min-height: 320px; }
+.fpac-detail-images img { width: 100%; height: 100%; object-fit: cover; }
+.fpac-detail-main { grid-row: span 2; border-radius: 6px; }
+.fpac-detail-images figure { position: relative; overflow: hidden; min-height: 0; }
+.fpac-detail-images figure img { position: absolute; object-position: center 58%; transform: scale(1.35); }
+.fpac-detail-images figcaption { position: absolute; left: 8px; right: 8px; bottom: 8px; background: #fffdf3; padding: 7px; font-size: 9px; text-transform: uppercase; }
+.fpac-home-history { background: #f4f2eb; color: #191919; padding: 56px 20px; }
+.fpac-home-history-inner { max-width: 1120px; margin: auto; display: grid; grid-template-columns: .8fr 1.2fr; gap: 60px; }
+.fpac-home-history h2 { font-size: clamp(32px, 4vw, 52px); font-weight: 900; letter-spacing: -.04em; margin-top: 16px; }
+.fpac-home-history-copy p { font-size: 15px; line-height: 1.8; margin-bottom: 18px; color: #5c574d; }
+.fpac-home-history-copy .fpac-home-history-signature { color: #191919; font-weight: 800; margin-bottom: 0; }
+.fpac-home-product a:focus-visible { outline: 3px solid #9a7100; outline-offset: -3px; }
+@media (max-width: 767px) {
+ .fpac-detail-panel { grid-template-columns: 1fr; gap: 24px; padding: 22px 18px; }
+ .fpac-detail-points { gap: 12px; }
+ .fpac-detail-images { min-height: 280px; }
+ .fpac-home-history-inner { grid-template-columns: 1fr; gap: 24px; }
+ .fpac-home-history { padding: 40px 20px; }
+ [data-home-hero-video] h1 { font-size: clamp(36px, 9vw, 60px); line-height: .98; }
+ [data-home-hero-video] > div.relative.z-20 { padding-bottom: 32px; }
+}
+@media (prefers-reduced-motion: reduce) {
+ .fpac-lines-track { animation: none; width: auto; }
+ .fpac-lines-group { display: grid; width: 100%; grid-template-columns: repeat(3, 1fr); padding: 0 20px; gap: 12px; }
+ .fpac-lines-group[aria-hidden="true"], .fpac-lines-toggle { display: none; }
+ .fpac-line-card { width: auto; min-width: 0; padding: 16px; }
+ .fpac-line-card > svg { display: none; }
+ .fpac-line-card strong { font-size: 22px; }
+ .fpac-home-product img { transition: none; }
+}
+@media (prefers-reduced-motion: reduce) and (max-width: 500px) {
+ .fpac-lines-group { grid-template-columns: 1fr; }
+ .fpac-line-card { min-height: 108px; }
+}
