@@ -1726,10 +1726,6 @@ function AdminOrdersInner() {
       toast.error("Por favor, preencha o nome do cliente.");
       return;
     }
-    if (manualOrderKind === 'sale' && !custPhone.trim()) {
-      toast.error("Por favor, preencha o telefone do cliente.");
-      return;
-    }
     if (tempItems.length === 0) {
       toast.error("Adicione pelo menos um produto ao pedido.");
       return;
@@ -1823,7 +1819,7 @@ function AdminOrdersInner() {
       const installmentCount = Math.max(1, Math.min(60, Number(manualInstallmentCount) || 1));
       const baseInstallment = Math.floor((totalSum / installmentCount) * 100) / 100;
       let paidToAllocate = 0;
-      const installments = Array.from({ length: installmentCount }, (_, index) => {
+      const installments = manualFirstDueDate ? Array.from({ length: installmentCount }, (_, index) => {
         const due = new Date(`${manualFirstDueDate}T12:00:00`);
         due.setMonth(due.getMonth() + index);
         const amount = index === installmentCount - 1
@@ -1839,7 +1835,7 @@ function AdminOrdersInner() {
           status: paidAmount + 0.001 >= amount ? 'paid' : 'pending',
           ...(paidAmount + 0.001 >= amount ? { paidAt: new Date().toISOString() } : {})
         };
-      });
+      }) : [];
 
       const customLines = tempItems.filter((item) => item.mode === 'custom');
       const customOrderDetails = buildManualCustomProduction(customLines);
@@ -1908,7 +1904,7 @@ function AdminOrdersInner() {
         }
 
         // Disparar WhatsApp + e-mail pelo fluxo centralizado quando estiver aguardando pagamento.
-        if (initBalanceDue > 0 && manualOrderStatus !== 'cancelled') {
+        if (initBalanceDue > 0 && manualOrderStatus !== 'cancelled' && (custPhone.trim() || custEmail.trim())) {
           authenticatedFetch('/api/automation/stage-notification', {
             method: 'POST',
             headers: {
@@ -3957,10 +3953,9 @@ Total: R$ ${totalSum.toFixed(2)}`;
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <div className="flex flex-col gap-1">
-                        <label className="text-[9px] font-black uppercase tracking-wider">Telefone com DDD {manualOrderKind === 'sale' ? '*' : '(opcional)'}</label>
+                        <label className="text-[9px] font-black uppercase tracking-wider">Telefone com DDD (opcional)</label>
                         <input 
                           type="text" 
-                          required={manualOrderKind === 'sale'}
                           value={custPhone}
                           onChange={e => setCustPhone(e.target.value)}
                           placeholder="Ex: 47999887766"
@@ -4520,7 +4515,7 @@ Total: R$ ${totalSum.toFixed(2)}`;
                       />
                     </div>
                     <div className="flex flex-col gap-1">
-                      <label className="text-[8px] font-black uppercase text-gray-500">1º vencimento</label>
+                      <label className="text-[8px] font-black uppercase text-gray-500">1º vencimento (opcional)</label>
                       <input
                         type="date"
                         value={manualFirstDueDate}
