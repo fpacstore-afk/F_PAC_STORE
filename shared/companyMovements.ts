@@ -27,6 +27,33 @@ export function companyMovements(cashflow: any[] = [], investments: any[] = []):
   return movements;
 }
 
+/** Read-only expense history across the three existing collections. Documents
+ * retain their original IDs and collection; no copy or destructive migration.
+ * A mirrored traffic document is represented once only when an explicit source
+ * reference identifies it. Similar amounts on the same day are not evidence
+ * that two independent payments are the same expense.
+ */
+export function companyExpenses(cashflow: any[] = [], investments: any[] = [], traffic: any[] = []): any[] {
+  const movements = companyMovements(cashflow, investments)
+    .filter(entry => String(entry.type || '').toLowerCase() === 'out')
+    .filter(entry => !['voided', 'cancelled', 'canceled', 'cancelado'].includes(String(entry.status || '').toLowerCase()));
+  const representedTraffic = new Set(movements.filter(entry =>
+    entry.sourceType === 'traffic' && entry.sourceReferenceId
+  ).map(entry => String(entry.sourceReferenceId)));
+  const trafficRows = traffic.filter(entry =>
+    !representedTraffic.has(String(entry.id)) &&
+    !['voided', 'cancelled', 'canceled', 'cancelado'].includes(String(entry.status || '').toLowerCase())
+  ).map(entry => ({
+    ...entry,
+    amount: entry.amountSpent ?? entry.amount,
+    description: entry.campaignName || entry.description || 'Tráfego pago',
+    category: 'Tráfego Pago',
+    type: 'out',
+    recordSource: 'financial_traffic'
+  }));
+  return [...movements, ...trafficRows];
+}
+
 export function isStructureMovement(entry: any): boolean {
   return entry?.recordSource === 'financial_investments' || entry?.sourceType === 'investment'
     || entry?.financialNature === 'structure'

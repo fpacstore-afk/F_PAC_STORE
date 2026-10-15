@@ -113,6 +113,7 @@ export type FinancialEventType =
   | 'payment_rejected'
   | 'manual_adjustment'
   | 'expense_created'
+  | 'expense_updated'
   | 'expense_voided'
   | 'investment_created'
   | 'investment_voided'

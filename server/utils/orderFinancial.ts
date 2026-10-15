@@ -143,11 +143,15 @@ export function calculateFinancialDRE(
   let fixedExpenses = 0;
   let variableExpenses = 0;
   let otherExpenses = 0;
+  let cashflowMarketing = 0;
 
   activeExpenses.forEach(e => {
     const amt = Number(e.amount || 0);
     const cat = String(e.category || '').toUpperCase();
-    if (cat === 'DESPESA_FIXA') {
+    const normalizedCategory = cat.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    if (normalizedCategory === 'MARKETING' || normalizedCategory === 'TRAFEGO PAGO') {
+      cashflowMarketing += amt;
+    } else if (cat === 'DESPESA_FIXA') {
       fixedExpenses += amt;
     } else if (cat === 'DESPESA_VARIAVEL') {
       variableExpenses += amt;
@@ -157,7 +161,9 @@ export function calculateFinancialDRE(
   });
 
   const activeTraffic = traffic.filter(isActiveFinancialRecord);
-  const marketingExpenses = activeTraffic.reduce((acc, t) => acc + Number(t.amountSpent ?? t.amount ?? 0), 0);
+  const representedTraffic = new Set(movements.filter(e => e.sourceType === 'traffic' && e.sourceReferenceId).map(e => String(e.sourceReferenceId)));
+  const marketingExpenses = cashflowMarketing + activeTraffic.filter(t => !representedTraffic.has(String(t.id)))
+    .reduce((acc, t) => acc + Number(t.amountSpent ?? t.amount ?? 0), 0);
 
   const totalVariableCosts = Number((totalGatewayFees + totalShippingSubsidy + variableExpenses).toFixed(2));
   const operatingProfit = Number((grossProfit - totalVariableCosts - fixedExpenses - marketingExpenses - otherExpenses).toFixed(2));

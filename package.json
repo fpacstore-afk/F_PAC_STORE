@@ -66,6 +66,7 @@
     "test:cloudflare-routing": "node --import tsx scripts/test_cloudflare_routing.ts",
     "test:deployment-runbook": "node --import tsx scripts/test_deployment_runbook.ts",
     "test:financial-movement-separation": "NODE_ENV=test node --import tsx scripts/test_financial_movement_separation.ts",
+    "test:expense-center": "NODE_ENV=test node --import tsx scripts/test_expense_center.ts",
     "test:public-order-tracking": "node --import tsx scripts/test_public_order_tracking.ts",
     "test:pricing-workbench": "node --import tsx scripts/test_pricing_workbench.ts",
     "test:home-identity-refresh": "node --import tsx scripts/test_home_identity_refresh.ts"
