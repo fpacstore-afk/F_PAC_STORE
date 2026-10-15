@@ -64,6 +64,18 @@ export function ExpenseCenter({ cashflow, investments, traffic }: {
   const monthTotal = sum(rows.filter(entry => financialDateKey(entry.date || entry.createdAt)?.startsWith(today.slice(0, 7))));
   const filteredTotal = sum(filtered);
   const categories = [...new Set(rows.map(row => String(row.category || '').trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  const totalsFor = (length: number) => {
+    const groups = new Map<string, { count: number; amount: number }>();
+    for (const row of filtered) {
+      const period = financialDateKey(row.date || row.createdAt)?.slice(0, length);
+      if (!period) continue;
+      const previous = groups.get(period) || { count: 0, amount: 0 };
+      groups.set(period, { count: previous.count + 1, amount: previous.amount + Number(row.amount || 0) });
+    }
+    return [...groups].sort(([a], [b]) => b.localeCompare(a));
+  };
+  const byDay = totalsFor(10);
+  const byMonth = totalsFor(7);
 
   const changeForm = (update: Partial<ExpenseForm>) => {
     submissionKey.current = null;
@@ -222,6 +234,20 @@ export function ExpenseCenter({ cashflow, investments, traffic }: {
             </select>
             <input aria-label="Data inicial" type="date" className={inputClass} value={start} onChange={event => setStart(event.target.value)} />
             <input aria-label="Data final" type="date" className={inputClass} value={end} onChange={event => setEnd(event.target.value)} />
+          </div>
+          <div className="mt-4 grid gap-2 sm:grid-cols-2">
+            {([
+              ['Totais por dia', byDay, true], ['Totais por mês', byMonth, false]
+            ] as const).map(([title, groups, daily]) => <details key={title} className="rounded-lg border border-black/10 p-3 text-xs">
+              <summary className="cursor-pointer font-bold">{title} ({groups.length})</summary>
+              <div className="mt-3 max-h-48 space-y-2 overflow-y-auto">
+                {groups.map(([period, item]) => <div key={period} className="flex items-center justify-between gap-3 border-b border-black/5 pb-2">
+                  <span>{daily ? period.split('-').reverse().join('/') : `${period.slice(5, 7)}/${period.slice(0, 4)}`} · {item.count} {item.count === 1 ? 'despesa' : 'despesas'}</span>
+                  <strong>{formatMoney(item.amount)}</strong>
+                </div>)}
+                {groups.length === 0 && <p className="text-gray-500">Nenhum gasto no período filtrado.</p>}
+              </div>
+            </details>)}
           </div>
           <p className="mt-3 text-xs text-gray-500">{filtered.length} {filtered.length === 1 ? 'lançamento' : 'lançamentos'} · ordem do mais recente ao mais antigo</p>
           <div className="mt-3 max-h-[600px] space-y-2 overflow-y-auto">
