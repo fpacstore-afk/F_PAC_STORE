@@ -35,8 +35,8 @@ export default function Bag() {
   const { user, profile } = useAuth();
 
   // --- Inventory Validation ---
-  const { getStock, loading: loadingInventory, error: inventoryError } = useInventory();
-  const stockIssues = loadingInventory || inventoryError ? [] : cartAvailabilityIssues(items, getStock);
+  const { getStock, loading: loadingInventory, error: inventoryError, products: catalogProducts } = useInventory();
+  const stockIssues = loadingInventory || inventoryError ? [] : cartAvailabilityIssues(items, getStock, catalogProducts);
 
   // --- Local State ---
   const [loadingCep, setLoadingCep] = useState(false);

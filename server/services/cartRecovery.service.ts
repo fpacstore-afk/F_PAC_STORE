@@ -16,15 +16,23 @@ export async function restoreRecoveryCart(id: string, token: string) {
     const product = products.find(product => [product.id, product.slug].some(key => key && [saved.productId, saved.baseProductSlug, saved.id, saved.slug].includes(key)));
     const prime = getCustomizationProfileByCartSlug(saved.slug || '');
     if (!product || (Array.isArray(saved.printConfigs) && saved.printConfigs.length && !prime)) { messages.push('Um produto não está mais disponível e não será incluído.'); continue; }
-    const physicalId = product.parentSlug || product.slug || product.id;
+    const physicalId = product.stockBaseSlug ? (product.slug || product.id) : (product.parentSlug || product.slug || product.id);
     const stock = catalog.availability[physicalId] || catalog.availability[product.id];
     const variant = stock?.variants?.[`${saved.color}_${saved.size}`];
     if (!stock?.available || !variant?.available || variant.availableQuantity <= 0) { messages.push(`${product.name}: a cor ${saved.color} no tamanho ${saved.size} está indisponível.`); continue; }
     const key = `${physicalId}/${saved.color}/${saved.size}`;
-    const remaining = Math.max(0, variant.availableQuantity - (used.get(key) || 0));
+    const sharedId = product.stockBaseSlug || (product.productFinish === 'plain' ? physicalId : '');
+    const sharedKey = sharedId ? `plain:${sharedId}/${saved.color}/${saved.size}` : '';
+    const plainQuantity = product.stockBaseSlug ? (variant as any).madeToOrderQuantity || 0 : product.productFinish === 'plain' ? variant.availableQuantity : 0;
+    const readyQuantity = product.stockBaseSlug ? (variant as any).readyQuantity || 0 : product.productFinish === 'plain' ? 0 : variant.availableQuantity;
+    const readyRemaining = Math.max(0, readyQuantity - (used.get(key) || 0));
+    const plainRemaining = sharedKey ? Math.max(0, plainQuantity - (used.get(sharedKey) || 0)) : 0;
+    const remaining = readyRemaining + plainRemaining;
     if (!remaining) { messages.push(`${product.name}: não há mais unidades desta combinação.`); continue; }
     const quantity = Math.min(Math.max(1, Math.floor(Number(saved.quantity) || 1)), remaining);
-    used.set(key, (used.get(key) || 0) + quantity);
+    const fromReady = Math.min(quantity, readyRemaining);
+    used.set(key, (used.get(key) || 0) + fromReady);
+    if (sharedKey) used.set(sharedKey, (used.get(sharedKey) || 0) + quantity - fromReady);
     if (quantity < saved.quantity) messages.push(`${product.name}: quantidade ajustada ao estoque atual (${quantity}).`);
     candidates.push({ ...saved, productId: product.id, slug: prime ? saved.slug : product.slug, parentSlug: product.parentSlug, baseProductSlug: prime ? product.slug : undefined, quantity, catalogProduct: product });
   }

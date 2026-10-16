@@ -1,3 +1,4 @@
+import { allocateGarments, resolveGarmentBase, resolveManualGarmentBase, stockSlug } from '../../shared/sharedGarmentStock.js';
 import { FieldValue } from 'firebase-admin/firestore';
 import { getDb } from "../firebase.js";
 import { generateTrackingToken, hashTrackingToken } from './tracking.service.js';
@@ -61,7 +62,8 @@ function getVariantKey(item: any): string {
 export function aggregateInventoryItems(items: any[] = []): any[] {
   const grouped = new Map<string, any>();
 
-  for (const raw of items || []) {
+  const expanded = (items || []).flatMap(item => Array.isArray(item.inventoryAllocations) ? item.inventoryAllocations.map((allocation: any) => ({ ...item, parentSlug: allocation.productSlug, variantKey: allocation.variantKey, quantity: allocation.quantity, inventoryAllocations: undefined, inventorySource: allocation.source })) : [item]);
+  for (const raw of expanded) {
     const physicalSlug = getPhysicalSlug(raw);
     if (!physicalSlug) continue;
     const variantKey = getVariantKey(raw);
@@ -100,36 +102,11 @@ function itemIdempotencyKey(baseKey: string, physicalSlug?: string, variantKey?:
  */
 export async function checkStock(items: any[]): Promise<{ isAvailable: boolean; message?: string }> {
   const db = getDb();
-  for (const item of aggregateInventoryItems(items)) {
-    const targetSlug = getPhysicalSlug(item);
-    if (!targetSlug) continue;
-
-    const invRef = db.collection('inventory').doc(targetSlug);
-    const invDoc = await invRef.get();
-
-    const variantKey = getVariantKey(item);
-    const requestedQty = Math.max(1, Number(item.quantity) || 1);
-
-    if (!invDoc.exists) {
-      return {
-        isAvailable: false,
-        message: `O produto "${item.name || targetSlug}" não possui estoque cadastrado.`
-      };
-    }
-
-    const data = invDoc.data() || {};
-    const currentVariants = data.variants || {};
-    const variantData = currentVariants[variantKey] || {};
-    const stats = getVariantStats(variantData, targetSlug, variantKey);
-
-    if (stats.availableQuantity < requestedQty) {
-      return {
-        isAvailable: false,
-        message: `O produto "${item.name || targetSlug}" (${stats.color} - ${stats.size}) possui estoque disponível insuficiente (Disponível: ${stats.availableQuantity}, Solicitado: ${requestedQty}).`
-      };
-    }
-  }
-  return { isAvailable: true };
+  const [products, inventory] = await Promise.all([db.collection('products').get(), db.collection('inventory').get()]);
+  try {
+    allocateGarments(items, products.docs.map(doc => ({ ...doc.data(), id: doc.id })), new Map(inventory.docs.map(doc => [doc.id, doc.data()])));
+    return { isAvailable: true };
+  } catch (error: any) { return { isAvailable: false, message: error.message }; }
 }
 
 /**
@@ -222,8 +199,6 @@ function buildUpdatedInventory(data: any, physicalSlug: string, variantKey: stri
 export async function reserveStock(orderId: string, items: any[], idempotencyKey?: string, orderData?: any) {
   const db = getDb();
   const effectiveIdempotencyKey = idempotencyKey || `reserve_order_${orderId}`;
-  const normalizedItems = aggregateInventoryItems(items);
-
   return db.runTransaction(async (transaction) => {
     const duplicate = await isIdempotentDuplicate(transaction, db, effectiveIdempotencyKey);
     if (duplicate) return { success: true, idempotent: true };
@@ -236,6 +211,27 @@ export async function reserveStock(orderId: string, items: any[], idempotencyKey
       }
     }
 
+    const productSnapshot = await transaction.get(db.collection('products'));
+    const catalog = productSnapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
+    const inventories = new Map<string, any>();
+    const sourceSlugs = new Set<string>();
+    for (const item of items) {
+      const product = catalog.find(p => [p.id, p.slug].filter(Boolean).some(id => [item.productId, item.slug, item.baseProductSlug].includes(id)));
+      const base = product?.productFinish === 'plain' ? product : (product ? resolveGarmentBase(product, catalog) : resolveManualGarmentBase(item.customDetails?.model, catalog));
+      sourceSlugs.add(String(product ? (product.parentSlug || stockSlug(product)) : getPhysicalSlug(item)));
+      if (base) sourceSlugs.add(stockSlug(base));
+    }
+    for (const slug of sourceSlugs) {
+      const snap = await transaction.get(db.collection('inventory').doc(slug));
+      if (snap.exists) inventories.set(slug, snap.data());
+    }
+    let resolvedItems: any[];
+    try { resolvedItems = allocateGarments(items, catalog, inventories); }
+    catch (error: any) {
+      if (error.name === 'OutOfStockError') throw new OutOfStockError(error.message, error.details);
+      throw error;
+    }
+    const normalizedItems = aggregateInventoryItems(resolvedItems);
     const itemReads: any[] = [];
     for (const item of normalizedItems) {
       const physicalSlug = getPhysicalSlug(item);
@@ -262,21 +258,26 @@ export async function reserveStock(orderId: string, items: any[], idempotencyKey
       itemReads.push({ item, physicalSlug, variantKey, requestedQty, invRef, invDoc, stats });
     }
 
-    await applyOrderStampStockInTransaction(transaction, db, orderId, items, 'order_debit');
+    await applyOrderStampStockInTransaction(transaction, db, orderId, resolvedItems, 'order_debit');
 
     if (orderData) {
       transaction.set(orderRef, {
         ...orderData,
+        items: resolvedItems,
+        inventoryAllocationVersion: 1,
         createdAt: FieldValue.serverTimestamp(),
         updatedAt: FieldValue.serverTimestamp()
       });
     }
 
+    if (!orderData) transaction.set(orderRef, { items: resolvedItems, inventoryAllocationVersion: 1 }, { merge: true });
+
     recordIdempotencyKey(transaction, db, effectiveIdempotencyKey, undefined, undefined, { orderId, type: 'reserve' });
 
+    const workingInventory = new Map(itemReads.map(entry => [entry.physicalSlug, entry.invDoc.data() || {}]));
     for (const { item, physicalSlug, variantKey, requestedQty, invRef, invDoc, stats } of itemReads) {
       recordIdempotencyKey(transaction, db, effectiveIdempotencyKey, physicalSlug, variantKey, { orderId, type: 'reserve' });
-      const data = invDoc.data() || {};
+      const data = workingInventory.get(physicalSlug) || {};
       const variantData = (data.variants || {})[variantKey] || {};
       const newReservedQuantity = stats.reservedQuantity + requestedQty;
       const newAvailableQuantity = stats.physicalQuantity - newReservedQuantity;
@@ -305,6 +306,7 @@ export async function reserveStock(orderId: string, items: any[], idempotencyKey
         updatedAt: new Date().toISOString()
       };
       const totals = buildUpdatedInventory(data, physicalSlug, variantKey, updatedVariant);
+      workingInventory.set(physicalSlug, { ...data, variants: totals.updatedVariants });
       transaction.update(invRef, {
         stock: totals.totalPhysical,
         totalPhysicalStock: totals.totalPhysical,
@@ -381,8 +383,6 @@ async function readReservationCompat(
 export async function releaseStockReservation(orderId: string, items: any[], idempotencyKey?: string) {
   const db = getDb();
   const effectiveIdempotencyKey = idempotencyKey || `release_order_${orderId}`;
-  const normalizedItems = aggregateInventoryItems(items);
-
   return db.runTransaction(async (transaction) => {
     if (await isIdempotentDuplicate(transaction, db, effectiveIdempotencyKey)) return { success: true, idempotent: true };
     const orderSnapshot = await transaction.get(db.collection('orders').doc(orderId));
@@ -390,6 +390,8 @@ export async function releaseStockReservation(orderId: string, items: any[], ide
       throw Object.assign(new Error('PAYMENT_CONFIRMATION_PENDING: Confirme o pagamento antes de liberar esta reserva.'), { status: 409 });
     }
 
+    const storedItems = orderSnapshot.data()?.inventoryAllocationVersion === 1 ? orderSnapshot.data()!.items : items;
+    const normalizedItems = aggregateInventoryItems(storedItems);
     const itemReads: any[] = [];
     for (const item of normalizedItems) {
       const physicalSlug = getPhysicalSlug(item);
@@ -400,10 +402,14 @@ export async function releaseStockReservation(orderId: string, items: any[], ide
       itemReads.push({ item, physicalSlug, variantKey, ...reservation, invRef, invDoc });
     }
 
-    await applyOrderStampStockInTransaction(transaction, db, orderId, items, 'order_release');
+    const productionRef = db.collection('production_stock').doc(orderId);
+    const production = await transaction.get(productionRef);
+    await applyOrderStampStockInTransaction(transaction, db, orderId, storedItems, 'order_release');
+    if (production.exists) transaction.update(productionRef, { status: 'cancelled', updatedAt: new Date().toISOString() });
 
     recordIdempotencyKey(transaction, db, effectiveIdempotencyKey, undefined, undefined, { orderId, type: 'release' });
 
+    const workingInventory = new Map(itemReads.map(entry => [entry.physicalSlug, entry.invDoc.data() || {}]));
     for (const entry of itemReads) {
       const { item, physicalSlug, variantKey, resRef, resSnap, legacyRef, invRef, invDoc } = entry;
       if (!resSnap.exists) {
@@ -411,13 +417,14 @@ export async function releaseStockReservation(orderId: string, items: any[], ide
       }
       const resData = resSnap.data() || {};
       if (resData.status === 'released') continue;
+      if (resData.status === 'consumed' && resData.source === 'production') continue;
       if (resData.status === 'consumed') {
         throw new Error(`INVENTORY_INCONSISTENCY: Não é possível liberar reserva já consumida (${orderId}/${physicalSlug}/${variantKey}).`);
       }
       if (!invDoc.exists) throw new Error(`INVENTORY_INCONSISTENCY: Inventário ${physicalSlug} não encontrado ao liberar reserva.`);
 
       const requestedQty = Math.max(1, Number(resData.quantity ?? item.quantity) || 1);
-      const data = invDoc.data() || {};
+      const data = workingInventory.get(physicalSlug) || {};
       const variantData = (data.variants || {})[variantKey] || {};
       const stats = getVariantStats(variantData, physicalSlug, variantKey);
       if (stats.reservedQuantity < requestedQty) {
@@ -428,6 +435,7 @@ export async function releaseStockReservation(orderId: string, items: any[], ide
       const newAvailableQuantity = stats.physicalQuantity - newReservedQuantity;
       const updatedVariant = { ...variantData, physicalQuantity: stats.physicalQuantity, reservedQuantity: newReservedQuantity, availableQuantity: newAvailableQuantity, stock: stats.physicalQuantity, available: newAvailableQuantity > 0, updatedAt: new Date().toISOString() };
       const totals = buildUpdatedInventory(data, physicalSlug, variantKey, updatedVariant);
+      workingInventory.set(physicalSlug, { ...data, variants: totals.updatedVariants });
       transaction.update(invRef, { stock: totals.totalPhysical, totalPhysicalStock: totals.totalPhysical, totalReservedStock: totals.totalReserved, totalAvailableStock: totals.totalAvailable, variants: totals.updatedVariants, updatedAt: FieldValue.serverTimestamp() });
 
       recordIdempotencyKey(transaction, db, effectiveIdempotencyKey, physicalSlug, variantKey, { orderId, type: 'release' });
@@ -459,7 +467,7 @@ export async function consumeStockReservationInTransaction(
   orderContext?: any
 ) {
   const effectiveIdempotencyKey = idempotencyKey || `consume_order_${orderId}`;
-  const normalizedItems = aggregateInventoryItems(items);
+  const normalizedItems = aggregateInventoryItems(orderContext?.inventoryAllocationVersion === 1 ? orderContext.items : items);
 
   if (await isIdempotentDuplicate(transaction, db, effectiveIdempotencyKey)) {
     return { success: true, idempotent: true };
@@ -509,13 +517,18 @@ export async function consumeStockReservationInTransaction(
     itemReads.push({ item, physicalSlug, variantKey, ...reservation, resData, invRef, invDoc });
   }
 
+  const productionRef = db.collection('production_stock').doc(orderId);
+  const production = await transaction.get(productionRef);
+  if (production.exists) transaction.update(productionRef, { status: 'shipped', updatedAt: new Date().toISOString() });
+
   // All reads above complete before the first write, satisfying Firestore transaction rules.
   recordIdempotencyKey(transaction, db, effectiveIdempotencyKey, undefined, undefined, { orderId, type: 'consume' });
 
+  const workingInventory = new Map(itemReads.map(entry => [entry.physicalSlug, entry.invDoc.data() || {}]));
   for (const entry of itemReads) {
     const { item, physicalSlug, variantKey, resRef, legacyRef, resData, invRef, invDoc, legacyDirectDeduction, unmanagedStock } = entry;
     const requestedQty = Math.max(1, Number(resData.quantity ?? item.quantity) || 1);
-    const data = invDoc.data() || {};
+    const data = workingInventory.get(physicalSlug) || {};
     const variantData = (data.variants || {})[variantKey] || {};
     const stats = getVariantStats(variantData, physicalSlug, variantKey);
 
@@ -592,6 +605,7 @@ export async function consumeStockReservationInTransaction(
       updatedAt: new Date().toISOString()
     };
     const totals = buildUpdatedInventory(data, physicalSlug, variantKey, updatedVariant);
+      workingInventory.set(physicalSlug, { ...data, variants: totals.updatedVariants });
     transaction.update(invRef, {
       stock: totals.totalPhysical,
       totalPhysicalStock: totals.totalPhysical,
@@ -711,10 +725,10 @@ export async function processPhysicalReturn(
       const qty = Math.max(1, Number(item.quantity) || 1);
       const condition = item.condition || 'resellable';
       const matchingOrderItem = orderData?.items?.find((i: any) => (item.id && i.id === item.id) || (i.variantKey === variantKey || `${i.color}_${i.size}` === variantKey));
-      const isCustomized = Boolean(item.isCustomized || item.isPersonalized || item.customText || matchingOrderItem?.isCustomized || matchingOrderItem?.isPersonalized || matchingOrderItem?.customText || matchingOrderItem?.stampName);
+      const isCustomized = Boolean(item.isCustomized || item.isPersonalized || item.customText || matchingOrderItem?.isCustomized || matchingOrderItem?.isPersonalized || matchingOrderItem?.customText || matchingOrderItem?.stampName || matchingOrderItem?.inventoryAllocations?.some((allocation: any) => allocation.source === 'plain'));
       const isResellable = item.resellable !== false && condition === 'resellable' && !isCustomized;
 
-      if (!invDoc.exists) throw new Error(`INVENTORY_INCONSISTENCY: Inventário ${physicalSlug} não encontrado para devolução física.`);
+      if (!invDoc.exists && isResellable) throw new Error(`INVENTORY_INCONSISTENCY: Inventário ${physicalSlug} não encontrado para devolução física.`);
       const data = invDoc.data() || {};
       const variantData = (data.variants || {})[variantKey] || {};
       const stats = getVariantStats(variantData, physicalSlug, variantKey);

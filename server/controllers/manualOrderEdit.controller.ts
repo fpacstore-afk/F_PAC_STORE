@@ -1,3 +1,4 @@
+import { reconcileSharedStockEdit } from '../services/sharedStockEdit.service.js';
 import { createHash } from 'node:crypto';
 import type { Request, Response } from 'express';
 import { FieldValue } from 'firebase-admin/firestore';
@@ -30,7 +31,7 @@ export async function editManualCustomOrderController(req: Request, res: Respons
       const snapshot = await tx.get(ref);
       if (!snapshot.exists) invalid('Pedido não encontrado.', 404);
       const order = snapshot.data()!;
-      if (!order.isManual || order.stockControl === 'move' || !order.items?.length || !order.items.every((item: any) => item.customProduct && item.customDetails)) invalid('Esta edição está disponível para pedidos manuais personalizados sem movimentação de peças do catálogo.');
+      if (!order.isManual || (order.stockControl === 'move' && order.inventoryAllocationVersion !== 1) || !order.items?.length || !order.items.every((item: any) => item.customProduct && item.customDetails)) invalid('Esta edição está disponível para pedidos manuais personalizados compatíveis com o controle de estoque.');
       if (order.isGift === true || order.orderKind === 'gift') invalid('A edição de brindes precisa preservar o lançamento do custo. Faça essa revisão no financeiro antes de alterar as peças.');
       if (Number(order.customEditRevision || 0) !== expectedRevision) invalid('O pedido foi alterado por outra pessoa. Feche e abra a edição para carregar a versão atual.', 409);
       const statuses = [order.status, order.shippingStatus, order.productionStatus, order.paymentStatus].map(value => String(value || '').toLowerCase());
@@ -98,11 +99,14 @@ export async function editManualCustomOrderController(req: Request, res: Respons
       const revision = expectedRevision + 1;
       const updates: any = clean({ items: nextItems, subtotal, total, amountPaid: paid, balanceDue: pending, paymentStatus: status, installments: installments!, payment: { ...(order.payment || {}), status, paidAmount: paid, pendingAmount: pending, installments: installments! }, customProduction: buildManualCustomProduction(nextItems.map(item => ({ ...item, mode: 'custom' }))), customEditRevision: revision, ...(order.pricing ? { pricing: { ...order.pricing, subtotal, total } } : {}) });
       if (gift) updates.giftCost = { knownCost: Math.round(nextItems.reduce((sum, item) => sum + Number(item.totalCostSnapshot || 0), 0) * 100) / 100, unknownUnits: nextItems.reduce((sum, item) => sum + (item.costCoverage === 'complete' ? 0 : item.quantity), 0), coverage: nextItems.every(item => item.costCoverage === 'complete') ? 'complete' : 'partial' };
-      try { await reconcileEditedOrderStampsInTransaction(tx, db, orderId, order.items, nextItems, revision); }
+      try {
+        if (order.inventoryAllocationVersion === 1) updates.items = await reconcileSharedStockEdit(tx, db, orderId, order, nextItems, revision);
+        else await reconcileEditedOrderStampsInTransaction(tx, db, orderId, order.items, nextItems, revision);
+      }
       catch (error: any) { invalid(error.message || 'Confira as reservas das estampas antes de editar.', 409); }
       tx.update(ref, { ...updates, updatedAt: FieldValue.serverTimestamp() });
       const actor = (req as any).user?.email || (req as any).user?.uid || 'Admin';
-      tx.set(db.collection('order_edit_events').doc(`${orderId}_${revision}`), { orderId, revision, actor, createdAt: new Date().toISOString(), previousItems: order.items, items: nextItems, previousTotal: Number(order.pricing?.total ?? order.total), total, paidAmount: paid });
+      tx.set(db.collection('order_edit_events').doc(`${orderId}_${revision}`), { orderId, revision, actor, createdAt: new Date().toISOString(), previousItems: order.items, items: updates.items, previousTotal: Number(order.pricing?.total ?? order.total), total, paidAmount: paid });
       tx.set(db.collection('audit_logs').doc(`custom_order_edit_${orderId}_${revision}`), { action: 'EDIT_MANUAL_CUSTOM_ORDER', resource: 'orders', resourceId: orderId, userId: (req as any).user?.uid || 'admin', userEmail: actor, timestamp: new Date().toISOString(), metadata: { revision, previousTotal: Number(order.pricing?.total ?? order.total), total, paidAmount: paid } });
       return { revision, total, paidAmount: paid, pendingAmount: pending };
     });

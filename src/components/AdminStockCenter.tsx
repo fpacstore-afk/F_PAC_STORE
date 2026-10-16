@@ -1,3 +1,4 @@
+import { countedReadyInventory } from '../../shared/sharedGarmentStock';
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { db, handleFirestoreError, OperationType } from '../lib/firebase';
 import { 
@@ -264,9 +265,11 @@ export function AdminStockCenter() {
       );
       if (hasInventoryDocument) {
         const item = (product.slug && inventory[product.slug]) || (product.id && inventory[product.id]);
+        if (product.productFinish === 'printed') return Object.values(countedReadyInventory(item)?.variants || {}).reduce<number>((sum, v: any) => sum + (Number(v.physicalQuantity) || 0), 0);
         return Math.max(0, Number(item?.physicalQuantity) || 0);
       }
 
+      if (product.productFinish === 'printed') return 0;
       const variantTotal = Object.values(product.variantsStock || {}).reduce(
         (sum, quantity) => sum + Math.max(0, Number(quantity) || 0),
         0
@@ -314,7 +317,7 @@ export function AdminStockCenter() {
 
     return items.map(item => ({
       ...item,
-      variantRows: buildStockVariantRows(item, (item.slug && inventory[item.slug]) || (item.id && inventory[item.id]) || undefined),
+      variantRows: buildStockVariantRows(item, item.productFinish === 'printed' ? countedReadyInventory((item.slug && inventory[item.slug]) || (item.id && inventory[item.id])) : (item.slug && inventory[item.slug]) || (item.id && inventory[item.id]) || undefined),
       identity: stockProductIdentity(item, stockDesigns),
       duplicateReference: hasDuplicateProductReference(item.sku, duplicateReferences)
     }));

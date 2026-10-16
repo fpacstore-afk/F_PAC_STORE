@@ -37,6 +37,9 @@ function addRequirement(map: Map<string, StampRequirement>, entry: RequirementIn
 async function collectRequirementInputs(transaction: Transaction, db: Firestore, items: any[]): Promise<StampRequirement[]> {
   const requirements = new Map<string, StampRequirement>();
   for (const item of items || []) {
+    // New source allocations track print procurement on the order. Already printed
+    // pieces have consumed their artwork; on-demand artwork is bought after sale.
+    if (Array.isArray(item.inventoryAllocations) || item.printSupplyMode === 'on_demand') continue;
     const quantity = Math.max(1, Math.trunc(Number(item.quantity) || 1));
     const custom = Array.isArray(item.customization?.prints) ? item.customization.prints : [];
     const id = String(item.productId || item.slug || item.id || '').trim();

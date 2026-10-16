@@ -158,6 +158,9 @@ export interface Product {
   maxInstallments?: number;
   sizeChart?: { size: string; length: string; width: string; sleeve: string; notes?: string }[];
   parentSlug?: string;
+  stockBaseSlug?: string;
+  stockMode?: 'shared' | 'ready_only';
+  inventoryAllocations?: import('../../shared/sharedGarmentStock').InventoryAllocation[];
   stampSize?: string;
   tags?: string[];
   

@@ -25,6 +25,9 @@ export interface CartItem {
   slug?: string;
   baseProductSlug?: string;
   parentSlug?: string;
+  stockBaseSlug?: string;
+  stockMode?: 'shared' | 'ready_only';
+  inventoryAllocations?: import('../../shared/sharedGarmentStock').InventoryAllocation[];
   name: string;
   price: number;
   originalPrice?: number;

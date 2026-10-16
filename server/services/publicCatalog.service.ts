@@ -1,10 +1,11 @@
+import { resolveGarmentBase, stockSlug, garmentAvailability, countedReadyInventory } from '../../shared/sharedGarmentStock.js';
 import { getDb } from '../firebase.js';
 import { getVariantStats } from './store.service.js';
 import { isProductPublished, normalizeProductStatus } from '../../shared/productPublication.js';
 import { isPrimeBaseProduct } from '../../shared/primeBaseProduct.js';
 import { createCachedRequest } from '../../shared/cachedRequest.js';
 
-const scalarFields = ['slug', 'sku', 'name', 'headline', 'description', 'status', 'parentSlug', 'category', 'productType', 'collection', 'line', 'sizeSystem', 'price', 'promotionalPrice', 'is_prime', 'customizable', 'baseModel', 'fit', 'modeling', 'material', 'gsm', 'isNew', 'isBestseller', 'isLimitedEdition', 'weight', 'width', 'height', 'length', 'fabric', 'collar', 'printDetails', 'videoUrl', 'pixDiscountPercent', 'maxInstallments', 'stampSize', 'seal', 'displayOrder', 'brand', 'productFinish'];
+const scalarFields = ['slug', 'sku', 'name', 'headline', 'description', 'status', 'parentSlug', 'category', 'productType', 'collection', 'line', 'sizeSystem', 'price', 'promotionalPrice', 'is_prime', 'customizable', 'baseModel', 'fit', 'modeling', 'material', 'gsm', 'isNew', 'isBestseller', 'isLimitedEdition', 'weight', 'width', 'height', 'length', 'fabric', 'collar', 'printDetails', 'videoUrl', 'pixDiscountPercent', 'maxInstallments', 'stampSize', 'seal', 'displayOrder', 'brand', 'productFinish', 'stockBaseSlug', 'stockMode'];
 const listFields = ['images', 'collections', 'lines', 'sizes', 'tags', 'specs', 'careInstructions', 'imageStampSizes', 'stampGallery', 'stampGallerySizes'];
 const nestedFields: Record<string, string[]> = {
   colors: ['name', 'label', 'hex', 'images', 'status', 'available', 'active'],
@@ -81,11 +82,26 @@ export async function loadPublicCatalog(database = getDb()) {
   const [productSnapshot, inventorySnapshot] = await Promise.all([
     database.collection('products').get(), database.collection('inventory').get(),
   ]);
-  const products = productSnapshot.docs.map(doc => projectPublicProduct(doc.id, doc.data() || {})).filter(Boolean);
+  const rawProducts = productSnapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
+  const products = rawProducts.map(product => {
+    const projected = projectPublicProduct(product.id, product);
+    const base = resolveGarmentBase(product, rawProducts);
+    if (projected && !base) delete projected.stockBaseSlug;
+    return projected && base ? { ...projected, stockBaseSlug: stockSlug(base), fulfillment: 'made_to_order' } : projected;
+  }).filter(Boolean);
   const primeBases = productSnapshot.docs.map(doc => projectPrimeBase(doc.id, doc.data() || {})).filter(Boolean);
-  const allowedIds = new Set([...products, ...primeBases].flatMap(product => [product!.id, product!.slug, product!.parentSlug].filter(Boolean)));
+  const allowedIds = new Set([...products, ...primeBases].flatMap(product => [product!.id, product!.slug, product!.parentSlug, product!.stockBaseSlug].filter(Boolean)));
   const availability: Record<string, ReturnType<typeof projectPublicAvailability>> = Object.create(null);
   for (const doc of inventorySnapshot.docs) if (allowedIds.has(doc.id)) availability[doc.id] = projectPublicAvailability(doc.data() || {});
+  const inventories = new Map(inventorySnapshot.docs.map(doc => [doc.id, doc.data()]));
+  for (const product of rawProducts) {
+    const base = resolveGarmentBase(product, rawProducts);
+    if (!products.some(p => p!.id === product.id)) continue;
+    if (!base && product.productFinish !== 'printed') continue;
+    const slug = stockSlug(product);
+    availability[slug] = base ? garmentAvailability(product, base, inventories.get(slug), inventories.get(stockSlug(base))) : projectPublicAvailability(countedReadyInventory(inventories.get(slug)) || {});
+    availability[product.id] = availability[slug];
+  }
   return { products, primeBases, count: products.length, availability };
 }
 
