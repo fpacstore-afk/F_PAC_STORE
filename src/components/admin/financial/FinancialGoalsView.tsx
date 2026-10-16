@@ -3,7 +3,7 @@ import { doc, onSnapshot, setDoc } from 'firebase/firestore';
 import { Calendar, Save, Target, TrendingUp } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { db } from '../../../lib/firebase';
-import { summarizeReceipts, receiptGoalRanges } from '../../../../shared/financialReceipts';
+import { salesGoalProgress } from '../../../../shared/financialDashboard';
 import { financialDateKey } from '../../../../shared/cashFlow';
 import { parseCurrencyInput } from '../../../../shared/currencyInput';
 import { useFinancialPrivacy } from '../../../context/FinancialPrivacyContext';
@@ -30,10 +30,7 @@ export function FinancialGoalSummary({ orders, onOpenGoals }: FinancialGoalSumma
   }, [annualGoalId, monthlyGoalId]);
 
   const actual = useMemo(() => {
-    const ranges = receiptGoalRanges(now.getFullYear(), now.getMonth());
-    const month = summarizeReceipts(orders, ranges.month);
-    const year = summarizeReceipts(orders, ranges.year);
-    return { month: month.netReceived, year: year.netReceived, review: month.ordersNeedingReview };
+    return salesGoalProgress(orders, now.getFullYear(), now.getMonth());
 
   }, [orders, now.getFullYear(), now.getMonth(), now.getDate()]);
 
@@ -43,10 +40,12 @@ export function FinancialGoalSummary({ orders, onOpenGoals }: FinancialGoalSumma
 
   return (
     <section className="rounded-2xl bg-black p-5 text-white shadow-lg">
-      {actual.review > 0 && <p role="status" className="mb-3 text-xs text-amber-200">{actual.review} pedido(s) com histórico financeiro incompleto ou divergente. Valores sem data confiável ficam fora da meta até conferência.</p>}
+      {actual.review > 0 && <p role="status" className="mb-3 text-xs text-amber-200">{actual.review} pedido(s) com data da venda ou valores inconsistentes ficam fora da meta até conferência.</p>}
+      <p className="mb-3 text-xs text-white/60">Vendas confirmadas pelo mês do pedido. Pagamentos posteriores entram no caixa na data recebida.</p>
+      {actual.pendingConfirmation > 0 && <p className="mb-3 text-xs text-amber-200">Pedidos online sem confirmação no mês: {formatMoney(actual.pendingConfirmation)}. Não entram no realizado da meta.</p>}
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div className="min-w-0 flex-1">
-          <div className="flex items-center justify-between gap-3"><p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#eab308]">Meta de faturamento do mês</p><span className="text-xs font-bold text-white/60">{daysRemaining} dias restantes</span></div>
+          <div className="flex items-center justify-between gap-3"><p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#eab308]">Meta de vendas do mês</p><span className="text-xs font-bold text-white/60">{daysRemaining} dias restantes</span></div>
           <p className="mt-2 text-2xl font-black">{formatMoney(actual.month)} <span className="text-sm text-white/50">/ {goal.monthlyGoal > 0 ? formatMoney(goal.monthlyGoal) : 'meta não definida'}</span></p>
           <div className="mt-3 h-3 overflow-hidden rounded-full bg-white/10"><div className="h-full bg-[#eab308] transition-all" style={{ width: `${Math.max(0, Math.min(100, monthPercent))}%` }} /></div>
           <div className="mt-2 flex flex-wrap justify-between gap-2 text-xs font-bold text-white/60"><span>{monthPercent.toFixed(1)}% atingido</span><span>Faltam {formatMoney(Math.max(0, goal.monthlyGoal - actual.month))}</span></div>
@@ -95,10 +94,7 @@ export function FinancialGoalsView({ orders }: FinancialGoalsViewProps) {
   }, [annualGoalId, monthlyGoalId]);
 
   const actual = useMemo(() => {
-    const ranges = receiptGoalRanges(year, month);
-    const monthly = summarizeReceipts(orders, ranges.month);
-    const yearly = summarizeReceipts(orders, ranges.year);
-    return { month: monthly.netReceived, year: yearly.netReceived, review: monthly.ordersNeedingReview };
+    return salesGoalProgress(orders, year, month);
 
   }, [orders, year, month, now.getFullYear(), now.getMonth(), now.getDate()]);
 
@@ -117,11 +113,13 @@ export function FinancialGoalsView({ orders }: FinancialGoalsViewProps) {
           year,
           month: month + 1,
           monthlyGoal: Math.max(0, monthlyGoal),
+          basis: 'order_month',
           updatedAt: new Date().toISOString()
         }, { merge: true }),
         setDoc(doc(db, 'financial_goals', annualGoalId), {
           year,
           annualGoal: Math.max(0, annualGoal),
+          basis: 'order_month',
           updatedAt: new Date().toISOString()
         }, { merge: true })
       ]);
@@ -133,10 +131,11 @@ export function FinancialGoalsView({ orders }: FinancialGoalsViewProps) {
 
   return (
     <div className="space-y-5">
-      <p className="text-xs text-gray-500">Recebimentos menos estornos, nas respectivas datas registradas. A criação ou entrega do pedido não define o mês de recebimento.</p>
-      {actual.review > 0 && <p role="status" className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900">{actual.review} pedido(s) precisam de conferência do histórico. Valores sem data confiável não foram distribuídos entre meses.</p>}
+      <p className="text-xs text-gray-500">A venda conta uma única vez na meta do mês em que o pedido foi criado, mesmo com pagamento posterior ou parcelado. Vendas manuais confirmadas pela loja entram nesse mês; tentativas online sem confirmação ficam separadas. Cancelamentos e estornos ajustam a venda original. O caixa usa as datas reais de pagamento.</p>
+      {actual.review > 0 && <p role="status" className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900">{actual.review} pedido(s) precisam de conferência da data da venda ou dos valores e não entraram nas metas.</p>}
+      {actual.pendingConfirmation > 0 && <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900">Pedidos online sem confirmação no mês: {formatMoney(actual.pendingConfirmation)}. Fora do realizado da meta.</p>}
       <div className="flex flex-col gap-3 rounded-2xl bg-black p-5 text-white sm:flex-row sm:items-end sm:justify-between">
-        <div><p className="text-[9px] font-black uppercase tracking-[0.25em] text-[#eab308]">Metas financeiras</p><h2 className="mt-1 text-2xl font-black uppercase italic">Faturamento recebido</h2></div>
+        <div><p className="text-[9px] font-black uppercase tracking-[0.25em] text-[#eab308]">Metas comerciais</p><h2 className="mt-1 text-2xl font-black uppercase italic">Vendas por mês do pedido</h2></div>
         <div className="flex gap-2">
           <select value={month} onChange={event => setMonth(Number(event.target.value))} className="rounded-lg border border-white/20 bg-neutral-900 px-3 py-2 text-xs font-bold">
             {Array.from({ length: 12 }, (_, index) => <option key={index} value={index}>{new Date(2024, index, 1).toLocaleDateString('pt-BR', { month: 'long' })}</option>)}

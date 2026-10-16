@@ -24,6 +24,7 @@ interface BreakEvenViewProps {
   averageContributionMarginRatio: number; // in % (e.g. 35.5)
   averageTicket: number;
   fixedExpensesFromDRE: number;
+  costsEstimated?: boolean;
 }
 
 export const BreakEvenView: React.FC<BreakEvenViewProps> = ({
@@ -31,7 +32,8 @@ export const BreakEvenView: React.FC<BreakEvenViewProps> = ({
   currentUnits,
   averageContributionMarginRatio,
   averageTicket,
-  fixedExpensesFromDRE
+  fixedExpensesFromDRE,
+  costsEstimated = false
 }) => {
   const { formatMoney, formatPercent } = useFinancialPrivacy();
 
@@ -43,8 +45,9 @@ export const BreakEvenView: React.FC<BreakEvenViewProps> = ({
 
   // Active parameters
   const activeFixedExpenses = isManualOverride ? customFixedExpenses : fixedExpensesFromDRE;
-  const activeMarginRatio = isManualOverride ? customMarginRatio : (averageContributionMarginRatio > 0 ? averageContributionMarginRatio : 30);
-  const activeTicket = isManualOverride ? customAverageTicket : (averageTicket > 0 ? averageTicket : 149.90);
+  const activeMarginRatio = isManualOverride ? customMarginRatio : averageContributionMarginRatio;
+  const activeTicket = isManualOverride ? customAverageTicket : averageTicket;
+  const hasValidInputs = Number.isFinite(activeMarginRatio) && activeMarginRatio > 0 && Number.isFinite(activeTicket) && activeTicket > 0 && Number.isFinite(activeFixedExpenses) && activeFixedExpenses >= 0;
 
   // Compute canonical break-even result
   const breakEven: BreakEvenResult = useMemo(() => {
@@ -157,6 +160,9 @@ export const BreakEvenView: React.FC<BreakEvenViewProps> = ({
         </div>
       )}
 
+      {!hasValidInputs && <p role="status" className="border border-amber-200 bg-amber-50 p-5 text-sm text-amber-900">Não há base para calcular o ponto de equilíbrio: o período precisa ter preço médio e margem de contribuição positivos. Confira os custos e recebimentos ou use a simulação livre.</p>}
+      {!isManualOverride && costsEstimated && <p role="status" className="border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">Cálculo provisório: há custos ausentes ou estimados nos pedidos do período.</p>}
+      {hasValidInputs && <>
       {/* Progress & Gauge Banner */}
       <div className="bg-black text-white p-6 space-y-6 border border-black shadow-lg">
         
@@ -196,7 +202,7 @@ export const BreakEvenView: React.FC<BreakEvenViewProps> = ({
           <div className="flex items-center justify-between text-[10px] uppercase font-mono text-gray-400 pt-1">
             <span>0%</span>
             <span>100% (Equilíbrio)</span>
-            <span>{percentAchieved > 100 ? `Superávit (+${percentAchieved - 100}%)` : 'Meta Superada'}</span>
+            <span>{percentAchieved > 100 ? `Superávit (+${percentAchieved - 100}%)` : 'Meta de equilíbrio'}</span>
           </div>
         </div>
 
@@ -256,6 +262,8 @@ export const BreakEvenView: React.FC<BreakEvenViewProps> = ({
         </div>
 
       </div>
+
+      </>}
 
     </div>
   );

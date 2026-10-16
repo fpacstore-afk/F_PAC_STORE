@@ -2,6 +2,7 @@ import { companyMovements, companyMovementExportId } from '../../shared/companyM
 import { ProductRow } from './admin/financial/ProductCostRow';
 import { APPS_SCRIPT_PROMPT } from '../data/sheetsIntegrationScript';
 import { summarizeReceipts, receiptPeriodRange } from '../../shared/financialReceipts';
+import { estimateCampaignPerformance } from '../../shared/financialDashboard';
 import { financialDateKey, isActiveFinancialRecord } from '../../shared/cashFlow';
 import { isSalesCashFlowEntry, SALES_MOVEMENT_MESSAGE } from '../../shared/financialMovementScope';
 import { LegacySalesHistory } from './admin/financial/LegacySalesHistory';
@@ -500,37 +501,8 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
     };
   }, [filteredCashflow, filteredTraffic, dreStats]);
 
-  // Paid traffic computations
-  const trafficStats = useMemo(() => {
-    const totalInvestidoTrafego = filteredTraffic.reduce((acc, t) => acc + Number(t.amountSpent || 0), 0);
-    const totalCliques = filteredTraffic.reduce((acc, t) => acc + Number(t.clicks || 0), 0);
-    const totalVendasAtribuidasProps = filteredTraffic.reduce((acc, t) => acc + Number(t.conversions || 0), 0);
-
-    const totalRevenueFromAds = totalVendasAtribuidasProps * orderStats.ticketMedio;
-    const roas = totalInvestidoTrafego > 0 ? totalRevenueFromAds / totalInvestidoTrafego : 0;
-    const cac = totalVendasAtribuidasProps > 0 ? totalInvestidoTrafego / totalVendasAtribuidasProps : 0;
-    
-    const campaignList = filteredTraffic.map(t => {
-      const estimatedValue = Number(t.conversions || 0) * orderStats.ticketMedio;
-      const campanhaRoas = Number(t.amountSpent) > 0 ? estimatedValue / Number(t.amountSpent) : 0;
-      const campanhaLucro = estimatedValue - Number(t.amountSpent);
-      return {
-        ...t,
-        estimatedValue,
-        roas: campanhaRoas,
-        lucro: campanhaLucro
-      };
-    });
-
-    return {
-      totalInvestido: totalInvestidoTrafego,
-      totalCliques,
-      totalConversions: totalVendasAtribuidasProps,
-      roas,
-      cac,
-      campaigns: campaignList
-    };
-  }, [filteredTraffic, orderStats.ticketMedio]);
+  // Scenarios based on recorded conversion counts; not verified revenue or profit.
+  const trafficStats = useMemo(() => estimateCampaignPerformance(filteredTraffic, orderStats.ticketMedio), [filteredTraffic, orderStats.ticketMedio]);
 
   // Product analytical stats (best sellers, profitability, margins)
   const productFinancialStats = useMemo(() => {
@@ -1067,8 +1039,8 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
       headers = 'ID;Data;Tipo;Descrição;Categoria;Valor (R$)\n';
       rows = companyCashflow.map(c => `${companyMovementExportId(c)};${c.date};${c.type === 'in' ? 'Entrada' : 'Saída'};${c.description};${c.category};${Number(c.amount).toFixed(2)}`).join('\n');
     } else if (type === 'traffic') {
-      headers = 'ID;Data;Campanha;Investimento;Cliques;Vendas Atribuídas;ROAS;Lucro Estimado\n';
-      rows = trafficStats.campaigns.map(c => `${companyMovementExportId(c)};${c.date};${c.campaignName};${c.amountSpent.toFixed(2)};${c.clicks};${c.conversions};${c.roas.toFixed(1)};${c.lucro.toFixed(2)}`).join('\n');
+      headers = 'ID;Data;Campanha;Investimento;Cliques;Conversões Informadas;ROAS Estimado;Receita Estimada Menos Anúncios\n';
+      rows = trafficStats.campaigns.map(c => `${companyMovementExportId(c)};${c.date};${c.campaignName};${c.amountSpent.toFixed(2)};${c.clicks};${c.conversions};${c.roas === null ? '' : c.roas.toFixed(1)};${c.lucro === null ? '' : c.lucro.toFixed(2)}`).join('\n');
     }
 
     const csvContent = "data:text/csv;charset=utf-8,\uFEFF" + encodeURIComponent(headers + rows);
@@ -2215,17 +2187,17 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
         <div className="space-y-8 animate-in fade-in duration-300">
            <div className="p-6 bg-white border flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
               <div>
-                <h3 className="text-lg font-black uppercase italic">Painel de Tráfego Pago & ROI</h3>
-                <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-0.5">Mapeie os investimentos em Meta Ads, Google Ads ou TikTok Ads para calcular ROAS do site e ROI geral.</p>
+                <h3 className="text-lg font-black uppercase italic">Tráfego Pago e Estimativas</h3>
+                <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-0.5">Os cenários multiplicam as conversões informadas pelo recebimento médio dos pedidos. Não confirmam receita atribuída, lucro ou retorno real. Os custos de produto, taxas e frete não estão descontados.</p>
               </div>
               <div className="flex gap-4 text-right">
                 <div>
-                   <span className="text-[8px] font-extrabold text-gray-400 uppercase tracking-widest">INVESTIMENTO ESTIMADO</span>
+                   <span className="text-[8px] font-extrabold text-gray-400 uppercase tracking-widest">GASTO REGISTRADO EM CAMPANHAS</span>
                    <h4 className="text-xl font-black text-black">{formatMoney(trafficStats.totalInvestido)}</h4>
                 </div>
                 <div>
-                   <span className="text-[8px] font-extrabold text-gray-400 uppercase tracking-widest text-[#eab308]">ROAS GERAL DA CONVERSÃO</span>
-                   <h4 className="text-xl font-black text-black">{maskFinancial(`${trafficStats.roas.toFixed(1)}x`)}</h4>
+                   <span className="text-[8px] font-extrabold text-gray-400 uppercase tracking-widest text-[#eab308]">ROAS ESTIMADO</span>
+                   <h4 className="text-xl font-black text-black">{trafficStats.roas === null ? '—' : maskFinancial(`${trafficStats.roas.toFixed(1)}x`)}</h4>
                 </div>
               </div>
            </div>
@@ -2280,7 +2252,7 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
                  </div>
 
                  {trafficStats.campaigns.length === 0 ? (
-                   <div className="p-20 text-center text-xs font-bold uppercase tracking-widest text-gray-400">Nenhum investimento atribulado cadastrado.</div>
+                   <div className="p-20 text-center text-xs font-bold uppercase tracking-widest text-gray-400">Nenhuma campanha ativa cadastrada.</div>
                  ) : (
                    <div className="overflow-x-auto lg:overflow-visible max-h-[440px] scrollbar-thin">
                       <table className="w-full text-left text-xs border-collapse block md:table">
@@ -2290,8 +2262,8 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
                             <th className="p-4">Investimento (R$)</th>
                             <th className="p-4 text-center">Cliques</th>
                             <th className="p-4 text-center">Vendas Convertidas</th>
-                            <th className="p-4 text-center">ROAS Campanha</th>
-                            <th className="p-4 text-center">Lucro Estimado</th>
+                            <th className="p-4 text-center">ROAS estimado</th>
+                            <th className="p-4 text-center">Receita estimada menos anúncios</th>
                             <th className="p-4 text-center">Ações</th>
                           </tr>
                         </thead>
@@ -2315,11 +2287,11 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
                               </td>
                               <td className="block md:table-cell p-0 md:p-4 flex justify-between items-center md:table-cell text-center font-black">
                                 <span className="inline-block md:hidden font-extrabold text-gray-400 text-[8px] uppercase tracking-widest mr-2">ROAS</span>
-                                <span>{maskFinancial(`${camp.roas.toFixed(1)}x`)}</span>
+                                <span>{camp.roas === null ? '—' : maskFinancial(`${camp.roas.toFixed(1)}x`)}</span>
                               </td>
-                              <td className={cn("block md:table-cell p-0 md:p-4 flex justify-between items-center md:table-cell text-center font-extrabold", camp.lucro >= 0 ? "text-emerald-600" : "text-rose-600")}>
-                                <span className="inline-block md:hidden font-extrabold text-gray-400 text-[8px] uppercase tracking-widest mr-2">Lucro Estimado</span>
-                                <span>{formatMoney(camp.lucro)}</span>
+                              <td className={cn("block md:table-cell p-0 md:p-4 flex justify-between items-center md:table-cell text-center font-extrabold", camp.lucro !== null && camp.lucro >= 0 ? "text-emerald-600" : "text-rose-600")}>
+                                <span className="inline-block md:hidden font-extrabold text-gray-400 text-[8px] uppercase tracking-widest mr-2">Receita estimada menos anúncios</span>
+                                <span>{camp.lucro === null ? '—' : formatMoney(camp.lucro)}</span>
                               </td>
                               <td className="block md:table-cell p-0 md:p-4 flex justify-between items-center md:table-cell text-center">
                                 <span className="inline-block md:hidden font-extrabold text-gray-400 text-[8px] uppercase tracking-widest mr-2">Ações</span>

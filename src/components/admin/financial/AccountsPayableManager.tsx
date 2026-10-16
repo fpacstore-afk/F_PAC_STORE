@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
   Plus, Search, Filter, AlertCircle, CheckCircle2, 
   Clock, DollarSign, Calendar, Building2, Tag, 
@@ -6,6 +6,8 @@ import {
   CreditCard, RefreshCw, AlertTriangle
 } from 'lucide-react';
 import { authenticatedFetch } from '../../../lib/api';
+import { financialDateKey } from '../../../../shared/cashFlow';
+import { payableOpenAmount, payableSchedule, payableIsOverdue, summarizePayables } from '../../../../shared/financialDashboard';
 import { useFinancialPrivacy } from '../../../context/FinancialPrivacyContext';
 import { AccountsPayableEntry, Supplier, AccountPlanCategory } from '../../../types/financial';
 import toast from 'react-hot-toast';
@@ -31,6 +33,7 @@ export function AccountsPayableManager({ onRefreshStats }: AccountsPayableManage
   const [payables, setPayables] = useState<AccountsPayableEntry[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [searchTerm, setSearchTerm] = useState('');
   const [filterCategory, setFilterCategory] = useState<string>('all');
@@ -45,10 +48,10 @@ export function AccountsPayableManager({ onRefreshStats }: AccountsPayableManage
   const [formData, setFormData] = useState({
     description: '',
     amount: '',
-    dueDate: new Date().toISOString().split('T')[0],
+    dueDate: financialDateKey(new Date()) || '',
     category: 'FORNECEDOR',
     supplierId: '',
-    competencyDate: new Date().toISOString().split('T')[0],
+    competencyDate: financialDateKey(new Date()) || '',
     recurrence: 'none',
     priority: 'normal',
     notes: '',
@@ -58,23 +61,30 @@ export function AccountsPayableManager({ onRefreshStats }: AccountsPayableManage
   const [paymentData, setPaymentData] = useState({
     amount: '',
     paymentMethod: 'PIX',
-    paymentDate: new Date().toISOString().split('T')[0],
+    paymentDate: financialDateKey(new Date()) || '',
     reason: ''
   });
 
   const [voidReason, setVoidReason] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const submissionKeys = useRef({ create: '', payment: '', void: '' });
+  const newSubmissionKey = () => crypto.randomUUID();
+
+  useEffect(() => { if (showCreateModal) submissionKeys.current.create = newSubmissionKey(); }, [showCreateModal]);
+  useEffect(() => { if (showPaymentModal) submissionKeys.current.payment = newSubmissionKey(); }, [showPaymentModal, selectedPayable?.id]);
+  useEffect(() => { if (showVoidModal) submissionKeys.current.void = newSubmissionKey(); }, [showVoidModal, selectedPayable?.id]);
 
   const fetchPayables = async () => {
     try {
       setLoading(true);
+      setLoadError(null);
       const res = await authenticatedFetch('/api/admin/financial/payables');
       const data = await res.json();
-      if (data.success && Array.isArray(data.payables)) {
-        setPayables(data.payables);
-      }
+      if (!res.ok || !data.success || !Array.isArray(data.payables)) throw new Error('Não foi possível carregar as contas a pagar. Os totais estão indisponíveis.');
+      setPayables(data.payables);
     } catch (err: any) {
       console.error('Erro ao buscar contas a pagar:', err);
+      setLoadError('Não foi possível carregar as contas a pagar. Os totais estão indisponíveis. Tente novamente.');
       toast.error('Erro ao carregar contas a pagar.');
     } finally {
       setLoading(false);
@@ -98,79 +108,17 @@ export function AccountsPayableManager({ onRefreshStats }: AccountsPayableManage
     fetchSuppliers();
   }, []);
 
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = financialDateKey(new Date())!;
 
-  // Metrics
-  const metrics = useMemo(() => {
-    let totalOpen = 0;
-    let totalPaid = 0;
-    let overdueCount = 0;
-    let overdueAmount = 0;
-    let dueTodayCount = 0;
-    let dueTodayAmount = 0;
-    let pendingCount = 0;
-    let upcomingAmount = 0;
-    let paidInPeriod = 0;
-    const monthStart = new Date();
-    monthStart.setDate(1);
-    monthStart.setHours(0, 0, 0, 0);
-    const nextMonth = new Date(monthStart);
-    nextMonth.setMonth(nextMonth.getMonth() + 1);
-
-    payables.forEach(p => {
-      if (p.status !== 'voided' && p.status !== 'cancelled') {
-        totalPaid += Number(p.amountPaid || 0);
-        if (p.status === 'pending' || p.status === 'partially_paid') {
-          const open = Number(p.amountOpen || (p.amount - p.amountPaid)) || 0;
-          totalOpen += open;
-          pendingCount++;
-
-          if (p.dueDate < todayStr) {
-            overdueCount++;
-            overdueAmount += open;
-          } else if (p.dueDate === todayStr) {
-            dueTodayCount++;
-            dueTodayAmount += open;
-          }
-          if (p.dueDate >= todayStr) upcomingAmount += open;
-        }
-
-        const history = Array.isArray(p.paymentHistory) ? p.paymentHistory : [];
-        if (history.length > 0) {
-          paidInPeriod += history.reduce((sum, payment) => {
-            const paidAt = new Date(`${payment.paymentDate || payment.paidAt || ''}T12:00:00`);
-            return !Number.isNaN(paidAt.getTime()) && paidAt >= monthStart && paidAt < nextMonth
-              ? sum + Number(payment.amount || 0)
-              : sum;
-          }, 0);
-        } else if (p.paymentDate) {
-          const paidAt = new Date(`${p.paymentDate}T12:00:00`);
-          if (!Number.isNaN(paidAt.getTime()) && paidAt >= monthStart && paidAt < nextMonth) {
-            paidInPeriod += Number(p.amountPaid || 0);
-          }
-        }
-      }
-    });
-
-    return {
-      totalOpen,
-      totalPaid,
-      overdueCount,
-      overdueAmount,
-      dueTodayCount,
-      dueTodayAmount,
-      pendingCount,
-      upcomingAmount,
-      paidInPeriod
-    };
-  }, [payables, todayStr]);
+  // Use the same dated movement rules as receipts; incomplete histories stay explicit.
+  const metrics = useMemo(() => summarizePayables(payables), [payables, todayStr]);
 
   // Filtered list
   const filteredPayables = useMemo(() => {
     return payables.filter(item => {
       if (filterStatus === 'pending' && !['pending', 'partially_paid'].includes(item.status)) return false;
       if (filterStatus === 'paid' && item.status !== 'paid') return false;
-      if (filterStatus === 'overdue' && (['paid', 'voided', 'cancelled'].includes(item.status) || item.dueDate >= todayStr)) return false;
+      if (filterStatus === 'overdue' && !payableIsOverdue(item, todayStr)) return false;
       if (filterStatus === 'voided' && item.status !== 'voided') return false;
 
       if (filterCategory !== 'all' && item.category !== filterCategory) return false;
@@ -204,7 +152,7 @@ export function AccountsPayableManager({ onRefreshStats }: AccountsPayableManage
     try {
       setIsSubmitting(true);
       const selectedSup = suppliers.find(s => s.id === formData.supplierId);
-      const idempotencyKey = `pay_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+      const idempotencyKey = submissionKeys.current.create ||= newSubmissionKey();
 
       const res = await authenticatedFetch('/api/admin/financial/payables', {
         method: 'POST',
@@ -235,10 +183,10 @@ export function AccountsPayableManager({ onRefreshStats }: AccountsPayableManage
       setFormData({
         description: '',
         amount: '',
-        dueDate: new Date().toISOString().split('T')[0],
+        dueDate: financialDateKey(new Date()) || '',
         category: 'FORNECEDOR',
         supplierId: '',
-        competencyDate: new Date().toISOString().split('T')[0],
+        competencyDate: financialDateKey(new Date()) || '',
         recurrence: 'none',
         priority: 'normal',
         notes: '',
@@ -266,7 +214,7 @@ export function AccountsPayableManager({ onRefreshStats }: AccountsPayableManage
 
     try {
       setIsSubmitting(true);
-      const idempotencyKey = `pay_exec_${selectedPayable.id}_${Date.now()}`;
+      const idempotencyKey = submissionKeys.current.payment ||= newSubmissionKey();
 
       const res = await authenticatedFetch(`/api/admin/financial/payables/${selectedPayable.id}/pay`, {
         method: 'POST',
@@ -304,7 +252,7 @@ export function AccountsPayableManager({ onRefreshStats }: AccountsPayableManage
 
     try {
       setIsSubmitting(true);
-      const idempotencyKey = `pay_void_${selectedPayable.id}_${Date.now()}`;
+      const idempotencyKey = submissionKeys.current.void ||= newSubmissionKey();
 
       const res = await authenticatedFetch(`/api/admin/financial/payables/${selectedPayable.id}/void`, {
         method: 'POST',
@@ -340,20 +288,31 @@ export function AccountsPayableManager({ onRefreshStats }: AccountsPayableManage
     if (item.status === 'paid') {
       return <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"><CheckCircle2 className="w-3 h-3 mr-1" /> Paga</span>;
     }
+    if (payableIsOverdue(item, todayStr)) {
+      return <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-red-500/10 text-red-400 border border-red-500/20"><AlertTriangle className="w-3 h-3 mr-1" /> {item.status === 'partially_paid' ? 'Parcial · vencida' : 'Vencida'}</span>;
+    }
+    if (payableSchedule(item).entries.some(entry => entry.due === todayStr)) {
+      return <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-amber-500/10 text-amber-400 border border-amber-500/20"><Clock className="w-3 h-3 mr-1" /> Vence Hoje</span>;
+    }
     if (item.status === 'partially_paid') {
       return <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-blue-500/10 text-blue-400 border border-blue-500/20"><Clock className="w-3 h-3 mr-1" /> Parcial</span>;
     }
-    if (item.dueDate < todayStr) {
-      return <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-red-500/10 text-red-400 border border-red-500/20 animate-pulse"><AlertTriangle className="w-3 h-3 mr-1" /> Vencida</span>;
-    }
-    if (item.dueDate === todayStr) {
-      return <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-amber-500/10 text-amber-400 border border-amber-500/20"><Clock className="w-3 h-3 mr-1" /> Vence Hoje</span>;
+    if (!payableSchedule(item).entries.length && payableOpenAmount(item) > 0) {
+      return <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-amber-500/10 text-amber-400 border border-amber-500/20">Sem vencimento</span>;
     }
     return <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-yellow-500/10 text-yellow-400 border border-yellow-500/20">Em Aberto</span>;
   };
 
+  if (loadError) return <div role="alert" className="rounded-xl border border-red-800 bg-red-950/40 p-5 text-sm text-red-100"><p>{loadError}</p><button type="button" onClick={fetchPayables} className="mt-3 rounded bg-white px-4 py-2 text-black">Tentar novamente</button></div>;
+  if (loading) return <p role="status" className="p-5 text-sm text-neutral-300">Carregando as contas para calcular os saldos...</p>;
+
   return (
     <div className="space-y-6">
+      {(metrics.paymentsNeedingReview > 0 || metrics.unscheduledOpen > 0 || metrics.invalidAmountCount > 0) && <div role="status" className="rounded-xl border border-amber-800 bg-amber-950/30 p-4 text-sm text-amber-100">
+        <p>Há registros que precisam de conferência. Em aberto sem vencimento confiável: {formatMoney(metrics.unscheduledOpen)}.</p>
+        <p>Pagamentos sem data ou com histórico divergente: {formatMoney(metrics.undatedPaid)} em {metrics.paymentsNeedingReview} conta(s). Esses valores ficam fora de “Pago no mês”.</p>
+        {metrics.invalidAmountCount > 0 && <p>{metrics.invalidAmountCount} conta(s) com valores inconsistentes não entraram nos totais.</p>}
+      </div>}
       {/* Top Header & Actions */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-neutral-900 border border-neutral-800 p-5 rounded-xl">
         <div>
@@ -516,7 +475,7 @@ export function AccountsPayableManager({ onRefreshStats }: AccountsPayableManage
                 filteredPayables.map((item) => {
                   const isVoided = item.status === 'voided';
                   const isPaid = item.status === 'paid';
-                  const openAmt = item.amountOpen !== undefined ? item.amountOpen : (item.amount - (item.amountPaid || 0));
+                  const openAmt = payableOpenAmount(item);
 
                   return (
                     <tr key={item.id} className="hover:bg-neutral-800/40 transition">
@@ -567,7 +526,7 @@ export function AccountsPayableManager({ onRefreshStats }: AccountsPayableManage
                                 setPaymentData({
                                   amount: String(openAmt),
                                   paymentMethod: 'PIX',
-                                  paymentDate: new Date().toISOString().split('T')[0],
+                                  paymentDate: financialDateKey(new Date()) || '',
                                   reason: ''
                                 });
                                 setShowPaymentModal(true);
@@ -615,7 +574,7 @@ export function AccountsPayableManager({ onRefreshStats }: AccountsPayableManage
           ) : filteredPayables.map(item => {
             const isVoided = item.status === 'voided';
             const isPaid = item.status === 'paid';
-            const openAmt = item.amountOpen !== undefined ? item.amountOpen : (item.amount - (item.amountPaid || 0));
+            const openAmt = payableOpenAmount(item);
             return (
               <article key={item.id} className="space-y-3 p-4">
                 <div className="flex items-start justify-between gap-3">
@@ -636,7 +595,7 @@ export function AccountsPayableManager({ onRefreshStats }: AccountsPayableManage
                     <button
                       onClick={() => {
                         setSelectedPayable(item);
-                        setPaymentData({ amount: String(openAmt), paymentMethod: 'PIX', paymentDate: new Date().toISOString().split('T')[0], reason: '' });
+                        setPaymentData({ amount: String(openAmt), paymentMethod: 'PIX', paymentDate: financialDateKey(new Date()) || '', reason: '' });
                         setShowPaymentModal(true);
                       }}
                       className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-emerald-600 px-3 py-3 text-sm font-semibold text-white"
@@ -843,7 +802,7 @@ export function AccountsPayableManager({ onRefreshStats }: AccountsPayableManage
                 <div className="flex justify-between text-xs mt-2 pt-2 border-t border-neutral-800 text-neutral-300">
                   <span>Total da Conta: {formatMoney(selectedPayable.amount)}</span>
                   <span className="text-amber-400 font-semibold">
-                    Em Aberto: {formatMoney(selectedPayable.amountOpen ?? (selectedPayable.amount - (selectedPayable.amountPaid || 0)))}
+                    Em Aberto: {formatMoney(payableOpenAmount(selectedPayable))}
                   </span>
                 </div>
               </div>

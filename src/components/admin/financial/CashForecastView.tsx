@@ -162,6 +162,16 @@ export function CashForecastView() {
       )}
 
       {/* Core Current Cash & Horizon Spotlight */}
+      <section aria-label="Conferência do caixa" className="rounded-xl border border-amber-800 bg-amber-950/30 p-4 text-sm text-amber-100">
+        <p className="font-bold">Conciliação com o extrato: pendente de conferência</p>
+        <p className="mt-1 text-xs">O saldo reúne os registros da empresa. Para compará-lo ao banco, confira o saldo inicial, pagamentos em dinheiro, valores ainda no intermediador e movimentações ausentes.</p>
+        <div className="mt-3 grid grid-cols-2 gap-3 lg:grid-cols-4 text-xs">
+          <p>Entradas calculadas<br /><strong>{summary.cashIn === undefined ? '—' : formatMoney(summary.cashIn)}</strong></p>
+          <p>Saídas calculadas<br /><strong>{summary.cashOut === undefined ? '—' : formatMoney(summary.cashOut)}</strong></p>
+          <p>Taxas estimadas incluídas<br /><strong>{summary.estimatedFeeAmount === undefined ? '—' : formatMoney(summary.estimatedFeeAmount)}</strong></p>
+          <p>Fretes sem custo informado<br /><strong>{summary.estimatedShippingAmount === undefined ? '—' : formatMoney(summary.estimatedShippingAmount)}</strong></p>
+        </div>
+      </section>
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
         {/* Current Realized Cash */}
         <div className="bg-neutral-900 border border-neutral-800 p-5 rounded-xl flex flex-col justify-between">
@@ -296,7 +306,7 @@ export function CashForecastView() {
         <div className="text-xs text-neutral-300 space-y-1">
           <p className="font-semibold text-white">Como esta projeção é calculada?</p>
           <p className="text-neutral-400 leading-relaxed">
-            O saldo projetado parte do <strong className="text-white">Saldo em Caixa Realizado</strong>, soma todos os recebíveis de pedidos aguardando compensação/pix e subtrai as <strong className="text-white">Contas a Pagar</strong> abertas de acordo com suas datas de vencimento em cada intervalo.
+            O saldo projetado parte do <strong className="text-white">saldo calculado pelos registros</strong>, soma os recebíveis com vencimento informado e subtrai as <strong className="text-white">Contas a Pagar</strong> abertas de acordo com suas datas de vencimento em cada intervalo.
           </p>
         </div>
       </div>

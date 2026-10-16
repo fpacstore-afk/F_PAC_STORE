@@ -12,12 +12,20 @@ export function calculateRecordedCashFlow(orders: any[], cashflow: any[] = [], t
   let cashIn = 0;
   let cashOut = 0;
   let estimatedFeeOrders = 0;
+  let estimatedFeeAmount = 0;
+  let estimatedShippingOrders = 0;
+  let estimatedShippingAmount = 0;
   for (const order of orders) {
     cashIn += getOrderPaidAmount(order);
     cashOut += getOrderRefundedAmount(order);
     const fee = getOrderGatewayFee(order);
     cashOut += fee.fee + getOrderShippingFinances(order).shippingActualCost;
-    if (!fee.isExact) estimatedFeeOrders++;
+    if (!fee.isExact) { estimatedFeeOrders++; estimatedFeeAmount += fee.fee; }
+    const shipping = getOrderShippingFinances(order).shippingActualCost;
+    const shippingCostRecorded = [order.shippingFinances?.shippingCost, order.shippingFinances?.shippingActualCost,
+      order.pricing?.shippingActualCost, order.shippingDetails?.actualCost, order.shippingCost]
+      .some(value => value !== undefined && value !== null);
+    if (shipping > 0 && !shippingCostRecorded) { estimatedShippingOrders++; estimatedShippingAmount += shipping; }
   }
   const linkedPayments = new Map<string, number>();
   const movements = companyMovements(cashflow, investments).filter(isActiveFinancialRecord);
@@ -43,7 +51,8 @@ export function calculateRecordedCashFlow(orders: any[], cashflow: any[] = [], t
   for (const payable of payables.filter(isActiveFinancialRecord)) {
     cashOut += Math.max(0, Number(payable.amountPaid ?? 0) - (linkedPayments.get(String(payable.id)) || 0));
   }
-  return { cashIn: roundMoney(cashIn), cashOut: roundMoney(cashOut), netCashFlow: roundMoney(cashIn - cashOut), estimatedFeeOrders };
+  return { cashIn: roundMoney(cashIn), cashOut: roundMoney(cashOut), netCashFlow: roundMoney(cashIn - cashOut), estimatedFeeOrders,
+    estimatedFeeAmount: roundMoney(estimatedFeeAmount), estimatedShippingOrders, estimatedShippingAmount: roundMoney(estimatedShippingAmount) };
 }
 
 export function financialDateKey(value: any): string | null {

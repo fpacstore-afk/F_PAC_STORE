@@ -17,7 +17,9 @@ import {
 } from 'lucide-react';
 import { db } from '../../lib/firebase';
 import { catalogIntegrity } from '../../../shared/catalogIntegrity';
-import { getOrderPaymentStatus, getOrderPaidAmount, getOrderNetReceived, getOrderPendingAmount } from '../../../shared/orderFinancialCore';
+import { getOrderPaymentStatus, getOrderPaidAmount, getOrderNetReceived, getOrderPendingAmount, getOrderTotal } from '../../../shared/orderFinancialCore';
+import { summarizeReceipts } from '../../../shared/financialReceipts';
+import { dashboardPeriodRange, dateMatchesRange } from '../../../shared/financialDashboard';
 import { useFinancialPrivacy } from '../../context/FinancialPrivacyContext';
 
 const PERIODS = [
@@ -57,8 +59,7 @@ function isReturned(order: AnyDoc) {
 }
 
 function orderGross(order: AnyDoc) {
-  const discounts = Number(order.couponDiscount || 0) + Number(order.pixDiscount || 0) + Number(order.flashSaleDiscount || 0) + Number(order.discount || 0);
-  return Number(order.subtotal || 0) || Math.max(0, Number(order.total || 0) + discounts);
+  return getOrderTotal(order);
 }
 
 function orderNet(order: AnyDoc) {
@@ -114,13 +115,21 @@ export default function ManagementDashboard() {
   const [products, setProducts] = useState<AnyDoc[]>([]);
   const [loading, setLoading] = useState(true);
   const [syncState, setSyncState] = useState('Sincronizando dados...');
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
+    setLoading(true);
+    setLoadError(null);
     let readyOrders = false;
     let readySessions = false;
     let readyInventory = false;
     let readyProducts = false;
     let loadFailed = false;
+    const reportError = () => {
+      loadFailed = true;
+      setLoadError('Não foi possível carregar todos os dados da gestão. Os indicadores estão indisponíveis até a consulta ser concluída.');
+    };
     const updateReady = () => {
       if (readyOrders && readySessions && readyInventory && readyProducts) {
         setLoading(false);
@@ -132,42 +141,39 @@ export default function ManagementDashboard() {
       setOrders(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
       readyOrders = true;
       updateReady();
-    }, () => { loadFailed = true; readyOrders = true; updateReady(); });
+    }, () => { reportError(); readyOrders = true; updateReady(); });
 
     const unSessions = onSnapshot(collection(db, 'visitor_sessions'), snap => {
       setSessions(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
       readySessions = true;
       updateReady();
-    }, () => { loadFailed = true; readySessions = true; updateReady(); });
+    }, () => { reportError(); readySessions = true; updateReady(); });
 
     const unInventory = onSnapshot(collection(db, 'inventory'), snap => {
       setInventory(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
       readyInventory = true;
       updateReady();
-    }, () => { loadFailed = true; readyInventory = true; updateReady(); });
+    }, () => { reportError(); readyInventory = true; updateReady(); });
 
     const unProducts = onSnapshot(collection(db, 'products'), snap => {
       setProducts(snap.docs.map(doc => ({ ...doc.data(), id: doc.id })));
       readyProducts = true; updateReady();
-    }, () => { loadFailed = true; readyProducts = true; updateReady(); });
+    }, () => { reportError(); readyProducts = true; updateReady(); });
 
     return () => { unOrders(); unSessions(); unInventory(); unProducts(); };
-  }, []);
+  }, [reloadKey]);
 
   const data = useMemo(() => {
     const selected = PERIODS.find(item => item.key === period) || PERIODS[1];
-    const cutoff = selected.days ? Date.now() - selected.days * 24 * 60 * 60 * 1000 : 0;
-    const inPeriod = (value: any) => {
-      if (!cutoff) return true;
-      const date = toDate(value);
-      return date ? date.getTime() >= cutoff : false;
-    };
+    const range = dashboardPeriodRange(selected.days);
+    const inPeriod = (value: any) => dateMatchesRange(value, range);
 
     const paidAll = orders.filter(isPaid);
     const paid = paidAll.filter(order => inPeriod(order.createdAt));
     const grossRevenue = paid.reduce((sum, order) => sum + orderGross(order), 0);
     const netRevenue = paid.reduce((sum, order) => sum + orderNet(order), 0);
     const ticket = paid.length ? netRevenue / paid.length : 0;
+    const receipts = summarizeReceipts(orders, range);
 
     const filteredSessions = sessions.filter(session => session.validationVersion === 1 && inPeriod(session.createdAt || session.updatedAt || session.lastActive));
     const purchases = filteredSessions.filter(session => session.purchaseCompleted === true).length;
@@ -233,7 +239,7 @@ export default function ManagementDashboard() {
     let returningCustomers = 0;
     customersInPeriod.forEach((_count, key) => {
       const first = firstPurchase.get(key) || 0;
-      if (!cutoff || first >= cutoff) newCustomers += 1;
+      if (!range || inPeriod(new Date(first))) newCustomers += 1;
       else returningCustomers += 1;
     });
 
@@ -260,6 +266,7 @@ export default function ManagementDashboard() {
     const pendingPayments = activeOrders.filter(order => {
       return !['cancelled', 'rejected', 'refunded'].includes(getOrderPaymentStatus(order)) && getOrderPendingAmount(order) > 0;
     }).length;
+    const pendingAmount = activeOrders.reduce((sum, order) => sum + getOrderPendingAmount(order), 0);
     const inProduction = activeOrders.filter(order => {
       const status = String(order.production?.status || order.productionStatus || '').toLowerCase();
       return ['waiting', 'pending', 'separacao_corte', 'estamparia', 'costura', 'embalagem', 'processing', 'in_production'].includes(status);
@@ -276,6 +283,7 @@ export default function ManagementDashboard() {
       unresolvedPayments: orders.filter(order => order.paymentCreationUncertain).length,
       grossRevenue,
       netRevenue,
+      receipts,
       ticket,
       paidOrders: paid.length,
       conversion,
@@ -293,11 +301,15 @@ export default function ManagementDashboard() {
       traffic,
       trafficTotal,
       pendingPayments,
+      pendingAmount,
       inProduction,
       readyToShip,
       lowStockVariants,
     };
   }, [orders, sessions, inventory, products, period]);
+
+  if (loadError) return <div role="alert" className="border border-red-200 bg-red-50 p-4 text-sm text-red-900"><p>{loadError}</p><button type="button" onClick={() => setReloadKey(key => key + 1)} className="mt-3 bg-black px-4 py-2 text-white">Tentar novamente</button></div>;
+  if (loading) return <p role="status" className="p-4 text-sm">Carregando os dados para calcular os indicadores...</p>;
 
   return (
     <section className="space-y-8">
@@ -328,7 +340,7 @@ export default function ManagementDashboard() {
       <div>
         <SectionTitle icon={AlertTriangle} eyebrow="Agora" title="Prioridades da operação" />
         <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
-          <MetricCard label="Pagamentos pendentes" value={number.format(data.pendingPayments)} helper="Pedidos ativos ainda sem quitação confirmada" accent />
+          <MetricCard label="Pagamentos pendentes" value={number.format(data.pendingPayments)} helper={`${formatMoney(data.pendingAmount)} em aberto nos pedidos ativos`} accent />
           <MetricCard label="Em produção" value={number.format(data.inProduction)} helper="Pedidos em etapas produtivas abertas" />
           <MetricCard label="Prontos para envio" value={number.format(data.readyToShip)} helper="Produção concluída sem despacho registrado" />
           <MetricCard label="Alertas de estoque" value={number.format(data.lowStockVariants)} helper="Rupturas ou variações abaixo do mínimo cadastrado" />
@@ -344,11 +356,13 @@ export default function ManagementDashboard() {
       <div>
         <SectionTitle icon={BarChart3} eyebrow="Desempenho" title="Comercial & Vendas" />
         <p className="mb-3 text-xs text-gray-400">A conversão considera apenas quem autorizou estatísticas e teve a compra confirmada nesta sessão. O total financeiro vem dos pedidos.</p>
+        <p className="mb-3 text-xs text-gray-500">Recebido no período: {formatMoney(data.receipts.received)}. Estornado no período: {formatMoney(data.receipts.refunded)}. Os recebimentos seguem as datas dos pagamentos e estornos.</p>
+        {data.receipts.ordersNeedingReview > 0 && <p role="status" className="mb-3 border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">{data.receipts.ordersNeedingReview} pedido(s) precisam de conferência de datas ou histórico. Recebimentos sem data: {formatMoney(data.receipts.undatedReceived)}; estornos sem data: {formatMoney(data.receipts.undatedRefunded)}. Esses valores ficam fora dos períodos por data.</p>}
         <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
-          <MetricCard label="Valor dos pedidos com recebimento" value={formatMoney(data.grossRevenue)} helper="Inclui o valor total de pedidos pagos parcialmente" accent />
-          <MetricCard label="Recebimento líquido desses pedidos" value={formatMoney(data.netRevenue)} helper="Recebido menos estornos; período pela criação do pedido" />
-          <MetricCard label="Recebimento médio por pedido" value={formatMoney(data.ticket)} helper="Inclui recebimentos parciais" />
-          <MetricCard label="Pedidos / Conversão" value={`${number.format(data.paidOrders)} · ${data.conversion.toFixed(1)}%`} helper="Pedidos pagos · conversão nas sessões autorizadas e validadas" />
+          <MetricCard label="Valor dos pedidos com recebimento" value={formatMoney(data.grossRevenue)} helper="Pedidos criados no período; inclui os pagos parcialmente" accent />
+          <MetricCard label="Recebimento líquido no período" value={formatMoney(data.receipts.netReceived)} helper="Pagamentos menos estornos nas suas datas reais" />
+          <MetricCard label="Recebimento médio dos pedidos" value={formatMoney(data.ticket)} helper="Acumulado dos pedidos criados no período; inclui parciais" />
+          <MetricCard label="Pedidos / Conversão" value={`${number.format(data.paidOrders)} · ${data.conversion.toFixed(1)}%`} helper="Pedidos criados no período com algum recebimento · conversão das sessões validadas" />
         </div>
       </div>
 
@@ -356,7 +370,7 @@ export default function ManagementDashboard() {
         <SectionTitle icon={Boxes} eyebrow="Operação" title="Gestão de Estoque & Produto" />
         <div className="grid grid-cols-1 xl:grid-cols-[1fr_1.35fr] gap-3">
           <div className="grid grid-cols-2 gap-3">
-            <MetricCard label="Giro de estoque" value={`${data.turnover.toFixed(2)}x`} helper={`${number.format(data.soldUnits)} saídas / ${number.format(data.physicalStock)} peças físicas`} accent />
+          <MetricCard label="Vendas / estoque atual" value={data.physicalStock > 0 ? `${data.turnover.toFixed(2)}x` : '—'} helper={`${number.format(data.soldUnits)} unidades nos pedidos com recebimento / ${number.format(data.physicalStock)} peças físicas atuais`} accent />
             <MetricCard label="Devolução / troca" value={`${data.returnRate.toFixed(1)}%`} helper="Pedidos com devolução, reembolso ou troca" />
             <MetricCard label="Encalhe 30+ dias" value={number.format(data.stale30)} helper="Peças com estoque e sem atualização recente" />
             <MetricCard label="Encalhe 60+ dias" value={number.format(data.stale60)} helper="Prioridade para ação promocional" />

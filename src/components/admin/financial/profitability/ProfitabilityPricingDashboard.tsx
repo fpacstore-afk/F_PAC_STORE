@@ -88,13 +88,11 @@ export const ProfitabilityPricingDashboard: React.FC<ProfitabilityPricingDashboa
     const stats = calculateProfitabilityOverviewStats(ordersProfitability);
     const totalUnitsSold = productsProfitability.reduce((acc, p) => acc + p.unitsSold, 0);
 
-    const averageMarginPercent = stats.marginPercent > 0
-      ? stats.marginPercent
-      : 30;
+    const averageMarginPercent = stats.marginPercent;
 
     const averageTicket = totalUnitsSold > 0 && stats.netRevenue > 0
       ? Number((stats.netRevenue / totalUnitsSold).toFixed(2))
-      : 149.90;
+      : 0;
 
     const fixedExpenses = dre.fixedExpenses || 0;
 
@@ -183,6 +181,8 @@ export const ProfitabilityPricingDashboard: React.FC<ProfitabilityPricingDashboa
       {/* 4. Break-Even */}
       {activeSection === 'breakeven' && (
         <BreakEvenView
+          key={periodFilter}
+          costsEstimated={dre.isCostEstimated}
           currentRevenue={aggregateMetrics.totalNetRevenue}
           currentUnits={aggregateMetrics.totalUnitsSold}
           averageContributionMarginRatio={aggregateMetrics.averageMarginPercent}
@@ -194,6 +194,7 @@ export const ProfitabilityPricingDashboard: React.FC<ProfitabilityPricingDashboa
       {/* 5. Metas de Lucro */}
       {activeSection === 'targets' && (
         <TargetProfitPlanner
+          key={periodFilter}
           currentRevenue={aggregateMetrics.totalNetRevenue}
           currentUnits={aggregateMetrics.totalUnitsSold}
           averageContributionMarginRatio={aggregateMetrics.averageMarginPercent}

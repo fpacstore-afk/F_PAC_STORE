@@ -45,6 +45,7 @@ import {
 } from '../utils/orderFinancial';
 import { FinancialEvent } from '../types/financial';
 import { parseCurrencyInput } from '../../shared/currencyInput';
+import { receivableMatchesPeriod, type ReceivableDateBasis } from '../../shared/financialDashboard';
 
 interface AdminAccountsReceivableProps {
   initialSearchTerm?: string;
@@ -66,6 +67,7 @@ export default function AdminAccountsReceivable({ initialSearchTerm = '', onNavi
   const [searchTerm, setSearchTerm] = useState(initialSearchTerm);
   const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'overdue' | 'partial' | 'paid' | 'refunded'>('pending');
   const [periodFilter, setPeriodFilter] = useState<'all' | 'today' | '7days' | 'month' | 'prev_month'>('all');
+  const [dateBasis, setDateBasis] = useState<ReceivableDateBasis>('created');
 
   const [loadError, setLoadError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
@@ -125,8 +127,6 @@ export default function AdminAccountsReceivable({ initialSearchTerm = '', onNavi
 
   // Filter orders
   const filteredOrders = useMemo(() => {
-    const now = new Date();
-
     return orders.filter(o => {
       // Exclui pedidos cancelados se não houver saldo nem valor pago
       const status = getOrderPaymentStatus(o);
@@ -149,21 +149,7 @@ export default function AdminAccountsReceivable({ initialSearchTerm = '', onNavi
         if (status !== 'refunded' && status !== 'partially_refunded' && getOrderRefundedAmount(o) === 0) return false;
       }
 
-      // Period filter based on createdAt
-      const created = o.createdAt?.toDate ? o.createdAt.toDate() : (o.createdAt ? new Date(o.createdAt) : null);
-      if (created && !isNaN(created.getTime())) {
-        if (periodFilter === 'today') {
-          if (created.toDateString() !== now.toDateString()) return false;
-        } else if (periodFilter === '7days') {
-          const diffDays = (now.getTime() - created.getTime()) / (1000 * 60 * 60 * 24);
-          if (diffDays > 7) return false;
-        } else if (periodFilter === 'month') {
-          if (created.getMonth() !== now.getMonth() || created.getFullYear() !== now.getFullYear()) return false;
-        } else if (periodFilter === 'prev_month') {
-          const prevMonthDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-          if (created.getMonth() !== prevMonthDate.getMonth() || created.getFullYear() !== prevMonthDate.getFullYear()) return false;
-        }
-      }
+      if (!receivableMatchesPeriod(o, periodFilter, dateBasis)) return false;
 
       // Search term match
       if (searchTerm.trim()) {
@@ -184,12 +170,12 @@ export default function AdminAccountsReceivable({ initialSearchTerm = '', onNavi
 
       return true;
     });
-  }, [orders, statusFilter, periodFilter, searchTerm]);
+  }, [orders, statusFilter, periodFilter, dateBasis, searchTerm]);
 
   // Reset page when filter changes
   useEffect(() => {
     setCurrentPage(1);
-  }, [statusFilter, periodFilter, searchTerm]);
+  }, [statusFilter, periodFilter, dateBasis, searchTerm]);
 
   const totalPages = Math.ceil(filteredOrders.length / pageSize) || 1;
   const paginatedOrders = useMemo(() => {
@@ -510,12 +496,21 @@ export default function AdminAccountsReceivable({ initialSearchTerm = '', onNavi
             )}
           </div>
 
+          <label className="flex flex-col gap-1 text-[9px] font-bold text-gray-500 w-full md:w-auto">
+            Data para filtrar a lista
+            <select value={dateBasis} onChange={event => setDateBasis(event.target.value as ReceivableDateBasis)} className="border border-black/15 bg-white px-2 py-2 text-xs text-black">
+              <option value="created">Criação do pedido</option>
+              <option value="due">Vencimento em aberto</option>
+              <option value="receipt">Pagamento ou estorno</option>
+            </select>
+          </label>
+
           {/* Period Selector */}
           <div className="flex items-center gap-1 w-full md:w-auto overflow-x-auto pb-1 md:pb-0">
             {[
               { id: 'all', label: 'Todo Período' },
               { id: 'today', label: 'Hoje' },
-              { id: '7days', label: '7 Dias' },
+              { id: '7days', label: dateBasis === 'due' ? 'Próximos 7 dias' : 'Últimos 7 dias' },
               { id: 'month', label: 'Mês Atual' },
               { id: 'prev_month', label: 'Mês Anterior' }
             ].map((p) => (
@@ -533,6 +528,7 @@ export default function AdminAccountsReceivable({ initialSearchTerm = '', onNavi
             ))}
           </div>
         </div>
+        <p className="text-[10px] text-gray-500">O período usa a data selecionada. Pagamentos e estornos sem data não entram nos filtros por recebimento; os valores da lista são os saldos acumulados de cada pedido.</p>
 
         {/* Status Filter Tabs */}
         <div className="flex items-center gap-1.5 overflow-x-auto pb-1 border-t border-black/5 pt-2.5">

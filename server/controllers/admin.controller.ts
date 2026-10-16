@@ -3154,7 +3154,7 @@ export async function createAccountsPayableController(req: Request, res: Respons
       return res.status(400).json({ error: 'INVALID_AMOUNT', message: 'Valor deve ser um número positivo maior que zero.' });
     }
 
-    if (!dueDate || typeof dueDate !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(dueDate.trim())) {
+    if (!dueDate || typeof dueDate !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(dueDate.trim()) || financialDateKey(dueDate.trim()) !== dueDate.trim()) {
       return res.status(400).json({ error: 'INVALID_DUE_DATE', message: 'Data de vencimento inválida (formato YYYY-MM-DD).' });
     }
 
@@ -3277,6 +3277,9 @@ export async function payAccountsPayableController(req: Request, res: Response) 
     if (!Number.isFinite(parsedAmount) || parsedAmount <= 0) {
       return res.status(400).json({ error: 'INVALID_AMOUNT', message: 'Valor deve ser um número positivo maior que zero.' });
     }
+    if (paymentDate != null && (typeof paymentDate !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(paymentDate.trim()) || financialDateKey(paymentDate.trim()) !== paymentDate.trim())) {
+      return res.status(400).json({ error: 'INVALID_PAYMENT_DATE', message: 'Informe uma data de pagamento válida no formato YYYY-MM-DD.' });
+    }
 
     const db = getDb();
     const eventId = deriveLedgerEventId(effectiveKey);
@@ -3294,6 +3297,10 @@ export async function payAccountsPayableController(req: Request, res: Response) 
       const payableData = payableSnap.data()!;
 
       if (eventSnap.exists) {
+        const event = eventSnap.data()!;
+        if (event.orderId !== payableId || !['payable_paid', 'payable_partial_payment'].includes(event.type) || Math.abs(Number(event.amount) - parsedAmount) > 0.001) {
+          throw { code: 'IDEMPOTENCY_CONFLICT', message: 'Esta tentativa já foi registrada com outros dados. Atualize as contas antes de iniciar outra baixa.' };
+        }
         return { idempotentReplay: true, payable: payableData };
       }
 
@@ -3317,7 +3324,7 @@ export async function payAccountsPayableController(req: Request, res: Response) 
       const newStatus = newOpenAmount <= 0.001 ? 'paid' : 'partially_paid';
       const eventType = newStatus === 'paid' ? 'payable_paid' : 'payable_partial_payment';
       const timestamp = new Date().toISOString();
-      const effectivePaymentDate = (paymentDate && typeof paymentDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(paymentDate.trim())) ? paymentDate.trim() : timestamp.split('T')[0];
+      const effectivePaymentDate = paymentDate ? paymentDate.trim() : financialDateKey(timestamp)!;
       let amountToAllocate = parsedAmount;
       const updatedInstallments = (Array.isArray(payableData.installments) ? payableData.installments : []).map((installment: any) => {
         if (amountToAllocate <= 0 || installment.status === 'paid') return installment;
@@ -3424,6 +3431,9 @@ export async function payAccountsPayableController(req: Request, res: Response) 
     }
     if (error.code === 'CANNOT_PAY_VOIDED_PAYABLE' || error.code === 'EXCEEDS_OPEN_AMOUNT') {
       return res.status(400).json({ error: error.code, message: error.message });
+    }
+    if (error.code === 'IDEMPOTENCY_CONFLICT') {
+      return res.status(409).json({ error: error.code, message: error.message });
     }
     logger.error(`❌ [PAY-PAYABLE-ERR] ${error.message}`, error);
     return res.status(500).json({ error: error.message || 'Erro ao registrar pagamento de conta a pagar.' });

@@ -7,7 +7,7 @@ const money = (n: number) => Number(n.toFixed(2));
 const positive = (n: unknown) => Number.isFinite(Number(n)) && Number(n) >= 0;
 
 /** Keep incomplete histories explicit: do not assign the remainder to the last payment date. */
-function datedMovements(total: number, logs: any[], fallbackDate: unknown) {
+export function datedFinancialMovements(total: number, logs: any[], fallbackDate: unknown) {
   if (!Number.isFinite(Number(total)) || Number(total) < 0) return { movements: [] as Movement[], undated: 0, conflict: true };
   // A zero aggregate is valid after a refund reversal. Its prior refund log
   // remains immutable for audit, but must not make current receipts conflict.
@@ -22,7 +22,7 @@ function datedMovements(total: number, logs: any[], fallbackDate: unknown) {
   for (const log of logs) {
     if (['pending', 'processing', 'rejected', 'cancelled', 'voided'].includes(String(log.status || '').toLowerCase())) continue;
     const amount = Number(log.amount);
-    const date = financialDateKey(log.date || log.paidAt || log.refundedAt || log.timestamp || log.createdAt);
+    const date = financialDateKey(log.date || log.paymentDate || log.paidAt || log.refundedAt || log.timestamp || log.createdAt);
     if (!positive(amount)) { conflict = true; continue; }
     const id = log.id || log.eventId || log.ledgerEventId || log.idempotencyKey;
     if (id) {
@@ -47,8 +47,8 @@ export function orderReceiptHistory(order: any) {
     : history.filter((e: any) => ['manual_payment', 'payment_approved', 'partial_payment'].includes(e.financialType || e.type) && e.amount !== undefined);
   const refundLogs = Array.isArray(order.refundLogs) && order.refundLogs.length ? order.refundLogs
     : history.filter((e: any) => ['refund', 'partial_refund'].includes(e.financialType || e.type) && e.amount !== undefined);
-  const incoming = datedMovements(paid, paymentLogs, order.payment?.paidAt || order.paidAt || order.data_pagamento);
-  const outgoing = datedMovements(refunded, refundLogs, order.payment?.refundedAt || order.refundedAt);
+  const incoming = datedFinancialMovements(paid, paymentLogs, order.payment?.paidAt || order.paidAt || order.data_pagamento);
+  const outgoing = datedFinancialMovements(refunded, refundLogs, order.payment?.refundedAt || order.refundedAt);
   return { paid, refunded, incoming, outgoing, conflict: incoming.conflict || outgoing.conflict || refunded > paid + 0.005 };
 }
 
