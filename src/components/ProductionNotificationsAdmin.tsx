@@ -1,3 +1,4 @@
+import { EmailDeliveryStatus } from './EmailDeliveryStatus';
 import React, { useState, useEffect } from 'react';
 import { 
   Send, 
@@ -436,6 +437,8 @@ export function ProductionNotificationsAdmin() {
         </div>
         {testResult && <p role="status" className="border-l-4 border-[#eab308] bg-amber-50 p-3 text-sm">{testResult}</p>}
       </section>
+
+      <EmailDeliveryStatus />
 
       {/* 3. STAGE TABS SELECTOR */}
       <div className="bg-white border border-black/10 shadow-sm p-4 space-y-4">

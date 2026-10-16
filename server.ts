@@ -1,3 +1,4 @@
+import { getEmailDeliveryHistory } from './server/services/emailDelivery.service.js';
 import { saveCompanyMovementFromSheet } from './server/services/companyMovementSheet.service';
 import { editManualCustomOrderController, getManualOrderEditHistoryController } from './server/controllers/manualOrderEdit.controller.js';
 import { FieldValue } from 'firebase-admin/firestore';
@@ -30,6 +31,8 @@ import { handleWebhook } from "./server/controllers/webhook.controller.js";
 import { 
   handleSaveLead, 
   handleCancelRecovery,
+  handleRestoreRecovery,
+  handleRecoveryWhatsApp,
   triggerCronCheck, 
   manualResendAutomation, 
   getAutomationDashboard,
@@ -423,6 +426,8 @@ apiRouter.get("/checkout/config", publicApiLimiter, (req, res) => {
 apiRouter.post("/checkout/process-payment", checkoutLimiter, checkoutIdentity, processPayment);
 apiRouter.post("/checkout/attempt", paymentStatusLimiter, checkoutIdentity, resumePayment);
 apiRouter.post("/checkout/lead", leadCaptureLimiter, handleSaveLead);
+apiRouter.post("/checkout/recovery/restore", leadCaptureLimiter, handleRestoreRecovery);
+apiRouter.post("/automation/recovery-whatsapp", adminApiLimiter, authenticateAdmin, handleRecoveryWhatsApp);
 apiRouter.post("/checkout/recovery/cancel", leadCaptureLimiter, handleCancelRecovery);
 apiRouter.post("/orders/:orderId/cancel", publicApiLimiter, cancelOrderController);
 apiRouter.post("/shipping/calculate", publicApiLimiter, async (req, res) => {
@@ -441,6 +446,10 @@ apiRouter.post("/webhook/mercadopago", webhookLimiter, handleWebhook);
 apiRouter.post("/webhooks/mercadopago", webhookLimiter, handleWebhook);
 
 // Protected Administrative Endpoints (REQUIRE AUTHENTICATION & AUTHORIZATION)
+apiRouter.get("/automation/email-deliveries", adminApiLimiter, authenticateAdmin, async (_req, res) => {
+  res.setHeader("Cache-Control", "no-store");
+  try { res.json(await getEmailDeliveryHistory()); } catch { res.status(503).json({ error: "Não foi possível consultar a entrega dos e-mails." }); }
+});
 apiRouter.get("/automation/dashboard", adminApiLimiter, authenticateAdmin, getAutomationDashboard);
 apiRouter.post("/checkout/trigger-cron", adminApiLimiter, authenticateAdmin, triggerCronCheck);
 apiRouter.post("/automation/resend", adminApiLimiter, authenticateAdmin, manualResendAutomation);

@@ -74,7 +74,7 @@ interface CalculatedPricingResult {
  * Server-authoritative calculation of order pricing.
  * Overrides any client-provided amounts to prevent price manipulation.
  */
-export async function calculateOrderPricing(input: PricingInput, context: Partial<DeliveryDependencies> & { now?: number } = {}): Promise<CalculatedPricingResult> {
+export async function calculateOrderPricing(input: PricingInput, context: Partial<DeliveryDependencies> & { now?: number; priceOnly?: boolean } = {}): Promise<CalculatedPricingResult> {
   const db = getDb();
   const verifiedItems: OrderItem[] = [];
   const storefrontItems: CartItem[] = [];
@@ -336,7 +336,7 @@ export async function calculateOrderPricing(input: PricingInput, context: Partia
     });
   }
 
-  const delivery = await quoteCheckoutDelivery(input.customerInfo, verifiedItems, context);
+  const delivery = context.priceOnly ? { destination: { city: '', state: '', neighborhood: '' }, shipping: 0 } : await quoteCheckoutDelivery(input.customerInfo, verifiedItems, context);
   const campaigns = await db.collection('weekly_promotions').where('active', '==', true).get();
   const promotion = selectActivePromotion(campaigns.docs.map(doc => ({ ...doc.data(), id: doc.id } as WeeklyPromotion)), context.now);
   const money = calculateStorefrontTotals({

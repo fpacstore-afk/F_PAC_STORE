@@ -56,7 +56,7 @@ export function projectPrimeBase(id: string, source: Record<string, any>) {
   if (!isPrimeBaseProduct(source)) return null;
   const publicData = projectPublicProduct(id, { ...source, status: 'active', productFinish: 'printed' })!;
   const base: Record<string, any> = { id, productFinish: 'plain' };
-  for (const key of ['slug', 'name', 'status', 'baseModel', 'category', 'productType', 'fit', 'modeling', 'colors', 'sizes', 'variants', 'price']) {
+  for (const key of ['slug', 'name', 'status', 'baseModel', 'category', 'productType', 'fit', 'modeling', 'colors', 'sizes', 'variants', 'price', 'sizeChart']) {
     if (publicData[key] !== undefined) base[key] = publicData[key];
   }
   return base;

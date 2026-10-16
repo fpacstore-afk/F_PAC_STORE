@@ -149,7 +149,7 @@ const triggerAutosaveLead = () => {
         customer_name: customer.name,
         email: customer.email,
         phone: customer.phone,
-        cart_items: store.items.map(item => ({ id: item.id, name: item.name, quantity: item.quantity, size: item.size, color: item.color, price: item.price })),
+        cart_items: store.items.map(item => ({ id: item.id, productId: item.productId, slug: item.slug, parentSlug: item.parentSlug, baseProductSlug: item.baseProductSlug, name: item.name, quantity: item.quantity, size: item.size, color: item.color, price: item.price, printConfigs: item.printConfigs })),
         total: store.total
       };
       const serialized = JSON.stringify(payload);
@@ -324,6 +324,11 @@ if (typeof window !== 'undefined') window.addEventListener('fpac:clear-checkout-
 });
 
 export const cartActions = {
+  restoreItems: (items: CartItem[], recoverySessionId: string) => {
+    revokeRecoveryConsent();
+    store = { ...store, items, coupon: null, shipping: 0, quotedShipping: 0, observations: '', checkout_session_id: recoverySessionId, recoveryConsent: false };
+    calculateTotals(); emit();
+  },
   retryRecoveryCancellation: () => revocations.flush(),
   setRecoveryConsent: (consent: boolean) => {
     if (!consent) revokeRecoveryConsent();
