@@ -66,6 +66,8 @@ import { getActivePromotion } from "../services/promotions/getActivePromotion";
 import { WeeklyPromotion } from "../types/promotions";
 import { buildSellableCatalog, resolveCatalogProduct } from "../lib/catalogProducts";
 import { getProductGallery } from "../lib/productGallery";
+import { ProductImageZoom } from "../components/ProductImageZoom";
+import { ProductPurchaseBar } from "../components/ProductPurchaseBar";
 import { buildStampNameMap, getStorefrontProductTitle } from "../lib/productTitles";
 import { fetchPublicStamps } from "../services/publicStamps";
 import { fetchPublicProducts, subscribePublicProductSnapshot } from "../services/publicProducts";
@@ -1926,7 +1928,22 @@ export default function ProductDetail() {
         <script type="application/ld+json">{JSON.stringify(jsonLdData)}</script>
       </Helmet>
 
-      <div className="min-h-screen bg-[#fafafa] pt-6 md:pt-10 pb-16 md:pb-24 font-sans">
+      <div data-product-detail className="min-h-screen bg-[#fafafa] pt-6 md:pt-10 pb-16 md:pb-24 font-sans">
+        <ProductPurchaseBar
+          unitPrice={effectivePrice}
+          quantity={quantity}
+          color={selectedColor}
+          size={selectedSize}
+          available={isFullyAvailable}
+          onBuy={() => handleAddToCart(false, 'checkout')}
+          onChooseOptions={() => {
+            const selector = !selectedColor ? 'button[id^="color-btn-"]:not(:disabled)' : 'button[id^="size-btn-"]:not(:disabled)';
+            const option = document.querySelector<HTMLButtonElement>(selector);
+            const target = option || document.getElementById('product-purchase-options');
+            target?.scrollIntoView({ behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'center' });
+            option?.focus({ preventScroll: true });
+          }}
+        />
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           {/* Breadcrumbs navigation conforming exactly to the storefront styling */}
           <div className="hidden md:flex items-center gap-2 text-[9px] text-gray-400 uppercase tracking-[0.2em] mb-6 select-none">
@@ -1994,7 +2011,7 @@ export default function ProductDetail() {
 
                 <div className="flex-1 aspect-[4/5] bg-white border border-neutral-100 shadow-[0_8px_30px_rgba(0,0,0,0.01)] rounded-[2.5rem] overflow-hidden relative group flex items-center justify-center">
                   <AnimatePresence mode="wait">
-                    <motion.img
+                    {(viewingStampUrl || displayImages.length > 0) && <motion.img
                       key={viewingStampUrl || displayImages[activeImage] || displayImages[0]}
                       initial={{ opacity: 0, scale: 1.01 }}
                       animate={{ opacity: 1, scale: 1 }}
@@ -2011,14 +2028,20 @@ export default function ProductDetail() {
                         (e.currentTarget as HTMLImageElement).src =
                           "/estampas/logo-fpac.png";
                       }}
-                    />
+                    />}
                   </AnimatePresence>
+                  {!viewingStampUrl && displayImages.length === 0 && <div className="px-8 text-center text-sm text-neutral-500"><ImageIcon size={28} className="mx-auto mb-3" aria-hidden="true" />Foto desta cor ainda não disponível.</div>}
+                  <ProductImageZoom
+                    key={viewingStampUrl || displayImages[activeImage] || displayImages[0]}
+                    src={viewingStampUrl || displayImages[activeImage] || displayImages[0]}
+                    title={displayProductTitle}
+                  />
                 </div>
               </div>
             </div>
 
             {/* RIGHT COLUMN: Interactive options & details aligned nicely with clean spaces */}
-            <div className="lg:col-span-6 flex flex-col gap-6 text-left">
+            <div id="product-purchase-options" className="lg:col-span-6 flex flex-col gap-6 text-left">
               {/* Badges, Title & Pricing block */}
               <div className="space-y-4">
                 <div>

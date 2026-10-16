@@ -3,9 +3,9 @@ import { Link } from 'react-router-dom';
 import { ArrowUpRight, Pause, Play } from 'lucide-react';
 
 const lines = [
-  { label: 'FORCE', detail: 'Explore a linha', to: '/catalog/all?line=force' },
-  { label: 'MARK', detail: 'Explore a linha', to: '/catalog/all?line=mark' },
-  { label: 'PRIME', detail: 'Crie sua assinatura', to: '/prime' },
+  { label: 'FORCE', detail: 'Estampas pequenas', to: '/catalog/all?line=force' },
+  { label: 'MARK', detail: 'Estampas maiores', to: '/catalog/all?line=mark' },
+  { label: 'PRIME', detail: 'Personalize sua peça', to: '/prime' },
 ];
 
 export function HomeCollectionStrip() {

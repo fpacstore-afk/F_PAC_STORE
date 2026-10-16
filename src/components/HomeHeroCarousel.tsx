@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowDown, ArrowRight, ChevronLeft, ChevronRight, Pause, Play } from 'lucide-react';
+import { ArrowRight, ChevronLeft, ChevronRight, Pause, Play } from 'lucide-react';
 import { MediaSlot } from './MediaSlot';
 import type { MediaSlotConfig } from '../types/mediaSlot';
 import { isMediaVideo } from '../lib/utils';
@@ -128,7 +128,7 @@ export function HomeHeroCarousel({ slides }: HomeHeroCarouselProps) {
           <Link to={activeSlide.href} className="mt-6 inline-flex min-h-12 items-center gap-3 rounded-sm bg-[#eab308] px-6 py-3 text-[10px] font-black uppercase tracking-[0.18em] text-black transition-colors hover:bg-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#eab308]">
             Conhecer a coleção <ArrowRight size={17} />
           </Link>
-          <div><a href="#collections" className="fpac-hero-scroll">Explore a F PAC <ArrowDown size={16} aria-hidden="true" /></a></div>
+          <div><Link to="/prime" className="fpac-hero-scroll">Personalize sua peça <ArrowRight size={16} aria-hidden="true" /></Link></div>
         </div>
         {slides.length > 1 && (
           <div className="relative z-20 mx-auto flex max-w-[1600px] items-center justify-end gap-3 px-5 pb-6 sm:px-10 md:absolute md:inset-x-0 md:bottom-6 md:pb-0 lg:px-16">
@@ -198,7 +198,7 @@ export function HomeHeroCarousel({ slides }: HomeHeroCarouselProps) {
         <Link to={activeSlide.href} className="mt-5 inline-flex min-h-11 items-center gap-3 rounded-sm bg-[#eab308] px-5 py-3 text-[9px] font-black uppercase tracking-[0.18em] text-black transition-colors hover:bg-white sm:mt-6 sm:min-h-12 sm:px-7 sm:text-[10px]">
           Conhecer a coleção <ArrowRight size={16} />
         </Link>
-        <a href="#collections" className="fpac-hero-scroll">Explore a F PAC <ArrowDown size={16} aria-hidden="true" /></a>
+        <Link to="/prime" className="fpac-hero-scroll">Personalize sua peça <ArrowRight size={16} aria-hidden="true" /></Link>
       </div>
 
       {slides.length > 1 && (
