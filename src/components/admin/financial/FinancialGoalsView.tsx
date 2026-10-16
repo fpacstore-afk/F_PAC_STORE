@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { doc, onSnapshot, setDoc } from 'firebase/firestore';
+import { doc, writeBatch } from 'firebase/firestore';
 import { Calendar, Save, Target, TrendingUp } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { db } from '../../../lib/firebase';
@@ -7,6 +7,7 @@ import { salesGoalProgress } from '../../../../shared/financialDashboard';
 import { financialDateKey } from '../../../../shared/cashFlow';
 import { parseCurrencyInput } from '../../../../shared/currencyInput';
 import { useFinancialPrivacy } from '../../../context/FinancialPrivacyContext';
+import { useFinancialGoalSettings } from '../../../hooks/useFinancialGoalSettings';
 
 interface FinancialGoalsViewProps { orders: any[]; }
 interface FinancialGoalSummaryProps extends FinancialGoalsViewProps { onOpenGoals: () => void; }
@@ -16,23 +17,17 @@ export function FinancialGoalSummary({ orders, onOpenGoals }: FinancialGoalSumma
   const now = new Date(`${financialDateKey(new Date())}T12:00:00`);
   const monthlyGoalId = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
   const annualGoalId = `${now.getFullYear()}-annual`;
-  const [goal, setGoal] = useState({ monthlyGoal: 0, annualGoal: 0 });
-
-  useEffect(() => {
-    const unsubscribeMonthly = onSnapshot(doc(db, 'financial_goals', monthlyGoalId), snapshot => {
-      const legacyAnnualGoal = Number(snapshot.data()?.annualGoal || 0);
-      setGoal(current => ({ ...current, monthlyGoal: Number(snapshot.data()?.monthlyGoal || 0), annualGoal: current.annualGoal || legacyAnnualGoal }));
-    });
-    const unsubscribeAnnual = onSnapshot(doc(db, 'financial_goals', annualGoalId), snapshot => {
-      setGoal(current => ({ ...current, annualGoal: snapshot.exists ? Number(snapshot.data()?.annualGoal || 0) : current.annualGoal }));
-    });
-    return () => { unsubscribeMonthly(); unsubscribeAnnual(); };
-  }, [annualGoalId, monthlyGoalId]);
+  const goal = useFinancialGoalSettings(monthlyGoalId, annualGoalId);
 
   const actual = useMemo(() => {
     return salesGoalProgress(orders, now.getFullYear(), now.getMonth());
 
   }, [orders, now.getFullYear(), now.getMonth(), now.getDate()]);
+
+  if (!goal.loaded) return <section className="rounded-2xl bg-black p-5 text-white" aria-label="Metas de vendas">
+    <p role="status">{goal.error || 'Carregando metas…'}</p>
+    {goal.error && <button type="button" onClick={goal.retry} className="mt-3 min-h-11 rounded-lg bg-[#eab308] px-4 text-sm font-bold text-black">Tentar carregar metas novamente</button>}
+  </section>;
 
   const monthPercent = goal.monthlyGoal > 0 ? (actual.month / goal.monthlyGoal) * 100 : 0;
   const yearPercent = goal.annualGoal > 0 ? (actual.year / goal.annualGoal) * 100 : 0;
@@ -72,26 +67,16 @@ export function FinancialGoalsView({ orders }: FinancialGoalsViewProps) {
   const [saving, setSaving] = useState(false);
   const monthlyGoalId = `${year}-${String(month + 1).padStart(2, '0')}`;
   const annualGoalId = `${year}-annual`;
+  const settings = useFinancialGoalSettings(monthlyGoalId, annualGoalId);
 
   useEffect(() => {
-    const unsubscribeMonthly = onSnapshot(doc(db, 'financial_goals', monthlyGoalId), snapshot => {
-      const monthly = Number(snapshot.data()?.monthlyGoal || 0);
-      setMonthlyGoal(monthly);
-      setMonthlyGoalInput(monthly ? monthly.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '');
-      const legacyAnnual = Number(snapshot.data()?.annualGoal || 0);
-      if (legacyAnnual > 0) {
-        setAnnualGoal(current => current || legacyAnnual);
-        setAnnualGoalInput(current => current || legacyAnnual.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
-      }
-    });
-    const unsubscribeAnnual = onSnapshot(doc(db, 'financial_goals', annualGoalId), snapshot => {
-      if (!snapshot.exists) return;
-      const annual = Number(snapshot.data()?.annualGoal || 0);
-      setAnnualGoal(annual);
-      setAnnualGoalInput(annual ? annual.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '');
-    });
-    return () => { unsubscribeMonthly(); unsubscribeAnnual(); };
-  }, [annualGoalId, monthlyGoalId]);
+    const monthly = settings.loaded ? settings.monthlyGoal : 0;
+    const annual = settings.loaded ? settings.annualGoal : 0;
+    setMonthlyGoal(monthly);
+    setAnnualGoal(annual);
+    setMonthlyGoalInput(monthly ? monthly.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '');
+    setAnnualGoalInput(annual ? annual.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '');
+  }, [monthlyGoalId, annualGoalId, settings.loaded, settings.monthlyGoal, settings.annualGoal]);
 
   const actual = useMemo(() => {
     return salesGoalProgress(orders, year, month);
@@ -106,23 +91,25 @@ export function FinancialGoalsView({ orders }: FinancialGoalsViewProps) {
   const dailyNeeded = daysRemaining > 0 ? missing / daysRemaining : missing;
 
   const save = async () => {
+    if (!settings.loaded || saving) return;
     setSaving(true);
     try {
-      await Promise.all([
-        setDoc(doc(db, 'financial_goals', monthlyGoalId), {
+      const batch = writeBatch(db);
+      const updatedAt = new Date().toISOString();
+      batch.set(doc(db, 'financial_goals', monthlyGoalId), {
           year,
           month: month + 1,
           monthlyGoal: Math.max(0, monthlyGoal),
           basis: 'order_month',
-          updatedAt: new Date().toISOString()
-        }, { merge: true }),
-        setDoc(doc(db, 'financial_goals', annualGoalId), {
+          updatedAt
+        }, { merge: true });
+      batch.set(doc(db, 'financial_goals', annualGoalId), {
           year,
           annualGoal: Math.max(0, annualGoal),
           basis: 'order_month',
-          updatedAt: new Date().toISOString()
-        }, { merge: true })
-      ]);
+          updatedAt
+        }, { merge: true });
+      await batch.commit();
       toast.success('Metas salvas.');
     } catch (error: any) {
       toast.error(error?.message || 'Não foi possível salvar as metas.');
@@ -137,13 +124,18 @@ export function FinancialGoalsView({ orders }: FinancialGoalsViewProps) {
       <div className="flex flex-col gap-3 rounded-2xl bg-black p-5 text-white sm:flex-row sm:items-end sm:justify-between">
         <div><p className="text-[9px] font-black uppercase tracking-[0.25em] text-[#eab308]">Metas comerciais</p><h2 className="mt-1 text-2xl font-black uppercase italic">Vendas por mês do pedido</h2></div>
         <div className="flex gap-2">
-          <select value={month} onChange={event => setMonth(Number(event.target.value))} className="rounded-lg border border-white/20 bg-neutral-900 px-3 py-2 text-xs font-bold">
+          <select aria-label="Mês da meta" value={month} onChange={event => setMonth(Number(event.target.value))} className="min-h-11 rounded-lg border border-white/20 bg-neutral-900 px-3 py-2 text-xs font-bold">
             {Array.from({ length: 12 }, (_, index) => <option key={index} value={index}>{new Date(2024, index, 1).toLocaleDateString('pt-BR', { month: 'long' })}</option>)}
           </select>
-          <input type="number" value={year} onChange={event => setYear(Number(event.target.value) || now.getFullYear())} className="w-24 rounded-lg border border-white/20 bg-neutral-900 px-3 py-2 text-xs font-bold" />
+          <input aria-label="Ano da meta" type="number" inputMode="numeric" value={year} onChange={event => setYear(Number(event.target.value) || now.getFullYear())} className="min-h-11 w-24 rounded-lg border border-white/20 bg-neutral-900 px-3 py-2 text-xs font-bold" />
         </div>
       </div>
 
+      {!settings.loaded && <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
+        <p role="status">{settings.error || 'Carregando metas…'}</p>
+        {settings.error && <button type="button" onClick={settings.retry} className="mt-3 min-h-11 rounded-lg border border-black px-4 text-sm font-bold">Tentar carregar metas novamente</button>}
+      </div>}
+      {settings.loaded && <>
       <div className="grid gap-4 lg:grid-cols-2">
         {[
           { label: 'Meta do mês', goal: monthlyGoal, input: monthlyGoalInput, setGoal: setMonthlyGoal, setInput: setMonthlyGoalInput, done: actual.month, percent: monthPercent },
@@ -155,11 +147,11 @@ export function FinancialGoalsView({ orders }: FinancialGoalsViewProps) {
             <div className="mt-3 h-3 overflow-hidden rounded-full bg-gray-100"><div className="h-full bg-[#eab308] transition-all" style={{ width: `${Math.max(0, Math.min(100, card.percent))}%` }} /></div>
             <div className="mt-2 flex justify-between text-[10px] font-bold text-gray-500"><span>{card.percent.toFixed(1)}% atingido</span><span>Faltam {formatMoney(Math.max(0, card.goal - card.done))}</span></div>
             <label className="mt-4 block text-[9px] font-black uppercase tracking-wider text-gray-500">Definir meta</label>
-            <input type="text" inputMode="decimal" placeholder="0,00" value={card.input} onChange={event => {
+            <input aria-label={card.label} type="text" inputMode="decimal" placeholder="0,00" value={card.input} onChange={event => {
               const value = event.target.value.replace(/[^0-9,.]/g, '');
               card.setInput(value);
               card.setGoal(parseCurrencyInput(value));
-            }} onBlur={() => card.setInput(card.goal ? card.goal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '')} className="mt-1 w-full rounded-xl border border-black/10 px-3 py-2.5 text-sm font-bold" />
+            }} onBlur={() => card.setInput(card.goal ? card.goal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '')} className="mt-1 min-h-11 w-full rounded-xl border border-black/10 px-3 py-2.5 text-sm font-bold" />
           </section>
         ))}
       </div>
@@ -167,8 +159,9 @@ export function FinancialGoalsView({ orders }: FinancialGoalsViewProps) {
       <div className="grid gap-3 sm:grid-cols-3">
         <div className="rounded-xl border bg-white p-4"><Calendar className="text-[#eab308]" size={18} /><p className="mt-2 text-[9px] font-black uppercase text-gray-500">Dias restantes</p><p className="text-xl font-black">{daysRemaining}</p></div>
         <div className="rounded-xl border bg-white p-4"><TrendingUp className="text-[#eab308]" size={18} /><p className="mt-2 text-[9px] font-black uppercase text-gray-500">Média diária necessária</p><p className="text-xl font-black">{formatMoney(dailyNeeded)}</p></div>
-        <button type="button" disabled={saving} onClick={save} className="flex min-h-24 items-center justify-center gap-2 rounded-xl bg-[#eab308] px-5 font-black uppercase text-black disabled:opacity-50"><Save size={18} />{saving ? 'Salvando...' : 'Salvar metas'}</button>
+        <button type="button" disabled={saving || !settings.loaded} onClick={save} className="flex min-h-24 items-center justify-center gap-2 rounded-xl bg-[#eab308] px-5 font-black uppercase text-black disabled:opacity-50"><Save size={18} />{saving ? 'Salvando...' : 'Salvar metas'}</button>
       </div>
+      </>}
     </div>
   );
 }
