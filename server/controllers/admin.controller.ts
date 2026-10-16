@@ -316,6 +316,13 @@ export async function createManualOrderController(req: Request, res: Response) {
       });
     }
 
+    // Notify a newly created active order only after persistence. Historical edits
+    // and retries must not generate another customer receipt.
+    if (!existingOrder.exists && !['delivered', 'completed'].includes(String(order.shippingStatus || order.status || '').toLowerCase())) {
+      await dispatchStageNotification({ orderId, newStageId: 'received', changedBy: (req as any).user?.email || 'Admin', channels: { whatsapp: false } })
+        .catch((error: any) => logger.warn(`[MANUAL-ORDER-EMAIL] ${orderId}: ${error.message}`));
+    }
+
     return res.status(201).json({ success: true, orderId, inventoryLifecycle: orderPayload.inventoryLifecycle, giftCost });
   } catch (error: any) {
     logger.error(`❌ [MANUAL-ORDER-CREATE] ${error.message}`, error);

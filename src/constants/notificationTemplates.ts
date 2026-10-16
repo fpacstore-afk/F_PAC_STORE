@@ -16,11 +16,11 @@ export function renderStageTemplate(templateStr: string, orderData: any): string
   const totalQty = items.reduce((sum: number, item: any) => sum + (Number(item.quantity) || 1), 0) || 1;
   const rawDate = orderData?.createdAt?.seconds ? new Date(orderData.createdAt.seconds * 1000) : new Date(orderData?.createdAt || Date.now());
   const dateStr = Number.isNaN(rawDate.getTime()) ? new Date().toLocaleDateString('pt-BR') : rawDate.toLocaleDateString('pt-BR');
-  const deliveryEstimate = orderData?.deliveryDate || orderData?.previsao || '3 a 7 dias úteis';
+  const deliveryEstimate = orderData?.deliveryDate || orderData?.previsao || 'Prazo a confirmar com nossa equipe';
   const paymentMethod = orderData?.paymentMethod || orderData?.formaPagamento || 'PIX / Cartão';
-  const trackingCode = orderData?.trackingCode || orderData?.codigoRastreio || 'Em processamento';
-  const carrier = orderData?.shippingCompany || orderData?.transportadora || 'Correios / Transportadora';
-  const trackingLink = orderData?.trackingUrl || (orderData?.trackingCode ? `https://www.linkcorreios.com.br/?id=${orderData.trackingCode}` : `https://www.fpacstore.com.br/#/order/${orderId}`);
+  const trackingCode = orderData?.trackingCode || orderData?.shipping?.trackingCode || orderData?.codigoRastreio || 'Em processamento';
+  const carrier = orderData?.shippingCompany || orderData?.carrier || orderData?.shipping?.carrier || orderData?.transportadora || 'Correios / Transportadora';
+  const trackingLink = orderData?.trackingUrl || orderData?.shipping?.trackingUrl || 'https://fpacstore.com.br/tracking';
 
   return templateStr
     .replace(/\{\{nome_cliente\}\}/g, firstName)

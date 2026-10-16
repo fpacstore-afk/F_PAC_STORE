@@ -2833,28 +2833,19 @@ Total: R$ ${totalSum.toFixed(2)}`;
                             
                             <button
                               onClick={async () => {
-                                toast.promise(
-                                  authenticatedFetch('/api/automation/send-manual-order-whatsapp', {
-                                    method: 'POST',
-                                    headers: { 'Content-Type': 'application/json' },
-                                    body: JSON.stringify({ orderId: order.id })
-                                  }).then(async (res) => {
-                                    const data = await res.json();
-                                    if (!res.ok || !data.success) {
-                                      throw new Error(data.error || "Falha ao enviar mensagem");
-                                    }
-                                    return data;
-                                  }),
-                                  {
-                                    loading: 'Enviando notificação WhatsApp...',
-                                    success: 'Notificação enviada com sucesso!',
-                                    error: (err: any) => `Falha no envio: ${err.message}`
-                                  }
-                                );
+                                try {
+                                  const response = await authenticatedFetch('/api/automation/send-manual-order-whatsapp', {
+                                    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ orderId: order.id })
+                                  });
+                                  const data = await response.json();
+                                  if (!response.ok || !data.manualOnly || !data.whatsappUrl) throw new Error(data.error || 'Não foi possível preparar a mensagem.');
+                                  window.open(data.whatsappUrl, '_blank', 'noopener,noreferrer');
+                                  toast('Confira a mensagem no WhatsApp e toque em Enviar.');
+                                } catch (error: any) { toast.error(error.message); }
                               }}
                               className="w-full bg-black text-[#eab308] py-2 px-3 text-[8.5px] font-black uppercase tracking-widest hover:text-white transition-all flex items-center justify-center gap-1.5 shadow"
                             >
-                              💬 Enviar/Reenviar Notificação de Pedido Criado
+                              Abrir WhatsApp · pedido recebido
                             </button>
                           </div>
                         )}

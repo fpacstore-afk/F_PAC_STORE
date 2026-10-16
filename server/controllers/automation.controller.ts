@@ -19,6 +19,7 @@ import {
 import { getDb } from "../firebase.js";
 import { logger } from "../utils/logger.js";
 import { Resend } from "resend";
+import { manualWhatsAppUrl, normalizeNotificationEmail } from "../../shared/notificationContacts.js";
 
 /**
  * Controller to save/update checkout lead dynamically as they type
@@ -227,7 +228,7 @@ export async function saveProductionSettings(req: Request, res: Response) {
     const settings = await saveProductionNotificationSettings(req.body);
     res.json({ success: true, settings, message: "Configurações salvas com sucesso!" });
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    res.status(/válido|válida/.test(error.message) ? 400 : 500).json({ error: error.message });
   }
 }
 
@@ -275,50 +276,36 @@ export async function triggerProductionStageNotification(req: Request, res: Resp
  */
 export async function testProductionNotification(req: Request, res: Response) {
   try {
-    const { stageId, phone, email, customTemplate } = req.body;
+    const { stageId, phone, email, customTemplate, channel } = req.body || {};
+    if (typeof stageId !== 'string' || !DEFAULT_STAGE_TEMPLATES[stageId]) return res.status(400).json({ error: 'Selecione uma etapa válida para o teste.' });
+    if (customTemplate !== undefined && (typeof customTemplate !== 'string' || !customTemplate.trim() || customTemplate.length > 12000)) return res.status(400).json({ error: 'Informe uma mensagem de teste válida.' });
     const settings = await getProductionNotificationSettings();
-
-    const rawTemplate = customTemplate || settings.templates[stageId] || DEFAULT_STAGE_TEMPLATES[stageId] || DEFAULT_STAGE_TEMPLATES.received;
-    
-    // Dummy sample order data
+    const rawTemplate = customTemplate || settings.templates[stageId] || DEFAULT_STAGE_TEMPLATES[stageId];
     const sampleOrder = {
-      id: 'TESTE-999',
-      customerName: 'Cliente Teste F PAC',
-      total: 189.90,
-      items: [{ name: 'CAMISETA OVERSIZED F PAC - IDENTIDADE', quantity: 1, price: 189.90 }],
-      createdAt: new Date().toISOString(),
-      trackingCode: 'BR123456789PAC',
-      shippingCompany: 'Correios / Jadlog'
+      id: 'TESTE-999', customerName: 'Cliente Teste F PAC', total: 189.90,
+      items: [{ name: 'CAMISETA OVERSIZED F PAC - EXEMPLO', quantity: 1, price: 189.90 }],
+      createdAt: new Date().toISOString(), trackingCode: 'EXEMPLO-SEM-RASTREIO',
+      shippingCompany: 'Transportadora de exemplo', trackingUrl: 'https://fpacstore.com.br/tracking'
     };
-
     const compiled = renderStageTemplate(rawTemplate, sampleOrder);
-
-    let waSent = false;
-    let emailSent = false;
-
-    if (phone) {
-      waSent = await sendWhatsAppMessage(phone, 'custom_message', { customMessage: compiled });
+    const testMessage = '[TESTE • PEDIDO DE EXEMPLO]\n\n' + compiled;
+    if (channel === 'whatsapp_manual' || (!email && phone && channel !== 'email')) {
+      const whatsappUrl = manualWhatsAppUrl(phone || settings.testPhone || '', testMessage);
+      return res.json({ success: true, manualOnly: true, whatsappSent: false, emailSent: false, whatsappUrl, messageSent: testMessage });
     }
-
-    if (email && process.env.RESEND_API_KEY) {
-      const resend = new Resend(process.env.RESEND_API_KEY);
-      const delivery = await resend.emails.send({
-        from: 'F PAC STORE <atendimento@fpacstore.com.br>',
-        to: [email],
-        subject: `[TESTE] Notificação de Produção - Etapa: ${stageId}`,
-        html: `<div style="font-family: sans-serif; padding:20px; background:#000; color:#fff; white-space:pre-line;">${compiled}</div>`
-      });
-      if (delivery.error || !delivery.data?.id) throw new Error(delivery.error?.message || 'E-mail não confirmado pelo servidor.');
-      emailSent = true;
-    }
-
-    res.json({
-      success: (!phone || waSent) && (!email || emailSent),
-      whatsappSent: waSent,
-      emailSent: emailSent,
-      messageSent: compiled
+    const recipient = normalizeNotificationEmail(email === undefined ? settings.testEmail || '' : email);
+    if (!recipient) return res.status(400).json({ error: 'Cadastre o e-mail de teste antes de enviar.' });
+    if (!process.env.RESEND_API_KEY) return res.status(503).json({ error: 'O serviço de e-mail não está configurado.', emailSent: false });
+    const escape = (value: string) => value.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!));
+    const delivery = await new Resend(process.env.RESEND_API_KEY).emails.send({
+      from: 'F PAC STORE <atendimento@fpacstore.com.br>', to: [recipient],
+      subject: `[TESTE] F PAC — ${stageId}`, text: testMessage,
+      html: '<div style="font-family:Arial;padding:24px;line-height:1.6;white-space:pre-line">' + escape(testMessage.replace(/\*/g, '')) + '</div>'
     });
+    if (delivery.error || !delivery.data?.id) return res.status(502).json({ error: delivery.error?.message || 'O provedor não confirmou o envio do teste.', emailSent: false });
+    await logAutomationEvent('notification.test_email', 'success', 'Provedor aceitou e-mail de teste da etapa ' + stageId, recipient);
+    return res.json({ success: true, whatsappSent: false, emailSent: true, emailId: delivery.data.id, messageSent: testMessage });
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    return res.status(error.status === 400 || /válido|válida/.test(error.message) ? 400 : 500).json({ error: error.message, emailSent: false });
   }
 }

@@ -5,17 +5,13 @@ import { sendWhatsAppMessage, logAutomationEvent } from "./automation.service.js
 import { Resend } from "resend";
 import {
   resolveSavedStageTemplates,
+  type ProductionNotificationConfig,
   DEFAULT_NOTIFICATION_CONFIG as SHARED_NOTIFICATION_CONFIG,
   DEFAULT_STAGE_TEMPLATES as SHARED_STAGE_TEMPLATES,
 } from "../../shared/productionNotificationDefaults.js";
 
-export interface ProductionNotificationConfig {
-  whatsappEnabled: boolean;
-  emailEnabled: boolean;
-  allowResendOnStageReentry: boolean;
-  activeStages: Record<string, boolean>;
-  templates: Record<string, string>;
-}
+export type { ProductionNotificationConfig } from '../../shared/productionNotificationDefaults.js';
+import { normalizeNotificationEmail, normalizeNotificationPhone, manualWhatsAppUrl } from '../../shared/notificationContacts.js';
 
 const LEGACY_STAGE_TEMPLATES: Record<string, string> = {
   received: `👕 F PAC STORE • NÃO É SÓ ROUPA. É IDENTIDADE! 👕
@@ -310,12 +306,12 @@ export function renderStageTemplate(templateStr: string, orderData: any): string
     ? new Date(orderData.createdAt?.seconds ? orderData.createdAt.seconds * 1000 : (typeof orderData.createdAt === 'string' ? orderData.createdAt : Date.now())).toLocaleDateString('pt-BR')
     : new Date().toLocaleDateString('pt-BR');
 
-  const deliveryEstimate = orderData?.deliveryDate || orderData?.previsao || '3 a 7 dias úteis';
+  const deliveryEstimate = orderData?.deliveryDate || orderData?.previsao || 'Prazo a confirmar com nossa equipe';
   const paymentMethod = orderData?.paymentMethod || orderData?.formaPagamento || 'PIX / Cartão';
 
-  const trackingCode = orderData?.trackingCode || orderData?.codigoRastreio || orderData?.trackingUrl || 'Em processamento';
-  const carrier = orderData?.shippingCompany || orderData?.transportadora || (orderData?.cep && String(orderData.cep).startsWith('892') ? 'Entrega Local Joinville' : 'Correios / Transportadora');
-  const trackingLink = orderData?.trackingUrl || (orderData?.trackingCode ? `https://www.linkcorreios.com.br/?id=${orderData.trackingCode}` : `https://www.fpacstore.com.br/#/order/${orderId}`);
+  const trackingCode = orderData?.trackingCode || orderData?.shipping?.trackingCode || orderData?.codigoRastreio || orderData?.trackingUrl || 'Em processamento';
+  const carrier = orderData?.shippingCompany || orderData?.carrier || orderData?.shipping?.carrier || orderData?.transportadora || (orderData?.cep && String(orderData.cep).startsWith('892') ? 'Entrega Local Joinville' : 'Correios / Transportadora');
+  const trackingLink = orderData?.trackingUrl || orderData?.shipping?.trackingUrl || 'https://fpacstore.com.br/tracking';
 
   return templateStr
     .replace(/\{\{nome_cliente\}\}/g, firstName)
@@ -338,6 +334,8 @@ export async function getProductionNotificationSettings(): Promise<ProductionNot
     if (docSnap.exists) {
       const data = docSnap.data() as any;
       return {
+        testEmail: data.testEmail || '',
+        testPhone: data.testPhone || '',
         whatsappEnabled: data.whatsappEnabled ?? DEFAULT_NOTIFICATION_CONFIG.whatsappEnabled,
         emailEnabled: data.emailEnabled ?? DEFAULT_NOTIFICATION_CONFIG.emailEnabled,
         allowResendOnStageReentry: data.allowResendOnStageReentry ?? DEFAULT_NOTIFICATION_CONFIG.allowResendOnStageReentry,
@@ -354,7 +352,11 @@ export async function getProductionNotificationSettings(): Promise<ProductionNot
 export async function saveProductionNotificationSettings(config: Partial<ProductionNotificationConfig>): Promise<ProductionNotificationConfig> {
   const db = getDb();
   const current = await getProductionNotificationSettings();
+  const testEmail = config.testEmail === undefined ? current.testEmail || '' : normalizeNotificationEmail(config.testEmail);
+  const testPhone = config.testPhone === undefined ? current.testPhone || '' : normalizeNotificationPhone(config.testPhone);
   const updated: ProductionNotificationConfig = {
+    testEmail,
+    testPhone,
     whatsappEnabled: config.whatsappEnabled ?? current.whatsappEnabled,
     emailEnabled: config.emailEnabled ?? current.emailEnabled,
     allowResendOnStageReentry: config.allowResendOnStageReentry ?? current.allowResendOnStageReentry,
@@ -374,7 +376,9 @@ export async function saveProductionNotificationSettings(config: Partial<Product
 const STAGE_LABELS: Record<string, string> = {
   received: 'Pedido Recebido',
   payment_pending: 'Aguardando Pagamento',
-  payment_approved: 'Pagamento Realizado',
+  payment_approved: 'Pagamento Confirmado',
+  payment_rejected: 'Pagamento Não Aprovado',
+  payment_refunded: 'Estorno Registrado',
   separacao_corte: 'Separação e Preparação',
   estamparia: 'Estamparia e Impressão',
   embalagem: 'Controle de Qualidade e Embalagem',
@@ -403,6 +407,8 @@ const escapeHtml = (value: string) => value.replace(/[&<>"']/g, c => ({ '&': '&a
 
 export async function dispatchStageNotification(params: {
   orderId: string; newStageId: string; previousStageId?: string; changedBy?: string; forceResend?: boolean;
+  channels?: { whatsapp?: boolean; email?: boolean };
+  emailHtml?: (message: string, order: any) => Promise<string>;
 }) {
   const { orderId, newStageId, previousStageId, changedBy = 'Sistema', forceResend = false } = params;
   if (!AUTOMATIC_CUSTOMER_STAGES.has(newStageId)) throw new Error('Etapa de notificação inválida.');
@@ -442,7 +448,7 @@ export async function dispatchStageNotification(params: {
     // Independent channels: a failed WhatsApp must never suppress email (or vice versa).
     await Promise.all([
       (async () => {
-        if (!settings.whatsappEnabled || whatsappSent) return;
+        if (!settings.whatsappEnabled || params.channels?.whatsapp === false || whatsappSent) return;
         if (!phone) { whatsappStatus = 'Sem Telefone'; return; }
         if (!notificationIntegrationStatus().whatsappConfigured) { whatsappStatus = 'Não configurado'; return; }
         try {
@@ -453,7 +459,7 @@ export async function dispatchStageNotification(params: {
         } catch (err: any) { whatsappStatus = 'Erro'; errors.push('WhatsApp: ' + err.message); }
       })(),
       (async () => {
-        if (!settings.emailEnabled || emailSent) return;
+        if (!settings.emailEnabled || params.channels?.email === false || emailSent) return;
         if (!email) { emailStatus = 'Sem E-mail'; return; }
         if (!notificationIntegrationStatus().emailConfigured) { emailStatus = 'Não configurado'; return; }
         try {
@@ -462,7 +468,7 @@ export async function dispatchStageNotification(params: {
             from: 'F PAC STORE <atendimento@fpacstore.com.br>', to: [email],
             subject: 'Pedido #' + orderId + ' — ' + (STAGE_LABELS[newStageId] || newStageId),
             text: message,
-            html: '<div style="font-family:Arial;white-space:pre-line;line-height:1.6;padding:24px">' + escapeHtml(message.replace(/\*/g, '')) + '</div>'
+            html: params.emailHtml ? await params.emailHtml(message, order) : '<div style="font-family:Arial;white-space:pre-line;line-height:1.6;padding:24px">' + escapeHtml(message.replace(/\*/g, '')) + '</div>'
           }, { ...{ signal: AbortSignal.timeout(20000) }, idempotencyKey: 'production/' + orderId + '/' + newStageId + '/' + (prior.emailAttemptKey || token) });
           if (result.error || !result.data?.id) throw new Error(result.error?.message || 'Servidor de e-mail não confirmou o envio.');
           emailSent = true; emailStatus = 'Enviado';
@@ -493,7 +499,8 @@ export async function dispatchStageNotification(params: {
       });
     });
     await logAutomationEvent('production.stage_notification', whatsappSent || emailSent ? 'info' : 'warning',
-      'Avisos do pedido #' + orderId + ': WhatsApp ' + whatsappStatus + '; e-mail ' + emailStatus, phone || email || 'Manual');
+      'Avisos do pedido #' + orderId + ': WhatsApp ' + whatsappStatus + '; e-mail ' + emailStatus, phone || email || 'Manual',
+      { orderId, stageId: newStageId, stageLabel: STAGE_LABELS[newStageId], whatsappSent, emailSent, whatsappStatus, emailStatus, errorDetails: errors.join(' | ') });
     return { success: true, whatsappSent, emailSent, whatsappStatus, emailStatus, logEntry, message };
   } finally {
     await db.runTransaction(async (tx: any) => {
@@ -503,4 +510,15 @@ export async function dispatchStageNotification(params: {
       }
     });
   }
+}
+
+/** Prepare a manual conversation only; opening WhatsApp is never a delivery receipt. */
+export async function prepareManualOrderWhatsApp(orderId: string) {
+  const snap = await getDb().collection('orders').doc(orderId).get();
+  if (!snap.exists) throw Object.assign(new Error('Pedido não encontrado.'), { status: 404 });
+  const order = snap.data();
+  const settings = await getProductionNotificationSettings();
+  const message = renderStageTemplate(settings.templates.received || DEFAULT_STAGE_TEMPLATES.received, { ...order, id: orderId });
+  const phone = order.customerPhone || order.phone || order.customer?.phone || order.customer?.phone2 || '';
+  return { success: true, manualOnly: true, whatsappSent: false, whatsappUrl: manualWhatsAppUrl(String(phone), message) };
 }
