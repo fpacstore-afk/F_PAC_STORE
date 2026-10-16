@@ -215,8 +215,8 @@ const fetchPromoIfNeed = () => {
   }
 };
 
-const calculateTotals = () => {
-  fetchPromoIfNeed();
+const calculateTotals = (refreshPromotion = true) => {
+  if (refreshPromotion) fetchPromoIfNeed();
 
   const money = calculateStorefrontTotals({
     items: store.items, promotion: activePromotion, shipping: store.quotedShipping ?? store.shipping,
@@ -268,7 +268,8 @@ if (typeof window !== 'undefined') {
     if (store.items.length > 0) {
       const oldTotal = store.total;
       const oldFlash = store.flashSaleDiscount;
-      calculateTotals();
+      if (Date.now() - promoLastFetchedTime > 600_000) fetchPromoIfNeed();
+      calculateTotals(false);
       
       // Only emit if the totals actually changed (avoids re-rendering components like Checkout if nothing changed)
       if (store.total !== oldTotal || store.flashSaleDiscount !== oldFlash) {
