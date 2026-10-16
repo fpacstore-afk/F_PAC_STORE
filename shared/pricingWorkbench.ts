@@ -87,7 +87,7 @@ export function dtfPurchase(items: Pick<ItemInput, 'quantity' | 'prints'>[], cat
 export function dtfPrintCost(print: PrintInput, rules: Rules, purchase: ReturnType<typeof dtfPurchase>) {
   const fit = dtfCost(print.width,print.height,{...rules,sheetCost:purchase.sheetCost});
   if (!fit) return null;
-  if (purchase.costBasis !== 'purchase') return fit.unitCost;
+  if (purchase.costBasis !== 'purchase') return print.width! * print.height! * (purchase.sheetCost! / (rules.sheetWidth! * rules.sheetHeight!));
   return purchase.purchaseCost != null && purchase.totalPrintArea > 0
     ? purchase.purchaseCost * (print.width! * print.height! / purchase.totalPrintArea) : null;
 }
@@ -145,7 +145,7 @@ export function calculateItem(item: ItemInput, catalog: Catalog, today = new Dat
         cost = dtfPrintCost(p,catalog.rules,purchase);
         source += cost != null ? purchase.costBasis === 'purchase'
           ? ` · ${p.width} × ${p.height} cm · rateio por área da compra inteira (${purchase.purchaseMeters} m · ${money(purchase.purchaseCost)})`
-          : ` · ${fit?.count} estampas/folha · compra conjunta ${purchase.purchaseMeters} m · ${money(purchase.pricePerMeter)}/m`
+          : ` · material aplicado por área (${p.width} × ${p.height} cm) · compra conjunta ${purchase.purchaseMeters} m · ${money(purchase.pricePerMeter)}/m`
           : ' · confira medidas, parâmetros e metragem da compra';
         warnings.push(...purchase.warnings);
         if (catalog.rules.dtfStatus !== 'Confirmado') warnings.push(`Folha DTF: ${catalog.rules.dtfStatus}.`);

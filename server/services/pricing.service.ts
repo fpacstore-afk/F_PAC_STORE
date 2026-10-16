@@ -1,9 +1,12 @@
 import { isCatalogSleeveSize } from '../../shared/primeArtworkSizing.js';
-import { qualifiesForFreeShipping } from '../../shared/shippingThreshold.js';
+import { calculateStorefrontTotals, selectActivePromotion } from '../../shared/storefrontTotals.js';
+import { shippingParcel } from '../../shared/shippingParcel.js';
+import type { CartItem } from '../../src/types/cart.js';
+import type { WeeklyPromotion } from '../../src/types/promotions.js';
 import { validatePrimeArtworkPlacement } from '../../shared/primePlacement.js';
 import { getDb } from '../firebase.js';
 import { OrderItem, OrderPricingSnapshot } from '../types/order.types.js';
-import { MelhorEnvioService } from './melhor-envio.service.js';
+import { quoteCheckoutDelivery, type DeliveryDependencies } from './checkoutDelivery.service.js';
 import { logger } from '../utils/logger.js';
 import { loadPrivateProductCost, mergePrivateProductCost } from '../utils/productCosts.js';
 import { FINANCIAL_DEFAULTS, roundMoney } from '../../shared/financialDefaults.js';
@@ -71,10 +74,10 @@ interface CalculatedPricingResult {
  * Server-authoritative calculation of order pricing.
  * Overrides any client-provided amounts to prevent price manipulation.
  */
-export async function calculateOrderPricing(input: PricingInput): Promise<CalculatedPricingResult> {
+export async function calculateOrderPricing(input: PricingInput, context: Partial<DeliveryDependencies> & { now?: number } = {}): Promise<CalculatedPricingResult> {
   const db = getDb();
   const verifiedItems: OrderItem[] = [];
-  let subtotal = 0;
+  const storefrontItems: CartItem[] = [];
 
   for (const rawItem of input.items || []) {
     const slug = rawItem.slug || rawItem.productId || rawItem.id || '';
@@ -249,6 +252,11 @@ export async function calculateOrderPricing(input: PricingInput): Promise<Calcul
       throw new Error('Este produto não está disponível no catálogo. Escolha um produto publicado.');
     }
 
+    if (!customizationProfile) {
+      const promotionalPrice = Number(canonicalProductData.promotionalPrice);
+      if (Number.isFinite(promotionalPrice) && promotionalPrice > 0 && promotionalPrice < unitPrice) unitPrice = promotionalPrice;
+    }
+
     if (customizationProfile) {
       unitPrice = calculatePrimePrice(customizationProfile.id, customization?.prints || []).total;
       originalPrice = unitPrice;
@@ -284,7 +292,7 @@ export async function calculateOrderPricing(input: PricingInput): Promise<Calcul
     const totalCostSnapshot = roundMoney(unitCostSnapshot * quantity);
     const costCoverage = isCostComplete ? 'complete' : 'estimated';
     const itemTotal = roundMoney(unitPrice * quantity);
-    subtotal += itemTotal;
+
 
     const variantKey = (rawItem as any).variantKey || `${color}_${size}`;
     const variantId = (rawItem as any).variantId || variantKey;
@@ -295,6 +303,12 @@ export async function calculateOrderPricing(input: PricingInput): Promise<Calcul
       ? `${canonicalSkuBase}-${color.substring(0, 2).toUpperCase()}-${size.toUpperCase()}`
       : `FP-${(slug || 'PROD').toUpperCase()}-${color.substring(0, 2).toUpperCase()}-${size.toUpperCase()}`;
 
+    const parcel = shippingParcel({ ...canonicalProductData, id: canonicalProductId, quantity, price: unitPrice });
+    const category = typeof canonicalProductData.category === 'string' ? canonicalProductData.category : '';
+    storefrontItems.push({
+      id: canonicalProductId, slug: String(canonicalProductData.slug || canonicalProductId),
+      name: canonicalName, price: unitPrice, originalPrice, quantity, color, size, image: '', category,
+    });
     verifiedItems.push({
       id: rawItem.id || (slug ? `${slug}_${variantKey}` : `item-${Date.now()}`),
       productId: canonicalProductId || pricingSlug || slug,
@@ -310,6 +324,7 @@ export async function calculateOrderPricing(input: PricingInput): Promise<Calcul
       price: unitPrice,
       originalPrice,
       totalPrice: itemTotal,
+      category, width: parcel.width, height: parcel.height, length: parcel.length, weight: parcel.weight,
       stampName: stampRecipeSnapshot.length
         ? stampRecipeSnapshot.map(print => print.name).join(' + ').slice(0, 320)
         : (customization?.prints?.[0]?.stamp || rawItem.stampName),
@@ -321,82 +336,20 @@ export async function calculateOrderPricing(input: PricingInput): Promise<Calcul
     });
   }
 
-  subtotal = Number(subtotal.toFixed(2));
-
-  let couponDiscount = 0;
-  if (input.couponCode) {
-    const cleanCoupon = String(input.couponCode).trim().toUpperCase();
-    try {
-      const promoSnap = await db.collection('weekly_promotions').where('code', '==', cleanCoupon).where('active', '==', true).limit(1).get();
-      if (!promoSnap.empty) {
-        const promo = promoSnap.docs[0].data();
-        const minVal = Number(promo.minPurchaseAmount) || 0;
-        if (subtotal >= minVal) {
-          if (promo.discountType === 'percentage' || promo.discountPercentage) {
-            const pct = Number(promo.discountPercentage || promo.discountValue) || 0;
-            couponDiscount = (subtotal * pct) / 100;
-          } else if (promo.discountValue) couponDiscount = Number(promo.discountValue) || 0;
-        }
-      } else {
-        const couponDoc = await db.collection('coupons').doc(cleanCoupon).get();
-        if (couponDoc.exists) {
-          const cData = couponDoc.data() || {};
-          if (cData.active !== false) {
-            const pct = Number(cData.discountPercentage) || 0;
-            if (pct > 0) couponDiscount = (subtotal * pct) / 100;
-          }
-        }
-      }
-    } catch (err: any) {
-      logger.warn(`⚠️ [PRICING-SERVICE] Error validating coupon '${input.couponCode}': ${err.message}`);
-    }
-  }
-  couponDiscount = Math.min(subtotal, Number(couponDiscount.toFixed(2)));
-
-  let pixDiscount = 0;
-  if (input.paymentMethodId === 'pix') {
-    const amountAfterCoupon = subtotal - couponDiscount;
-    pixDiscount = Number(((amountAfterCoupon * 5) / 100).toFixed(2));
-  }
-
-  let shippingFee = 0;
-  const cleanCep = String(input.customerInfo.cep || '').replace(/\D/g, '');
-  // The locality label is typed by the customer; only the destination postcode
-  // can select the configured local-delivery range.
-  const isLocal = cleanCep.length === 8 && parseInt(cleanCep, 10) >= 89200000 && parseInt(cleanCep, 10) <= 89239999;
-
-  if (isLocal) {
-    shippingFee = 0;
-  } else if (cleanCep.length === 8) {
-    try {
-      const melhorEnvio = new MelhorEnvioService();
-      const originCep = process.env.ORIGIN_CEP ? process.env.ORIGIN_CEP.replace(/\D/g, '') : '89234100';
-      const calcResult = await melhorEnvio.calculateShipping({
-        from: originCep,
-        to: cleanCep,
-        items: verifiedItems.map(i => ({ id: i.id, quantity: i.quantity, weight: 0.3, width: 20, height: 5, length: 25, insurance_value: i.price || 149.90 }))
-      });
-      if (Array.isArray(calcResult) && calcResult.length > 0) {
-        if (input.customerInfo.shippingServiceId) {
-          const selected = calcResult.find((s: any) => Number(s.id) === Number(input.customerInfo.shippingServiceId));
-          if (selected && selected.price) shippingFee = Number(selected.price) || 20.00;
-        }
-        if (shippingFee === 0 && calcResult[0] && calcResult[0].price) shippingFee = Number(calcResult[0].price) || 20.00;
-      } else throw new Error('Não foi possível obter uma cotação de frete válida.');
-    } catch (err: any) {
-      logger.warn(`⚠️ [PRICING-SERVICE] Freight calculation failed: ${err.message}`);
-      throw new Error('Não foi possível calcular o frete neste momento. Tente novamente.');
-    }
-  } else throw new Error('CEP inválido para cálculo de frete.');
-
-  const totalPieces = verifiedItems.reduce((count, item) => count + (Number(item.quantity) || 0), 0);
-  if (qualifiesForFreeShipping(totalPieces)) shippingFee = 0;
-
-  shippingFee = Number(shippingFee.toFixed(2));
-  const total = Number(Math.max(0, subtotal - couponDiscount - pixDiscount + shippingFee).toFixed(2));
-
+  const delivery = await quoteCheckoutDelivery(input.customerInfo, verifiedItems, context);
+  const campaigns = await db.collection('weekly_promotions').where('active', '==', true).get();
+  const promotion = selectActivePromotion(campaigns.docs.map(doc => ({ ...doc.data(), id: doc.id } as WeeklyPromotion)), context.now);
+  const money = calculateStorefrontTotals({
+    items: storefrontItems, promotion, shipping: delivery.shipping, coupon: input.couponCode,
+    pixEnabled: input.paymentMethodId === 'pix', city: delivery.destination.city, now: context.now,
+  });
   return {
-    pricing: { subtotal, couponDiscount, promotionalDiscount: 0, pixDiscount, shipping: shippingFee, total, currency: 'BRL' },
-    verifiedItems
+    pricing: {
+      subtotal: money.subtotal, couponDiscount: money.couponDiscount,
+      promotionalDiscount: roundMoney(money.promotionDiscount + money.flashSaleDiscount),
+      weeklyPromotionDiscount: money.promotionDiscount, flashSaleDiscount: money.flashSaleDiscount,
+      pixDiscount: money.pixDiscount, shipping: money.shipping, total: money.total, currency: 'BRL',
+    },
+    verifiedItems,
   };
 }

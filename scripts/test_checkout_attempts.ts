@@ -28,7 +28,7 @@ const attempts = createCheckoutAttempts({ getDb: () => db, mpService: provider, 
 } });
 const controllers = createCheckoutControllers({
   mpService: provider, checkoutAttempts: attempts,
-  calculateOrderPricing: async () => { if (pricingFails) throw new Error('fixture unavailable'); return { pricing: { total: 100, subtotal: 100 }, verifiedItems: [{ id: 'shirt', name: 'Fixture', quantity: 1, price: 100 }] } as any; },
+  calculateOrderPricing: async () => { if (pricingFails) throw new Error('fixture unavailable'); return { pricing: { total: 100, subtotal: 100 }, verifiedItems: [{ id: 'shirt', name: 'Fixture', quantity: 1, price: 100, unitCostSnapshot: 42, totalCostSnapshot: 42 }] } as any; },
   storeService: {
     checkStock: async () => ({ isAvailable: true }),
     reserveStock: async (id: string, _items: any, _key: string, order: any) => { reserves++; await db.collection('orders').doc(id).set(order); },
@@ -114,6 +114,19 @@ try {
   await check('authenticated attempt rejects another account even with the retry key', async () => {
     await post('/pay', key(6), payload, 'owner');
     assert.equal((await post('/resume', key(6), payload, 'stranger')).status, 403);
+  });
+  await check('changed totals stop before stock reservation or provider submission and expose only public quote fields', async () => {
+    const before = { reserves, charges };
+    const result = await post('/pay', key(7), { ...payload, amount: 99.99 } as any);
+    assert.equal(result.status, 409);
+    assert.equal(result.body.safeToRetry, true);
+    assert.equal(result.body.code, 'CHECKOUT_TOTAL_CHANGED');
+    assert.equal(result.body.quote.pricing.total, 100);
+    assert.equal(result.body.quote.items[0].price, 100);
+    assert.doesNotMatch(JSON.stringify(result.body), /unitCost|totalCost|42/);
+    assert.deepEqual({ reserves, charges }, before);
+    assert.equal((await post('/pay', key(7))).body.safeToRetry, true);
+    assert.deepEqual({ reserves, charges }, before);
   });
   await check('attempt records contain neither contact data nor raw card/tracking/retry secrets', async () => {
     const records = JSON.stringify((await db.collection('checkout_attempts').get()).docs.map((d: any) => d.data()));

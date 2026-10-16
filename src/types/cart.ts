@@ -20,6 +20,8 @@ export interface PrintConfiguration {
 
 export interface CartItem {
   id: string;
+  category?: string;
+  productId?: string;
   slug?: string;
   baseProductSlug?: string;
   parentSlug?: string;
@@ -63,6 +65,7 @@ export interface CartStore {
   total: number;
   coupon: string | null;
   shipping: number;
+  quotedShipping?: number;
   observations: string;
   paymentMethod: 'PIX' | 'CREDIT_CARD' | 'DEBIT_CARD';
   customerInfo: CustomerInfo;

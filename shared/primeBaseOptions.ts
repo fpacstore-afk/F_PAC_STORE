@@ -1,4 +1,7 @@
-type BaseProduct = { id: string; slug?: string; colors?: any[]; sizes?: any[]; variants?: any[] };
+type BaseProduct = {
+  id: string; slug?: string; colors?: any[]; sizes?: any[]; variants?: any[];
+  category?: string; weight?: number; width?: number; height?: number; length?: number;
+};
 const active = (value: any) => value?.active !== false && value?.available !== false && !['inactive', 'hidden', 'archived'].includes(value?.status);
 const name = (value: any) => typeof value === 'string' ? value : value?.name || value?.label || value?.id || '';
 

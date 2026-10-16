@@ -64,7 +64,7 @@ await test('DTF rounds whole meters and applies inclusive purchase tiers, not ga
     assert.equal(result.dtf.purchaseMeters,meters);
     assert.equal(result.dtf.pricePerMeter,rate);
     assert.equal(result.dtf.purchaseCost,meters * rate);
-    assert.equal(result.items[0].components[1].unitCost,rate / 20);
+    assert.ok(Math.abs(result.items[0].components[1].unitCost! - rate / 20) < 1e-9);
   }
   // A 60 cm sheet becomes a whole-meter purchase, but cost still uses consumed material.
   assert.equal(dtfPurchase([item],catalog).purchaseMeters,1);
@@ -83,7 +83,9 @@ await test('manual purchase overrides and fixed/manual stamp costs remain distin
   const q = { ...ready, dtfPurchaseMeters: 8 };
   const result = calculateQuote(q,tierCatalog);
   assert.equal(result.dtf.estimatedMeters,1); assert.equal(result.dtf.purchaseMeters,8);
-  assert.equal(result.items[0].components[1].unitCost,.7);
+  // Area allocation preserves internal precision; decimal arithmetic may add
+  // a binary floating-point tail without changing the material cost.
+  assert.ok(Math.abs(result.items[0].components[1].unitCost! - .7) < 1e-9);
   assert.equal(calculateQuote({ ...q, dtfPurchaseMeters: null },tierCatalog).dtf.pricePerMeter,20);
   assert.ok(dtfPurchase([{ ...item, quantity: 100 }],tierCatalog,1).warnings.some(w => w.includes('menor')));
   const manual = { ...item, prints: [{ ...item.prints[0], manualCost: 0 }] };
@@ -138,6 +140,20 @@ await test('DTF shows each art area cost separately from minimum purchase for on
   assert.ok(Math.abs(cheaperTier.arts[0].unitMaterialCost! - (1200 / 5900 * 14)) < 1e-9);
   assert.equal(dtfPurchase([{ ...item, prints: [{ ...thirtyByForty, width: null }] }], fullDtf).materialCost, null);
   assert.equal(dtfPurchase([{ ...item, prints: [{ ...thirtyByForty, manualCost: 5 }] }], fullDtf).arts.length, 0);
+});
+await test('consumed material uses the same area cost in the item and artwork preview, even with grid waste', () => {
+  const consumed: Catalog = { ...fullDtf, rules: { ...fullDtf.rules, dtfCostBasis: 'consumed' } };
+  const line = { ...packedItem, prints: mixedPrints, quantity: 2 };
+  const result = calculateQuote({ ...ready, items: [line] },consumed);
+  const components = result.items[0].components.filter(component => component.name.startsWith('Estampa '));
+  assert.equal(components.length,mixedPrints.length);
+  components.forEach((component,index) => {
+    assert.equal(component.unitCost,result.dtf.arts[index].unitMaterialCost);
+    assert.match(component.source,/material aplicado por área/);
+  });
+  assert.ok(Math.abs(components.reduce((sum,component)=>sum+component.unitCost! * line.quantity,0)-result.dtf.materialCost!)<1e-9);
+  assert.ok(result.dtf.materialCost! < result.dtf.purchaseCost!);
+  assert.notEqual(components[0].unitCost,dtfCost(30,40,consumed.rules)!.unitCost);
 });
 await test('mixed sizes share the same sheet and purchase is allocated once across artwork', () => {
   const mixed = { ...ready, items: [{ ...ready.items[0], quantity: 1, prints: mixedPrints }] };
@@ -276,7 +292,7 @@ try {
     assert.equal((await request('/catalog','PUT',{catalog: tierCatalog,expectedVersion:2})).status,200);
     const saved = await request('/quotes/dtf','PUT',{ input: { ...ready, dtfPurchaseMeters: 8 }, expectedVersion: 0, catalogVersion: 3, status: 'finalized', result: { total: 999 } });
     assert.equal(saved.status,200); assert.equal(saved.data.result.dtf.pricePerMeter,14);
-    assert.equal(saved.data.result.items[0].components[1].unitCost,.7);
+    assert.ok(Math.abs(saved.data.result.items[0].components[1].unitCost - .7) < 1e-9);
     const next = { ...tierCatalog, rules: { ...tierCatalog.rules, dtfTiers: [] } };
     assert.equal((await request('/catalog','PUT',{catalog: next,expectedVersion:3})).status,200);
     assert.deepEqual((await request('/quotes/dtf')).data.result,saved.data.result);

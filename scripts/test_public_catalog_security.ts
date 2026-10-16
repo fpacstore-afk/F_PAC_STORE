@@ -3,7 +3,12 @@ import { readFileSync } from 'node:fs';
 import { requireIsolatedTestDb } from './requireIsolatedTestDb.ts';
 import { projectPublicProduct, projectPublicAvailability, loadPublicCatalog, createPublicCatalogLoader } from '../server/services/publicCatalog.service.ts';
 import { cartAvailabilityIssues } from '../shared/cartAvailability.ts';
-import { calculateOrderPricing } from '../server/services/pricing.service.ts';
+import { calculateOrderPricing as calculateRealOrderPricing } from '../server/services/pricing.service.ts';
+
+const calculateOrderPricing = (input: Parameters<typeof calculateRealOrderPricing>[0]) =>
+  calculateRealOrderPricing(input, { lookupPostcode: async cep => cep.startsWith('892')
+    ? { city: 'Joinville', state: 'SC', neighborhood: 'Itaum' }
+    : { city: 'São Paulo', state: 'SP', neighborhood: 'Sé' } });
 
 const db = requireIsolatedTestDb();
 let passed = 0;

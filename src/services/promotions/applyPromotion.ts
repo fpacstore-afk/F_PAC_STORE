@@ -43,7 +43,7 @@ export function applyPromotion(
   const isPromoProduct = (item: CartItem) => {
     // If specific products are selected
     if (hasSpecificProducts) {
-      return promotion.product_ids.includes(item.id);
+      return promotion.product_ids.includes(item.productId || item.id);
     }
     // If specific categories are configured
     if (Array.isArray(promotion.categories_participating) && promotion.categories_participating.length > 0) {

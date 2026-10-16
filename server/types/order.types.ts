@@ -52,6 +52,8 @@ export interface OrderItem {
   originalPrice?: number;
   totalPrice?: number; // quantity * price
   image?: string;
+  width?: number; height?: number; length?: number; weight?: number;
+  category?: string;
   sku?: string;
   stampName?: string;
   /** Server-resolved artwork and size used for this garment color and stock debit. */
@@ -77,6 +79,8 @@ export interface OrderPricingSnapshot {
   shipping: number;
   total: number;
   currency: 'BRL';
+  flashSaleDiscount?: number;
+  weeklyPromotionDiscount?: number;
   shippingCharged?: number;
   shippingActualCost?: number;
   shippingSubsidy?: number;

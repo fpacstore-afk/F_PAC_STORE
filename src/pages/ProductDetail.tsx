@@ -914,6 +914,8 @@ export default function ProductDetail() {
 
     addItem({
       id: product.id,
+      productId: product.id,
+      category: product.category,
       slug: product.slug,
       parentSlug: product.parentSlug,
       name: displayProductTitle,
