@@ -131,15 +131,25 @@ export function createInMemoryDb() {
 
   class MockQuery {
     private limitNum?: number;
+    private ordering: { field: string; direction: string }[] = [];
     constructor(public colName: string, public conditions: Array<{ field: string; op: string; val: any }> = []) {}
 
     where(field: string, op: string, val: any) {
-      return new MockQuery(this.colName, [...this.conditions, { field, op, val }]);
+      const q = new MockQuery(this.colName, [...this.conditions, { field, op, val }]);
+      q.limitNum = this.limitNum; q.ordering = [...this.ordering];
+      return q;
+    }
+
+    orderBy(field: string, direction = 'asc') {
+      const q = new MockQuery(this.colName, this.conditions);
+      q.limitNum = this.limitNum; q.ordering = [...this.ordering, { field, direction }];
+      return q;
     }
 
     limit(n: number) {
       const q = new MockQuery(this.colName, this.conditions);
       q.limitNum = n;
+      q.ordering = [...this.ordering];
       return q;
     }
 
@@ -165,6 +175,14 @@ export function createInMemoryDb() {
           });
         }
       }
+      if (this.ordering.length) docs.sort((a, b) => {
+        for (const { field, direction } of this.ordering) {
+          const left = getPathValue(a.data(), field), right = getPathValue(b.data(), field);
+          const comparison = left < right ? -1 : left > right ? 1 : 0;
+          if (comparison) return direction === 'desc' ? -comparison : comparison;
+        }
+        return 0;
+      });
       if (this.limitNum !== undefined) {
         docs = docs.slice(0, this.limitNum);
       }
@@ -193,6 +211,10 @@ export function createInMemoryDb() {
 
     where(field: string, op: string, val: any) {
       return new MockQuery(this.name, [{ field, op, val }]);
+    }
+
+    orderBy(field: string, direction = 'asc') {
+      return new MockQuery(this.name).orderBy(field, direction);
     }
 
     async get() {

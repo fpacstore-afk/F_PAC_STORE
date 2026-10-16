@@ -3,6 +3,7 @@ import { Request, Response } from "express";
 import { 
   saveCheckoutLead, 
   cancelRecoveryByToken,
+  prepareRecoveryWhatsApp,
   recoveryAllowed,
   runAbandonedCheckoutDetector, 
   sendWhatsAppMessage, 
@@ -20,6 +21,23 @@ import { getDb } from "../firebase.js";
 import { logger } from "../utils/logger.js";
 import { Resend } from "resend";
 import { manualWhatsAppUrl, normalizeNotificationEmail } from "../../shared/notificationContacts.js";
+import { restoreRecoveryCart } from '../services/cartRecovery.service.js';
+
+const recoveryText = (value: unknown, max: number) => typeof value === 'string' ? value.trim().slice(0, max) : '';
+function recoveryItem(item: any) {
+  if (item?.printConfigs && (!Array.isArray(item.printConfigs) || item.printConfigs.length > 5 || JSON.stringify(item.printConfigs).length > 20_000)) throw Object.assign(new Error('INVALID_CART'), { status: 400 });
+  return {
+    id: recoveryText(item?.id, 128), productId: recoveryText(item?.productId, 128), slug: recoveryText(item?.slug, 128),
+    baseProductSlug: recoveryText(item?.baseProductSlug, 128), parentSlug: recoveryText(item?.parentSlug, 128),
+    name: recoveryText(item?.name, 150), size: recoveryText(item?.size, 20), color: recoveryText(item?.color, 50),
+    quantity: Math.max(1, Math.min(99, Math.floor(Number(item?.quantity) || 1))), price: Math.max(0, Math.min(100_000, Number(item?.price) || 0)),
+    ...(item?.printConfigs ? { printConfigs: item.printConfigs.map((print: any) => ({
+      id: recoveryText(print?.id, 160), stampId: recoveryText(print?.stampId, 160), stamp: recoveryText(print?.stamp, 160),
+      location: recoveryText(print?.location, 120), printSize: recoveryText(print?.printSize, 80), background: recoveryText(print?.background, 80),
+      ...(print?.placement && typeof print.placement === 'object' ? { placement: print.placement } : {}),
+    })) } : {}),
+  };
+}
 
 /**
  * Controller to save/update checkout lead dynamically as they type
@@ -35,13 +53,30 @@ export async function handleSaveLead(req: Request, res: Response) {
     const phone = text(body.phone, 24).replace(/\D/g, '');
     if (body.recoveryConsent && !(/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || /^\d{10,13}$/.test(phone))) return res.status(400).json({ error: 'INVALID_CONTACT' });
     if (body.cart_items && (!Array.isArray(body.cart_items) || body.cart_items.length > 60)) return res.status(400).json({ error: 'INVALID_CART' });
-    const cart_items = (body.cart_items || []).map((item: any) => ({ id: text(item?.id, 128), name: text(item?.name, 150), size: text(item?.size, 20), color: text(item?.color, 50), quantity: Math.max(1, Math.min(99, Number(item?.quantity) || 1)), price: Math.max(0, Math.min(100_000, Number(item?.price) || 0)) }));
+    const cart_items = (body.cart_items || []).map(recoveryItem);
     const result = await saveCheckoutLead({ checkout_session_id: body.checkout_session_id, recoveryConsent: body.recoveryConsent, customer_name: text(body.customer_name, 100), email, phone, cart_items, total: Math.max(0, Math.min(1_000_000, Number(body.total) || 0)) }, body.leadAccessToken);
     res.json(result);
   } catch (error: any) {
     const status = [400, 403, 409].includes(error.status) ? error.status : 503;
     res.status(status).json({ error: status === 409 ? 'CONSENT_REVOKED' : status === 503 ? 'SERVICE_UNAVAILABLE' : 'INVALID_LEAD_SESSION' });
   }
+}
+
+export async function handleRestoreRecovery(req: Request, res: Response) {
+  res.setHeader('Cache-Control', 'no-store');
+  try { res.json(await restoreRecoveryCart(req.body?.id, req.body?.token)); }
+  catch (error: any) {
+    const status = [403, 410].includes(error.status) ? error.status : 503;
+    res.status(status).json({ error: status === 503 ? 'Não foi possível atualizar esta sacola. Tente novamente ou escolha os produtos no catálogo.' : error.message });
+  }
+}
+
+export async function handleRecoveryWhatsApp(req: Request, res: Response) {
+  res.setHeader('Cache-Control', 'no-store');
+  try {
+    if (!/^lead_[a-f0-9-]{36}$/.test(req.body?.id || '')) return res.status(400).json({ error: 'Sacola inválida.' });
+    res.json(await prepareRecoveryWhatsApp(req.body.id));
+  } catch (error: any) { res.status(error.status === 410 ? 410 : 503).json({ error: error.message }); }
 }
 
 export async function handleCancelRecovery(req: Request, res: Response) {
@@ -136,7 +171,7 @@ export async function getAutomationDashboard(req: Request, res: Response) {
       .get();
     
     const leads = checkoutsSnap.docs.map(doc => {
-      const { leadAccessTokenHash, recoveryCancelToken, ...data } = doc.data();
+      const { leadAccessTokenHash, recoveryCancelToken, recoveryLinkToken, ...data } = doc.data();
       return data;
     });
 

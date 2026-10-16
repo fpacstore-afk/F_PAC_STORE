@@ -1,7 +1,7 @@
 import { CatalogUnavailable } from '../components/CatalogUnavailable';
 import { getProductVisualKind } from '../lib/productPresentation';
 import React, { useState, useEffect, lazy, Suspense } from "react";
-import { useParams, Link, useNavigate } from "react-router-dom";
+import { useParams, Link, useNavigate, useSearchParams } from "react-router-dom";
 import { getProductBySlug, products as staticProducts } from "../data/products";
 import { STAMP_CATEGORIES, normalizeStampCategory } from "../constants/stampCategories";
 import { useCart } from "../hooks/useCart";
@@ -468,6 +468,9 @@ export default function ProductDetail() {
   }, []);
 
   const navigate = useNavigate();
+  const [selectionParams] = useSearchParams();
+  const requestedColor = (selectionParams.get('color') || '').slice(0, 50);
+  const requestedSize = (selectionParams.get('size') || '').slice(0, 20);
 
   // Redirect mother lines to the collection/model page
   useEffect(() => {
@@ -485,7 +488,7 @@ export default function ProductDetail() {
     setShippingResult(null);
     setCep("");
     setActiveImage(0);
-  }, [slug]);
+  }, [slug, requestedColor, requestedSize]);
 
   useEffect(() => {
     if (!slug) return;
@@ -580,24 +583,24 @@ export default function ProductDetail() {
           !selectedColor ||
           !visibleColors.some((c) => c.name === selectedColor)
         ) {
-          setSelectedColor(visibleColors[0].name);
+          setSelectedColor(visibleColors.find(c => c.name.toLowerCase() === requestedColor.toLowerCase())?.name || visibleColors[0].name);
         }
       } else if (product.colors && product.colors.length > 0) {
         if (!selectedColor) {
-          setSelectedColor(product.colors[0].name);
+          setSelectedColor(product.colors.find(c => c.name.toLowerCase() === requestedColor.toLowerCase())?.name || product.colors[0].name);
         }
       }
     }
-  }, [product, inventory, selectedColor, visibleColors]);
+  }, [product, inventory, selectedColor, visibleColors, requestedColor]);
 
   useEffect(() => {
     if (product && !selectedSize) {
       const sizes = product.sizes || [];
       if (sizes.length > 0) {
-        setSelectedSize(sizes[0]);
+        setSelectedSize(sizes.find(size => size.toLowerCase() === requestedSize.toLowerCase()) || sizes[0]);
       }
     }
-  }, [product, selectedSize]);
+  }, [product, selectedSize, requestedSize]);
 
   useEffect(() => {
     if (!isPrime) return;
@@ -1484,7 +1487,7 @@ export default function ProductDetail() {
         </div>
 
         {/* Render standard modals & charts */}
-        <SizeChart model={getProductVisualKind(product)} />
+        <SizeChart model={getProductVisualKind(product)} customData={product.sizeChart} availableSizes={product.sizes} />
         <AnimatePresence>
           {showPrimeConfirmation && (
             <motion.div
@@ -3428,7 +3431,7 @@ export default function ProductDetail() {
         </div>
       </div>
 
-      <SizeChart model={getProductVisualKind(product)} />
+      <SizeChart model={getProductVisualKind(product)} customData={product.sizeChart} availableSizes={product.sizes} />
 
       <AnimatePresence>
         {showPrimeConfirmation && (

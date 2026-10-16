@@ -13,6 +13,7 @@ import { getActivePromotion } from '../services/promotions/getActivePromotion';
 import { PromotionBadge } from '../components/promotions/PromotionBadge';
 import type { WeeklyPromotion } from '../types/promotions';
 import { subscribePublicProductSnapshot } from '../services/publicProducts';
+import { readCatalogFilters, catalogFilterKeys, catalogVariantAvailable, catalogProductLink, catalogCreatedTime } from '../lib/catalogFilters';
 
 type SortMode = 'recommended' | 'best-selling' | 'newest' | 'price-asc' | 'price-desc';
 type CollectionFilter = 'all' | 'force' | 'mark' | 'prime';
@@ -33,17 +34,21 @@ export default function CatalogStorefront() {
   const [brandConfig, setBrandConfig] = useState<any>(null);
   const [activePromo, setActivePromo] = useState<WeeklyPromotion | null>(null);
   const [searchParams, setSearchParams] = useSearchParams();
-  const [search, setSearch] = useState('');
-  const [collectionFilter, setCollectionFilter] = useState<CollectionFilter>(() => {
-    const requested = normalize(searchParams.get('line'));
-    return requested === 'force' || requested === 'mark' || requested === 'prime' ? requested : 'all';
-  });
-  const [hideOutOfStock, setHideOutOfStock] = useState(false);
-  const [colorFilter, setColorFilter] = useState('');
-  const [sizeFilter, setSizeFilter] = useState('');
-  const [minPrice, setMinPrice] = useState('');
-  const [maxPrice, setMaxPrice] = useState('');
-  const [sortBy, setSortBy] = useState<SortMode>('recommended');
+  const { search, colorFilter, sizeFilter, minPrice, maxPrice, sortBy, hideOutOfStock } = readCatalogFilters(searchParams);
+  const line = normalize(searchParams.get('line'));
+  const collectionFilter: CollectionFilter = line === 'force' || line === 'mark' || line === 'prime' ? line : 'all';
+  const updateFilter = (key: string, value: string) => {
+    const params = new URLSearchParams(searchParams);
+    if (value) params.set(key, value); else params.delete(key);
+    setSearchParams(params, { replace: true });
+  };
+  const setSearch = (value: string) => updateFilter('q', value);
+  const setColorFilter = (value: string) => updateFilter('color', value);
+  const setSizeFilter = (value: string) => updateFilter('size', value);
+  const setMinPrice = (value: string) => updateFilter('min', value);
+  const setMaxPrice = (value: string) => updateFilter('max', value);
+  const setSortBy = (value: SortMode) => updateFilter('sort', value === 'recommended' ? '' : value);
+  const setHideOutOfStock = (value: boolean) => updateFilter('available', value ? '1' : '');
   const [showFilters, setShowFilters] = useState(false);
 
   const isCampaignOnly = searchParams.get('promo') === 'active';
@@ -94,7 +99,6 @@ export default function CatalogStorefront() {
       navigate('/prime', { replace: true });
       return;
     }
-    setCollectionFilter(requested === 'force' || requested === 'mark' || requested === 'prime' ? requested : 'all');
   }, [navigate, searchParams]);
 
   const visibleProducts = useMemo(() => {
@@ -150,7 +154,8 @@ export default function CatalogStorefront() {
         if (!eligible) return false;
       }
 
-      const available = isAvailable(product.slug, undefined, product.parentSlug) && getStock(product.slug, undefined, product.parentSlug) > 0;
+      const available = catalogVariantAvailable(product, colorFilter, sizeFilter, key =>
+        isAvailable(product.slug, key, product.parentSlug) && getStock(product.slug, key, product.parentSlug) > 0);
       if ((brandConfig?.hideOutOfStock || hideOutOfStock) && !available) return false;
 
       return true;
@@ -160,31 +165,17 @@ export default function CatalogStorefront() {
       if (sortBy === 'price-asc') return getEffectivePrice(a) - getEffectivePrice(b);
       if (sortBy === 'price-desc') return getEffectivePrice(b) - getEffectivePrice(a);
       if (sortBy === 'newest') {
-        const aDate = a.createdAt?.toDate?.() || a.createdAt || 0;
-        const bDate = b.createdAt?.toDate?.() || b.createdAt || 0;
-        return Number(bDate) - Number(aDate);
+        return catalogCreatedTime(b.createdAt) - catalogCreatedTime(a.createdAt);
       }
       if (Boolean(a.isBestseller) !== Boolean(b.isBestseller)) return a.isBestseller ? -1 : 1;
-      const aDate = a.createdAt?.toDate?.() || a.createdAt || 0;
-      const bDate = b.createdAt?.toDate?.() || b.createdAt || 0;
-      return Number(bDate) - Number(aDate);
+      return catalogCreatedTime(b.createdAt) - catalogCreatedTime(a.createdAt);
     });
   }, [products, search, collectionFilter, colorFilter, sizeFilter, minPrice, maxPrice, hideOutOfStock, sortBy, brandConfig, isCampaignOnly, activePromo, isAvailable, getStock]);
 
   const clearFilters = () => {
-    setSearch('');
-    setCollectionFilter('all');
-    setHideOutOfStock(false);
-    setColorFilter('');
-    setSizeFilter('');
-    setMinPrice('');
-    setMaxPrice('');
-    setSortBy('recommended');
-    if (isCampaignOnly) {
-      const params = new URLSearchParams(searchParams);
-      params.delete('promo');
-      setSearchParams(params);
-    }
+    const params = new URLSearchParams(searchParams);
+    catalogFilterKeys.forEach(key => params.delete(key));
+    setSearchParams(params, { replace: true });
   };
 
   const selectCollection = (value: CollectionFilter) => {
@@ -192,7 +183,6 @@ export default function CatalogStorefront() {
       navigate('/prime');
       return;
     }
-    setCollectionFilter(value);
     const params = new URLSearchParams(searchParams);
     if (value === 'all') params.delete('line');
     else params.set('line', value);
@@ -300,9 +290,9 @@ export default function CatalogStorefront() {
             <div data-density-grid="products" className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-2.5 md:gap-4">
               {visibleProducts.map(product => {
                 const prices = getDisplayPrices(product);
-                const available = isAvailable(product.slug, undefined, product.parentSlug) && getStock(product.slug, undefined, product.parentSlug) > 0;
+                const available = catalogVariantAvailable(product, colorFilter, sizeFilter, key => isAvailable(product.slug, key, product.parentSlug) && getStock(product.slug, key, product.parentSlug) > 0);
                 const isPrime = productMatchesCommercialLine(product, 'prime') || Boolean(product.is_prime);
-                const productTarget = isPrime ? `/prime?product=${encodeURIComponent(product.id || product.slug)}` : getProductUrl(product);
+                const productTarget = isPrime ? `/prime?product=${encodeURIComponent(product.id || product.slug)}` : catalogProductLink(getProductUrl(product), colorFilter, sizeFilter);
 
                 return (
                   <article key={product.id || product.slug} className="group flex flex-col overflow-hidden rounded-xl md:rounded-2xl bg-white border border-black/10 shadow-sm hover:shadow-xl hover:-translate-y-0.5 transition-all duration-300">

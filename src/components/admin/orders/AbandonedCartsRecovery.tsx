@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
+import toast from 'react-hot-toast';
 import { Smartphone } from 'lucide-react';
-import { authenticatedFetch, getBaseUrl } from '../../../lib/api';
+import { authenticatedFetch } from '../../../lib/api';
 
 interface AbandonedCheckout {
   id: string;
@@ -66,7 +67,7 @@ export const AbandonedCartsRecovery: React.FC<AbandonedCartsRecoveryProps> = ({ 
         {checkouts.slice(0, 3).map(checkout => {
           const hours = Math.max(1, Math.floor((Date.now() - checkoutTime(checkout)) / 3_600_000));
           const firstName = (checkout.customer_name || 'Cliente').split(' ')[0].toUpperCase();
-          const message = `Fala ${firstName}! Vimos que você adicionou produtos à sacola da F PAC STORE, mas não concluiu a compra. Se quiser continuar, acesse ${getBaseUrl()}/bag`;
+
           return (
             <div key={checkout.id} className="flex items-center justify-between gap-2 border border-orange-200 bg-white p-2 shadow-2xs">
               <div className="min-w-0">
@@ -74,7 +75,7 @@ export const AbandonedCartsRecovery: React.FC<AbandonedCartsRecoveryProps> = ({ 
                 <p className="font-mono text-[8px] font-bold text-gray-500">Há {hours}h • {formatMoney(Number(checkout.total) || 0)}</p>
               </div>
               {checkout.phone && (
-                <button type="button" onClick={() => window.open(`https://wa.me/${checkout.phone!.replace(/\D/g, '')}?text=${encodeURIComponent(message)}`, '_blank')} className="shrink-0 bg-orange-500 px-2 py-1 text-[8px] font-black uppercase text-white transition-colors hover:bg-black">Recuperar WA</button>
+                <button type="button" onClick={async () => { try { const response = await authenticatedFetch('/api/automation/recovery-whatsapp', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: checkout.id }) }); const data = await response.json(); if (!response.ok || !data.whatsappUrl) throw new Error(data.error || 'Não foi possível preparar a mensagem.'); window.open(data.whatsappUrl, '_blank', 'noopener,noreferrer'); } catch (error: any) { toast.error(error.message); } }} className="shrink-0 bg-orange-500 px-2 py-1 text-[8px] font-black uppercase text-white transition-colors hover:bg-black">Recuperar WA</button>
               )}
             </div>
           );

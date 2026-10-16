@@ -1,6 +1,6 @@
 import React from 'react';
 import { useLocation } from 'react-router-dom';
-import { getProductSizeChart } from '../lib/productSizeChart';
+import { getProductSizeChart, resolveProductSizeChart } from '../lib/productSizeChart';
 import type { ProductVisualKind } from '../lib/productPresentation';
 
 interface SizeData {
@@ -88,9 +88,10 @@ interface SizeChartProps {
   model?: ProductVisualKind;
   onClose?: () => void;
   customData?: { size: string; length: string; width: string; sleeve: string; notes?: string }[];
+  availableSizes?: string[];
 }
 
-export function SizeChart({ onClose, customData, model }: SizeChartProps) {
+export function SizeChart({ onClose, customData, model, availableSizes }: SizeChartProps) {
   const location = useLocation();
 
   // The home page used to render a global oversized chart. Product measurements now
@@ -98,9 +99,9 @@ export function SizeChart({ onClose, customData, model }: SizeChartProps) {
   if (location.pathname === '/' || model === 'cap') return null;
 
   const hasCustomData = Boolean(customData && customData.length > 0);
-  const activeRows = model ? getProductSizeChart(model) : hasCustomData ? customData! : tableRows;
-  const pending = model === 'hoodie' || model === 'shorts';
-  const drawings = activeRows.filter(row => row.length && row.width && row.sleeve).map(row => ({ size: row.size, height: parseFloat(row.length), width: parseFloat(row.width), sleeve: parseFloat(row.sleeve) }));
+  const activeRows = resolveProductSizeChart(model, customData, availableSizes);
+  const pending = !activeRows.some(row => row.length || row.width);
+  const drawings = activeRows.filter(row => [row.length, row.width, row.sleeve].every(value => Number.isFinite(parseFloat(value)) && parseFloat(value) > 0)).map(row => ({ size: row.size, height: parseFloat(row.length), width: parseFloat(row.width), sleeve: parseFloat(row.sleeve) }));
 
   return (
     <div id="guia-de-medidas" className="max-w-4xl mx-auto mt-4 md:mt-8 mb-8 animate-in fade-in slide-in-from-bottom-4 duration-700 px-4 scroll-mt-24">
@@ -148,9 +149,9 @@ export function SizeChart({ onClose, customData, model }: SizeChartProps) {
               {activeRows.map((row, idx) => (
                 <tr key={row.size || idx} className="hover:bg-neutral-50/80 transition-colors">
                   <td className="p-3.5 pl-5 font-black text-zinc-950 font-mono text-sm">{row.size}</td>
-                  <td className="p-3.5 font-bold text-zinc-800">{row.length}</td>
-                  <td className="p-3.5 font-bold text-zinc-800">{row.width}</td>
-                  <td className="p-3.5 font-bold text-zinc-800">{row.sleeve}</td>
+                  <td className="p-3.5 font-bold text-zinc-800">{row.length || 'Em conferência'}</td>
+                  <td className="p-3.5 font-bold text-zinc-800">{row.width || 'Em conferência'}</td>
+                  <td className="p-3.5 font-bold text-zinc-800">{row.sleeve || 'Em conferência'}</td>
                 </tr>
               ))}
             </tbody>

@@ -5,6 +5,7 @@ import axios from "axios";
 import { logger } from "../utils/logger.js";
 import { generateTrackingToken, hashTrackingToken, verifyTrackingToken } from './tracking.service.js';
 import { escapeHtml } from '../utils/escapeHtml.js';
+import { manualWhatsAppUrl } from '../../shared/notificationContacts.js';
 
 export interface CheckoutLead {
   id: string; // Checkout Session ID
@@ -23,6 +24,7 @@ export interface CheckoutLead {
   recoveryRevokedAt?: string;
   recoveryExpiresAt?: string;
   recoveryCancelToken?: string;
+  recoveryLinkToken?: string;
   lastRecoveryAttemptAt?: string;
   leadAccessTokenHash?: string;
   created_at?: any;
@@ -181,6 +183,35 @@ export function recoveryCancelUrl(lead: Partial<CheckoutLead>) {
   return `https://fpacstore.com.br/privacy/recovery#id=${encodeURIComponent(lead.id || '')}&token=${encodeURIComponent(lead.recoveryCancelToken || '')}`;
 }
 
+/** Read-only cart capability, separate from the ability to revoke reminders or edit a lead. */
+export async function recoveryCheckoutUrl(id: string) {
+  const ref = getDb().collection('abandoned_checkouts').doc(id);
+  const token = await getDb().runTransaction(async transaction => {
+    const data = (await transaction.get(ref)).data() as CheckoutLead | undefined;
+    if (!data || !recoveryAllowed(data)) throw Object.assign(new Error('Esta sacola expirou ou não está mais disponível para recuperação.'), { status: 410 });
+    const value = data.recoveryLinkToken || generateTrackingToken().token;
+    if (!data.recoveryLinkToken) transaction.update(ref, { recoveryLinkToken: value });
+    return value;
+  });
+  return `https://fpacstore.com.br/bag/recover#id=${encodeURIComponent(id)}&token=${token}`;
+}
+
+export async function readRecoveryCartByToken(id: string, token: string) {
+  if (!/^lead_[a-f0-9-]{36}$/.test(id || '') || !/^[a-f0-9]{64}$/.test(token || '')) throw Object.assign(new Error('Link de recuperação inválido.'), { status: 403 });
+  const data = (await getDb().collection('abandoned_checkouts').doc(id).get()).data() as CheckoutLead | undefined;
+  if (!data?.recoveryLinkToken || !verifyTrackingToken(token, hashTrackingToken(data.recoveryLinkToken))) throw Object.assign(new Error('Link de recuperação inválido.'), { status: 403 });
+  if (!recoveryAllowed(data)) throw Object.assign(new Error('Esta sacola expirou ou já foi concluída. Escolha seus produtos novamente.'), { status: 410 });
+  return data.cart_items;
+}
+
+export async function prepareRecoveryWhatsApp(id: string) {
+  const lead = await currentRecoveryLead(id);
+  if (!lead) throw Object.assign(new Error('Esta sacola não está mais disponível para recuperação.'), { status: 410 });
+  const url = await recoveryCheckoutUrl(id);
+  const message = `F PAC STORE • NÃO É SÓ ROUPA. É IDENTIDADE!\n\nOlá! Você pediu um lembrete da sua sacola. Confira suas escolhas, mesmo em outro aparelho:\n${url}\n\nPreços e disponibilidade serão atualizados. A sacola não reserva estoque.\nCancelar lembretes: ${recoveryCancelUrl(lead)}`;
+  return { whatsappUrl: manualWhatsAppUrl(lead.phone, message), whatsappSent: false };
+}
+
 /** The separate cancellation capability can only revoke; it grants no read/update access. */
 export async function cancelRecoveryByToken(id: string, token: string) {
   if (!/^lead_[a-f0-9-]{36}$/.test(id || '') || !/^[a-f0-9]{64}$/.test(token || '')) throw Object.assign(new Error('Invalid cancellation link'), { status: 403 });
@@ -243,6 +274,7 @@ export async function sendWhatsAppMessage(phone: string, type: 'payment_approved
       if (!payload) return false;
       phone = payload.phone;
     }
+    const recoveryUrl = type.startsWith('abandoned_') ? await recoveryCheckoutUrl(payload.id) : '';
     const cleanPhone = String(phone).replace(/\D/g, "");
     if (!cleanPhone || cleanPhone.length < 10) {
       logger.warn(`⚠️ [WHATSAPP] Phone number ${phone} is invalid. Skipping.`);
@@ -265,10 +297,10 @@ export async function sendWhatsAppMessage(phone: string, type: 'payment_approved
           content = `✅ *PAGAMENTO CONFIRMADO!* ✅\n\nSeu pagamento do pedido *${orderId}* foi aprovado com sucesso! 🎉\n\nNossa equipe foi avisada. A produção e a entrega serão informadas conforme o andamento do seu pedido.`;
           break;
         case 'abandoned_60m':
-          content = `Olá! Você pediu um lembrete da sua sacola F PAC STORE. Se quiser continuar, abra a sacola no mesmo navegador utilizado na compra:\nhttps://fpacstore.com.br/bag\n\nPreços e disponibilidade serão conferidos ao finalizar. A sacola não reserva estoque.\nCancelar lembretes: ${recoveryCancelUrl(payload)}`;
+          content = `Olá! Você pediu um lembrete da sua sacola F PAC STORE. Confira suas escolhas, mesmo em outro aparelho:\n${recoveryUrl}\n\nPreços e disponibilidade serão atualizados. A sacola não reserva estoque.\nCancelar lembretes: ${recoveryCancelUrl(payload)}`;
           break;
         case 'abandoned_24h':
-          content = `Este é o último lembrete automático da sua sacola F PAC STORE. Se ainda tiver interesse, confira suas escolhas no mesmo navegador:\nhttps://fpacstore.com.br/bag\n\nA disponibilidade e os valores podem mudar. Se precisar, fale com nossa equipe.\nCancelar lembretes: ${recoveryCancelUrl(payload)}`;
+          content = `Este é o último lembrete automático da sua sacola F PAC STORE. Se ainda tiver interesse, confira suas escolhas, mesmo em outro aparelho:\n${recoveryUrl}\n\nA disponibilidade e os valores podem mudar. Se precisar, fale com nossa equipe.\nCancelar lembretes: ${recoveryCancelUrl(payload)}`;
           break;
         case 'order_shipped':
           const tracking = payload?.trackingCode || payload?.trackingUrl || "Acompanhamento pendente";
@@ -354,7 +386,7 @@ export async function sendAbandonedEmail(checkout: CheckoutLead) {
 
   try {
     const resend = new Resend(key);
-    const trackingUrl = `https://fpacstore.com.br/bag`;
+    const trackingUrl = await recoveryCheckoutUrl(checkout.id);
 
     const itemsHtml = checkout.cart_items?.map((item: any) => `
       <tr>
@@ -398,7 +430,7 @@ export async function sendAbandonedEmail(checkout: CheckoutLead) {
                               <td style="padding: 40px; color: #fff; line-height: 1.6; font-size: 14px;">
                                   Olá, <strong>${escapeHtml(checkout.customer_name)}</strong>!<br><br>
                                   Vimos que você adicionou itens incríveis à sua sacola, mas não concluiu seu pedido. 
-                                  Você autorizou este lembrete. Abra a sacola no mesmo navegador utilizado para escolher as peças.<br><br>
+                                  Você autorizou este lembrete. O link abaixo permite revisar suas escolhas mesmo em outro aparelho.<br><br>
                                   A sacola não reserva estoque. Os valores e a disponibilidade serão conferidos ao finalizar.<br><br>
                                   <a href="${escapeHtml(recoveryCancelUrl(checkout))}" style="color: #f7c600;">Cancelar os lembretes desta sacola</a>
                               </td>
