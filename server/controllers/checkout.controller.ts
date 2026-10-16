@@ -83,7 +83,7 @@ async function processPayment(req: Request, res: Response) {
     }
 
     // 4. SERVER-AUTHORITATIVE PRICING CALCULATION
-    // Completely ignores client-sent 'amount' or 'total' to prevent price manipulation
+    // Client amounts cannot set the charge; a changed quote must be reviewed before submission.
     const { pricing, verifiedItems } = await calculateOrderPricing({
       items: rawItems,
       customerInfo: {
@@ -100,6 +100,22 @@ async function processPayment(req: Request, res: Response) {
 
     if (finalTransactionAmount <= 0) {
       throw new Error('Valor total do pedido calculado é inválido.');
+    }
+
+    if (body.amount !== undefined && (
+      typeof body.amount !== 'number' || !Number.isFinite(body.amount) ||
+      Math.round(body.amount * 100) !== Math.round(finalTransactionAmount * 100)
+    )) {
+      throw Object.assign(new Error('O total foi atualizado. Revise a sacola antes de pagar.'), {
+        code: 'CHECKOUT_TOTAL_CHANGED',
+        quote: {
+          pricing,
+          items: verifiedItems.map(item => ({
+            price: item.price, originalPrice: item.originalPrice, category: item.category,
+            width: item.width, height: item.height, length: item.length, weight: item.weight,
+          })),
+        },
+      });
     }
 
     // 5. ATOMIC STOCK CHECK AND DEDUCTION
@@ -261,6 +277,9 @@ async function processPayment(req: Request, res: Response) {
           await storeService.updateOrderPaymentSnapshot(orderId, 'rejected', { stockReverted: true, stockRevertedAcknowledged: true });
         }
         await checkoutAttempts.failBeforeSubmission(key);
+        if (err.code === 'CHECKOUT_TOTAL_CHANGED') return res.status(409).json({
+          safeToRetry: true, code: err.code, message: err.message, quote: err.quote,
+        });
         return res.status(400).json({ safeToRetry: true, message: 'Não foi possível iniciar o pagamento. Confira os dados e a disponibilidade dos produtos.' });
       } catch { /* An unresolved cleanup must not authorize another charge. */ }
     }

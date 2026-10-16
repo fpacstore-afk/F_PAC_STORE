@@ -12,9 +12,7 @@ export interface FlashSaleInfo {
   nextSaleIn: number; // segundos para a próxima se não estiver ativa
 }
 
-export function getFlashSaleInfo(): FlashSaleInfo {
-  // Horário atual
-  const now = Date.now();
+export function getFlashSaleInfo(now = Date.now()): FlashSaleInfo {
   
   // CICLO: 3h 17min (197 minutos total)
   const cycleInMs = (3 * 60 + 17) * 60 * 1000;

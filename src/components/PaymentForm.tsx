@@ -24,7 +24,7 @@ interface PaymentFormProps {
 
 export function PaymentForm({ total, items, customerInfo, onSuccess, userId, initialPaymentMethod }: PaymentFormProps) {
   const navigate = useNavigate();
-  const { clearCart, checkout_session_id, shipping, subtotal, couponDiscount, pixDiscount, flashSaleDiscount, weeklyPromotionDiscount } = useCart();
+  const { clearCart, coupon, refreshCheckoutPrices, checkout_session_id, shipping, subtotal, couponDiscount, pixDiscount, flashSaleDiscount, weeklyPromotionDiscount } = useCart();
   const cardInfoRef = useRef<any>(null);
   const sdkInitializedRef = useRef(false);
   const inFlight = useRef(false);
@@ -46,6 +46,10 @@ export function PaymentForm({ total, items, customerInfo, onSuccess, userId, ini
     const data = await response.json();
     if (data.safeToRetry || paymentOutcome(data.status) === 'failed') {
       finishCheckoutAttempt(key); setPendingKey('');
+      if (data.code === 'CHECKOUT_TOTAL_CHANGED' && payload && Array.isArray(data.quote?.items)) {
+        refreshCheckoutPrices(payload.items, data.quote.items);
+        navigate('/bag');
+      }
       throw new Error(data.message || 'Pagamento não aprovado. Confira os dados e tente novamente.');
     }
     if (!response.ok || data.pendingConfirmation) {
@@ -165,6 +169,7 @@ export function PaymentForm({ total, items, customerInfo, onSuccess, userId, ini
         installments: extras.installments,
         issuer_id: extras.issuer_id,
         checkout_session_id,
+        couponCode: coupon,
         shipping: Number(shipping || 0),
         subtotal: Number(subtotal || 0),
         couponDiscount: Number(couponDiscount || 0),
@@ -190,7 +195,7 @@ export function PaymentForm({ total, items, customerInfo, onSuccess, userId, ini
       inFlight.current = false;
       setIsProcessing(false);
     }
-  }, [total, items, customerInfo, userId, onSuccess]);
+  }, [total, items, customerInfo, userId, onSuccess, coupon, checkout_session_id, shipping, subtotal, couponDiscount, pixDiscount, flashSaleDiscount, weeklyPromotionDiscount]);
 
   const handleCardSubmit = useCallback(async (param: any) => {
     const formData = param.formData || param;
@@ -222,6 +227,7 @@ export function PaymentForm({ total, items, customerInfo, onSuccess, userId, ini
           items,
           payment_method_id: 'pix',
           checkout_session_id,
+        couponCode: coupon,
           shipping: Number(shipping || 0),
           subtotal: Number(subtotal || 0),
           couponDiscount: Number(couponDiscount || 0),

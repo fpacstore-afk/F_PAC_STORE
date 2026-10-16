@@ -11,6 +11,7 @@ import { useCart } from '../hooks/useCart';
 import { useAuth } from '../context/AuthContext';
 import { useInventory } from '../hooks/useInventory';
 import { JOINVILLE_NEIGHBORHOOD_TIERS, DEFAULT_SHIPPING_PRICE } from '../data/shipping';
+import { shippingParcel } from '../../shared/shippingParcel';
 import { JOINVILLE_SHIPPING_NAME } from '../lib/shipping';
 import { isValidCPF, isValidCNPJ } from '../lib/validation';
 import { cn } from '../lib/utils';
@@ -78,7 +79,7 @@ export default function Bag() {
 
       const updatedCity = data.localidade || 'Joinville';
       const updatedState = data.uf || 'SC';
-      const isJoinvilleVal = numericPart.startsWith('8920') || numericPart.startsWith('8921') || numericPart.startsWith('8922') || numericPart.startsWith('8923') || updatedCity.toLowerCase() === 'joinville';
+      const isJoinvilleVal = Number(numericPart) >= 89200000 && Number(numericPart) <= 89239999 && updatedCity.toLowerCase() === 'joinville';
 
       let localOption: any = null;
       if (isJoinvilleVal) {
@@ -98,15 +99,7 @@ export default function Bag() {
       let apiOptions: any[] = [];
       let shippingProviderUnavailable = false;
       try {
-        const calculateItems = items.map(item => ({
-          id: item.id,
-          width: item.width || 17,
-          height: item.height || 5,
-          length: item.length || 11,
-          weight: item.weight || 0.3,
-          insurance_value: item.price,
-          quantity: item.quantity
-        }));
+        const calculateItems = items.map(shippingParcel);
 
         const calcRes = await fetch(getPublicApiUrl('/api/shipping/calculate'), {
           method: 'POST',
@@ -251,29 +244,14 @@ export default function Bag() {
     str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
 
   // Free shipping applies starting at three pieces.
-  const currentShipping = useMemo(() => {
-    if (isFreeShippingByQuantity) return 0;
-    
-    const isLocalService = customerInfo.shippingServiceId === 0 || !customerInfo.shippingServiceId;
-    
-    if (customerInfo.city.toLowerCase() === 'joinville' && isLocalService) {
-      const userNeighborhood = normalize(customerInfo.neighborhood);
-      // Find matching tier
-      const matchingKey = Object.keys(JOINVILLE_NEIGHBORHOOD_TIERS).find(
-        key => normalize(key) === userNeighborhood
-      );
-      return matchingKey ? JOINVILLE_NEIGHBORHOOD_TIERS[matchingKey] : DEFAULT_SHIPPING_PRICE;
-    } else {
-      return externalShippingPrice;
-    }
-  }, [customerInfo.neighborhood, customerInfo.city, customerInfo.shippingServiceId, isFreeShippingByQuantity, externalShippingPrice]);
+  const currentShipping = externalShippingPrice;
 
   useEffect(() => {
     setShipping(currentShipping);
   }, [currentShipping, setShipping]);
 
   // --- Handlers ---
-  const shippingItemsKey = items.map(item => item.id + ':' + item.quantity).join('|');
+  const shippingItemsKey = items.map(item => [item.id, item.quantity, item.price, item.width, item.height, item.length, item.weight].join(':')).join('|');
 
   useEffect(() => {
     const requestId = ++shippingRequestId.current;
@@ -358,7 +336,8 @@ export default function Bag() {
     const code = String(couponInput || '').toUpperCase().trim().replace(/\s/g, '');
     const dailyCode = getDailyPromoCode();
     
-    if (code === dailyCode) {
+    const activeCode = activePromo?.discount_type === 'cupom' ? String(activePromo.coupon_code || '').toUpperCase().replace(/\\s/g, '') : '';
+    if ((activeCode && code === activeCode) || (!activePromo && code === dailyCode)) {
       setCoupon(code);
       toast.success("Cupom diário aplicado!");
     } else if (code.startsWith('FPAC')) {

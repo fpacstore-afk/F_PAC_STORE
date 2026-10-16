@@ -11,7 +11,7 @@ import { persistentCart, validCheckoutSession, CHECKOUT_SESSION_TTL } from '../.
 import { RecoveryRevocations } from '../services/recoveryRevocations';
 
 import { analyticsTracker } from '../services/analyticsTracker';
-import { calculateCartMoney, fromCents, toCents } from '../lib/money';
+import { calculateStorefrontTotals } from '../../shared/storefrontTotals';
 import { qualifiesForFreeShipping } from '../../shared/shippingThreshold';
 
 // --- Internal Store Logic ---
@@ -63,7 +63,7 @@ function persistCheckoutDetails() {
       sessionStorage.removeItem(CHECKOUT_DETAILS_KEY);
       return;
     }
-    sessionStorage.setItem(CHECKOUT_DETAILS_KEY, JSON.stringify({ customerInfo: store.customerInfo, observations: store.observations, shipping: store.shipping, checkout_session_id: store.checkout_session_id, recoveryConsent: store.recoveryConsent === true, leadAccessToken, expiresAt: Date.now() + CHECKOUT_SESSION_TTL }));
+    sessionStorage.setItem(CHECKOUT_DETAILS_KEY, JSON.stringify({ customerInfo: store.customerInfo, observations: store.observations, shipping: store.shipping, quotedShipping: store.quotedShipping, checkout_session_id: store.checkout_session_id, recoveryConsent: store.recoveryConsent === true, leadAccessToken, expiresAt: Date.now() + CHECKOUT_SESSION_TTL }));
   } catch { /* Private checkout details stay in memory when storage is unavailable. */ }
 }
 
@@ -93,7 +93,7 @@ const loadInitial = () => {
   try {
     const privateData = JSON.parse(sessionStorage.getItem(CHECKOUT_DETAILS_KEY) || 'null');
     if (validCheckoutSession(privateData)) {
-      store = { ...store, customerInfo: { ...emptyCustomerInfo, ...privateData.customerInfo }, observations: privateData.observations || '', shipping: Number(privateData.shipping) || 0, checkout_session_id: privateData.checkout_session_id || null };
+      store = { ...store, customerInfo: { ...emptyCustomerInfo, ...privateData.customerInfo }, observations: privateData.observations || '', shipping: Number(privateData.shipping) || 0, quotedShipping: Number(privateData.quotedShipping ?? privateData.shipping) || 0, checkout_session_id: privateData.checkout_session_id || null };
       leadAccessToken = /^[a-f0-9]{64}$/.test(privateData.leadAccessToken || '') ? privateData.leadAccessToken : '';
       store.recoveryConsent = privateData.recoveryConsent === true && !!leadAccessToken;
       calculateTotals();
@@ -218,63 +218,13 @@ const fetchPromoIfNeed = () => {
 const calculateTotals = () => {
   fetchPromoIfNeed();
 
-  const totalItemsCount = store.items.reduce((acc, item) => acc + item.quantity, 0);
-  const promoResultObj = applyPromotion(
-    store.items,
-    activePromotion,
-    store.shipping,
-    store.customerInfo.city || 'Joinville'
-  );
-  const shippingPromoDiscountCents = toCents(promoResultObj.shippingDiscount);
-  const isExclusivePromoActive = activePromotion && activePromotion.active;
-
-  const hasFreeShippingByQuantity = qualifiesForFreeShipping(totalItemsCount);
-  let finalShipping = store.shipping;
-  if (isExclusivePromoActive) {
-    finalShipping = shippingPromoDiscountCents > 0 || hasFreeShippingByQuantity ? 0 : store.shipping;
-  } else if (hasFreeShippingByQuantity) {
-    finalShipping = 0;
-  }
-
-  const flashSale = getFlashSaleInfo();
-  const flashSaleDiscountValue =
-    flashSale.isActive && store.items.length > 0 && !isExclusivePromoActive
-      ? flashSale.discountValue
-      : 0;
-
-  const currentDailyCode = getDailyPromoCode();
-  const isDailyCouponValid = store.coupon?.toUpperCase().replace(/\s/g, '') === currentDailyCode;
-  let couponRate = 0;
-  if (isExclusivePromoActive) {
-    if (activePromotion.discount_type === 'cupom' && store.coupon?.toUpperCase().trim() === activePromotion.coupon_code?.toUpperCase().trim()) {
-      couponRate = (activePromotion.discount_value === null ? 0 : activePromotion.discount_value ?? 5);
-    }
-  } else if (isDailyCouponValid) {
-    couponRate = 5;
-  }
-
-  let activePixRate = 5;
-  if (isExclusivePromoActive) {
-    if (activePromotion.discount_type === 'pix_discount') {
-      activePixRate = activePromotion.pix_discount === null
-        ? 0
-        : activePromotion.pix_discount ?? (activePromotion.discount_value === null ? 0 : activePromotion.discount_value ?? 10);
-    } else if (activePromotion.pix_discount !== undefined) {
-      activePixRate = activePromotion.pix_discount === null ? 0 : activePromotion.pix_discount;
-    }
-  }
-
-  const money = calculateCartMoney({
-    items: store.items,
-    promotionDiscount: promoResultObj.promotionDiscount,
-    flashSaleDiscount: flashSaleDiscountValue,
-    couponRate,
-    pixRate: activePixRate,
-    pixEnabled: store.paymentMethod === 'PIX',
-    shipping: finalShipping,
+  const money = calculateStorefrontTotals({
+    items: store.items, promotion: activePromotion, shipping: store.quotedShipping ?? store.shipping,
+    coupon: store.coupon, pixEnabled: store.paymentMethod === 'PIX', city: store.customerInfo.city || 'Joinville',
   });
-  const nextPromoLabel = promoResultObj.discountLabel;
-  const nextShippingDiscount = fromCents(shippingPromoDiscountCents);
+  const activePixRate = money.pixDiscountRate;
+  const nextPromoLabel = money.weeklyPromotionLabel;
+  const nextShippingDiscount = money.shippingDiscount;
 
   // ONLY update if something changed to prevent reference fatigue
   if (
@@ -325,7 +275,7 @@ if (typeof window !== 'undefined') {
         emit();
       }
     }
-  }, 600000); // Checa a cada 10 minutos para ser ULTRA estável
+  }, 1000); // Timed offers stay current; subscribers are notified only when totals change.
 }
 
 // Sync across tabs
@@ -367,7 +317,7 @@ if (typeof window !== 'undefined') {
 
 if (typeof window !== 'undefined') window.addEventListener('fpac:clear-checkout-details', () => {
   revokeRecoveryConsent(); leadAccessToken = '';
-  store = { ...store, customerInfo: { ...emptyCustomerInfo }, observations: '', shipping: 0, checkout_session_id: null, recoveryConsent: false };
+  store = { ...store, customerInfo: { ...emptyCustomerInfo }, observations: '', shipping: 0, quotedShipping: 0, checkout_session_id: null, recoveryConsent: false };
   if (saveTimeout) clearTimeout(saveTimeout);
   calculateTotals(); emit();
 });
@@ -452,7 +402,7 @@ export const cartActions = {
   },
 
   setShipping: (value: number) => {
-    store = { ...store, shipping: value };
+    store = { ...store, shipping: value, quotedShipping: value };
     calculateTotals();
     emit();
   },
@@ -462,6 +412,11 @@ export const cartActions = {
     emit();
   },
 
+  refreshCheckoutPrices: (requestedItems: CartItem[], prices: { price: number; originalPrice?: number; category?: string; width?: number; height?: number; length?: number; weight?: number }[]) => {
+    if (JSON.stringify(store.items) !== JSON.stringify(requestedItems) || prices.length !== store.items.length || prices.some(p => !Number.isFinite(p.price) || p.price <= 0)) return;
+    store = { ...store, items: store.items.map((item, i) => ({ ...item, ...prices[i], price: prices[i].price, ...(Number.isFinite(prices[i].originalPrice) ? { originalPrice: prices[i].originalPrice } : {}) })) };
+    calculateTotals(); emit();
+  },
   clearCart: () => {
     revokeRecoveryConsent(); leadAccessToken = '';
     store = {

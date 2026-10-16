@@ -4,6 +4,7 @@ import vm from 'node:vm';
 import ts from 'typescript';
 import { createCachedRequest } from '../shared/cachedRequest';
 import { applyPromotion } from '../src/services/promotions/applyPromotion';
+import { selectActivePromotion } from '../shared/storefrontTotals';
 
 const compiled = ts.transpileModule(readFileSync('src/services/promotions/getActivePromotion.ts', 'utf8'), {
   compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
@@ -13,6 +14,7 @@ function fixture(rows: any[] = []) {
   const exports: any = {};
   class Clock extends Date { static now() { return time; } }
   vm.runInNewContext(compiled, { exports, Date: Clock, console: { warn() {} }, require(name: string) {
+    if (name.includes('storefrontTotals')) return { selectActivePromotion };
     if (name.includes('cachedRequest')) return { createCachedRequest: (load: any, options: any) => createCachedRequest(load, { ...options, now: () => time }) };
     if (name === 'firebase/firestore') return { collection() {}, query() {}, where() {}, async getDocs() {
       calls++; await pending; if (fail) throw new Error('quota');

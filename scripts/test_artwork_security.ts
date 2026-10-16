@@ -6,8 +6,13 @@ import sharp from 'sharp';
 import { requireIsolatedTestDb } from './requireIsolatedTestDb.ts';
 import { createArtworkService, normalizeArtwork, claimArtworkQuota, MAX_ART_BYTES, parsePrivateArtwork } from '../server/services/artwork.service.ts';
 import { publicArtworkAddress, remoteArtworkUrl, fetchRemoteArtwork } from '../server/services/remoteArtwork.service.ts';
-import { calculateOrderPricing } from '../server/services/pricing.service.ts';
+import { calculateOrderPricing as calculateRealOrderPricing } from '../server/services/pricing.service.ts';
 import { MelhorEnvioService } from '../server/services/melhor-envio.service.ts';
+
+const calculateOrderPricing = (input: Parameters<typeof calculateRealOrderPricing>[0]) =>
+  calculateRealOrderPricing(input, { lookupPostcode: async cep => cep.startsWith('892')
+    ? { city: 'Joinville', state: 'SC', neighborhood: 'Itaum' }
+    : { city: 'São Paulo', state: 'SP', neighborhood: 'Sé' } });
 
 const db = requireIsolatedTestDb();
 const objects = new Map<string, { bytes: Buffer; options: any }>();

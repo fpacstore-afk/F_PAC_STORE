@@ -3,10 +3,11 @@
  * Gera um código de cupom diário baseado na data atual.
  * O código muda exatamente à meia-noite.
  */
-export function getDailyPromoCode(): string {
-  const now = new Date();
+export function getDailyPromoCode(now = new Date()): string {
   // Formato YYYYMMDD para servir de semente (ex: 20240511)
-  const dateSeed = now.getFullYear() * 10000 + (now.getMonth() + 1) * 100 + now.getDate();
+  const parts = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Sao_Paulo', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(now);
+  const part = (type: string) => Number(parts.find(p => p.type === type)?.value || 0);
+  const dateSeed = part('year') * 10000 + part('month') * 100 + part('day');
   
   // Gerador de número pseudo-aleatório simples e determinístico baseado na semente
   const rand = (dateSeed * 16807) % 2147483647;
