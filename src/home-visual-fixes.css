@@ -104,7 +104,7 @@ html [data-privacy-notice] {
     object-position: center center !important;
   }
 
-  [data-prime-builder] { padding-bottom: var(--fixed-ui-clearance); }
+  [data-prime-builder], [data-product-detail] { padding-bottom: var(--fixed-ui-clearance); }
 
   html [data-floating-control="flash-sale"] {
     left: var(--floating-control-left);
