@@ -83,7 +83,9 @@ await test('manual purchase overrides and fixed/manual stamp costs remain distin
   const q = { ...ready, dtfPurchaseMeters: 8 };
   const result = calculateQuote(q,tierCatalog);
   assert.equal(result.dtf.estimatedMeters,1); assert.equal(result.dtf.purchaseMeters,8);
-  assert.equal(result.items[0].components[1].unitCost,.7);
+  // Area allocation preserves internal precision; decimal arithmetic may add
+  // a binary floating-point tail without changing the material cost.
+  assert.ok(Math.abs(result.items[0].components[1].unitCost! - .7) < 1e-9);
   assert.equal(calculateQuote({ ...q, dtfPurchaseMeters: null },tierCatalog).dtf.pricePerMeter,20);
   assert.ok(dtfPurchase([{ ...item, quantity: 100 }],tierCatalog,1).warnings.some(w => w.includes('menor')));
   const manual = { ...item, prints: [{ ...item.prints[0], manualCost: 0 }] };
@@ -290,7 +292,7 @@ try {
     assert.equal((await request('/catalog','PUT',{catalog: tierCatalog,expectedVersion:2})).status,200);
     const saved = await request('/quotes/dtf','PUT',{ input: { ...ready, dtfPurchaseMeters: 8 }, expectedVersion: 0, catalogVersion: 3, status: 'finalized', result: { total: 999 } });
     assert.equal(saved.status,200); assert.equal(saved.data.result.dtf.pricePerMeter,14);
-    assert.equal(saved.data.result.items[0].components[1].unitCost,.7);
+    assert.ok(Math.abs(saved.data.result.items[0].components[1].unitCost - .7) < 1e-9);
     const next = { ...tierCatalog, rules: { ...tierCatalog.rules, dtfTiers: [] } };
     assert.equal((await request('/catalog','PUT',{catalog: next,expectedVersion:3})).status,200);
     assert.deepEqual((await request('/quotes/dtf')).data.result,saved.data.result);
