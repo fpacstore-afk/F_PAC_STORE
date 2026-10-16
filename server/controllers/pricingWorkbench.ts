@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { randomUUID } from 'node:crypto';
 import { getDb } from '../firebase.js';
 import { calculateQuote, emptyCatalog, validateCatalog, validateQuote } from '../../shared/pricingWorkbench.js';
+import { createQuoteOrderService } from '../services/quoteOrder.service.js';
 
 const clean = (value: any) => JSON.parse(JSON.stringify(value));
 const bounded = (value: any, limit = 700000) => {
@@ -23,6 +24,7 @@ async function page(db: any, collection: string, field: string, size: number, af
 // Mounted behind authenticateAdmin. These collections have no client Firestore access.
 export function createPricingRouter(dbProvider = getDb) {
   const router = Router();
+  const convertQuote = createQuoteOrderService(dbProvider);
   router.use((_req, res, next) => { res.setHeader('Cache-Control', 'private, no-store'); next(); });
   const handle = (fn: (req: any, res: any) => Promise<void>) => async (req: any, res: any) => {
     try { await fn(req, res); } catch (error: any) {
@@ -85,6 +87,9 @@ export function createPricingRouter(dbProvider = getDb) {
     const row = await dbProvider().collection('pricing_workbench_quotes').doc(req.params.id).get();
     if (!row.exists) { res.status(404).json({ error: 'Orçamento não encontrado.' }); return; }
     res.json({ ...row.data(), id: row.id });
+  }));
+  router.post('/quotes/:id/order', handle(async (req, res) => {
+    res.json(await convertQuote(req.params.id, req.body?.expectedVersion, req.body?.confirmCustomerApproval, actor(req)));
   }));
   router.put('/quotes/:id', handle(async (req, res) => {
     if (!/^[a-zA-Z0-9_-]{1,100}$/.test(req.params.id)) throw new Error('Identificador inválido.');

@@ -46,6 +46,8 @@ const verified = [
   '/catalog/1790265189924-352b2a80-green.png',
 ];
 assert.deepEqual(getProductGallery({images: verified}, 'Preto'), [verified[0], FP_BLACK_ANGLE_IMAGE]);
+assert.deepEqual(getProductGallery({images: verified, colorVariants: [{ name: 'Preto', hex: '#000', images: [verified[0], verified[1]] }]}, 'Preto'), [verified[0], FP_BLACK_ANGLE_IMAGE], 'variant uploads must not reintroduce the identical black photograph');
+assert.deepEqual(getProductGallery({images: [FP_BLACK_ANGLE_IMAGE, verified[2]]}, 'Azul Marinho'), [verified[2]], 'the generated black angle cannot appear under another color');
 assert.deepEqual(getProductGallery({images: verified}, 'Azul Marinho'), [verified[2]]);
 assert.deepEqual(getProductGallery({images: verified}, 'Marrom Café'), [verified[3]]);
 assert.deepEqual(getProductGallery({images: verified}, 'Verde Militar'), [verified[4]]);

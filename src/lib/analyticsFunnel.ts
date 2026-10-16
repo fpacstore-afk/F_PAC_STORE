@@ -16,6 +16,7 @@ export interface FunnelStep {
   count: number;
   rate: number;
   color: string;
+  dropRate: number | null;
 }
 
 /** Counts distinct sessions at each storefront step; selected option values are never needed. */
@@ -35,5 +36,22 @@ export function buildConversionFunnel(sessions: readonly FunnelSession[]): Funne
     { name: '7. Compra aprovada', count: countWhere(session => session.purchaseCompleted === true), color: '#10b981' },
   ];
 
-  return steps.map(step => ({ ...step, rate: rate(step.count) }));
+  const reached = [
+    (_session: FunnelSession) => true,
+    (session: FunnelSession) => (session.viewedProducts?.length || 0) > 0,
+    (session: FunnelSession) => selected(session, 'product_color_select'),
+    (session: FunnelSession) => selected(session, 'product_size_select'),
+    (session: FunnelSession) => session.cartStarted === true || (session.cartProducts?.length || 0) > 0,
+    (session: FunnelSession) => session.checkoutStarted === true,
+    (session: FunnelSession) => session.purchaseCompleted === true,
+  ];
+  const previousMilestone: Record<number, number> = { 1: 0, 4: 1, 5: 4, 6: 5 };
+  return steps.map((step, index) => {
+    const previous = previousMilestone[index];
+    const eligible = previous === undefined ? [] : sessions.filter(reached[previous]);
+    // Colour/size clicks are optional, and a returning cart can skip a product
+    // view. Compare the same sessions at actual buying milestones only.
+    const dropRate = eligible.length ? Math.round(100 * eligible.filter(session => !reached[index](session)).length / eligible.length) : null;
+    return { ...step, rate: rate(step.count), dropRate };
+  });
 }

@@ -14,6 +14,7 @@ export function resolveVerifiedCatalogMedia(images: string[], selectedColor: str
   if (!color) return images;
   const hasPrimary = images.some(url => url.includes(verifiedImages[0].reference));
   return images.flatMap(url => {
+    if (url.split(/[?#]/)[0].endsWith(FP_BLACK_ANGLE_IMAGE)) return color === 'preto' ? [url] : [];
     const verified = verifiedImages.find(image => url.includes(image.reference));
     if (!verified) return [url];
     if (!verified.colors.includes(color)) return [];

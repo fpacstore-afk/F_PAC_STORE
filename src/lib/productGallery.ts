@@ -30,5 +30,7 @@ export function getProductGallery(
       .map(mockup => mockup.url),
   ]);
   const generalImages = general.filter(url => !otherColorImages.has(url) || selectedImages.has(url));
-  return [...new Set([...colorImages, ...generalImages])];
+  // Variant photos can repeat the same legacy uploads as the general gallery.
+  // Resolve verified colours and duplicates after combining both sources too.
+  return [...new Set(resolveVerifiedCatalogMedia([...colorImages, ...generalImages], selectedColor))];
 }
