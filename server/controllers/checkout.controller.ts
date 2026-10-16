@@ -111,7 +111,7 @@ async function processPayment(req: Request, res: Response) {
         quote: {
           pricing,
           items: verifiedItems.map(item => ({
-            price: item.price, originalPrice: item.originalPrice, category: item.category,
+            productId: item.productId, price: item.price, originalPrice: item.originalPrice, category: item.category,
             width: item.width, height: item.height, length: item.length, weight: item.weight,
           })),
         },

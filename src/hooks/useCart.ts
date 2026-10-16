@@ -412,7 +412,7 @@ export const cartActions = {
     emit();
   },
 
-  refreshCheckoutPrices: (requestedItems: CartItem[], prices: { price: number; originalPrice?: number; category?: string; width?: number; height?: number; length?: number; weight?: number }[]) => {
+  refreshCheckoutPrices: (requestedItems: CartItem[], prices: { productId?: string; price: number; originalPrice?: number; category?: string; width?: number; height?: number; length?: number; weight?: number }[]) => {
     if (JSON.stringify(store.items) !== JSON.stringify(requestedItems) || prices.length !== store.items.length || prices.some(p => !Number.isFinite(p.price) || p.price <= 0)) return;
     store = { ...store, items: store.items.map((item, i) => ({ ...item, ...prices[i], price: prices[i].price, ...(Number.isFinite(prices[i].originalPrice) ? { originalPrice: prices[i].originalPrice } : {}) })) };
     calculateTotals(); emit();

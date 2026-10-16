@@ -296,6 +296,9 @@ export default function PrimeCustomApproved() {
 
     addItem({
       id: `${selectedProduct.id || selectedProduct.slug}_prime_${Date.now()}`,
+      productId: selectedBase.id,
+      category: selectedBase.category,
+      weight: selectedBase.weight, width: selectedBase.width, height: selectedBase.height, length: selectedBase.length,
       slug: profile.cartSlug,
       baseProductSlug: selectedBase.slug || selectedBase.id,
       parentSlug: selectedBase.slug || selectedBase.id,
