@@ -62,7 +62,7 @@ assert.equal(view({ order: leased, now: 10002 }).email.canRetry, true);
 
 const db = requireIsolatedTestDb();
 const { saveProductionNotificationSettings } = await import('../server/services/productionNotification.service');
-const { triggerProductionStageNotification } = await import('../server/controllers/automation.controller');
+const { triggerProductionStageNotification, getProductionSettings } = await import('../server/controllers/automation.controller');
 const response = () => ({ statusCode: 200, body: null as any, status(code: number) { this.statusCode = code; return this; }, json(body: any) { this.body = body; return this; } });
 await saveProductionNotificationSettings({ whatsappEnabled: true, emailEnabled: true, activeStages: { ready: true } });
 process.env.RESEND_API_KEY = 're_isolated_test';
@@ -102,4 +102,20 @@ for (const channels of [null, [], {}, { whatsapp: false, email: false }, { email
   assert.equal(res.statusCode, 400);
 }
 assert.deepEqual([emails, whatsapps], [1, 1], 'invalid channel selections must have no side effects');
+
+// An unavailable settings store must surface as a read failure, not a default/manual state.
+const originalCollection = db.collection;
+db.collection = function (name: string) {
+  if (name === 'settings') throw new Error('Isolated settings read failed');
+  return originalCollection.call(this, name);
+};
+try {
+  res = response();
+  await getProductionSettings({} as any, res as any);
+  assert.equal(res.statusCode, 500);
+  assert.equal(res.body.whatsappEnabled, undefined, 'a failed settings read must not return default flags');
+} finally {
+  db.collection = originalCollection;
+}
+assert.deepEqual([emails, whatsapps], [1, 1], 'checking settings must not send a message');
 console.log('PASS notification status: manual mode, current settings/contact changes, receipts, failures, leases, stale attempts, channel-specific retries and no duplicate sends. Providers and database are isolated mocks.');

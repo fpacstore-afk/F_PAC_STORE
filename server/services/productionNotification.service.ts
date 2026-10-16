@@ -327,7 +327,7 @@ export function renderStageTemplate(templateStr: string, orderData: any): string
     .replace(/\{\{link_rastreio\}\}/g, trackingLink);
 }
 
-export async function getProductionNotificationSettings(): Promise<ProductionNotificationConfig> {
+export async function getProductionNotificationSettings(options: { strict?: boolean } = {}): Promise<ProductionNotificationConfig> {
   const db = getDb();
   try {
     const docSnap = await db.collection("settings").doc("production_notifications").get();
@@ -344,7 +344,8 @@ export async function getProductionNotificationSettings(): Promise<ProductionNot
       };
     }
   } catch (error: any) {
-    logger.warn(`⚠️ [PROD-NOTIF] Using default settings: ${error.message}`);
+    logger.warn('⚠️ [PROD-NOTIF] ' + (options.strict ? 'Could not read settings: ' : 'Using default settings: ') + error.message);
+    if (options.strict) throw error;
   }
   return DEFAULT_NOTIFICATION_CONFIG;
 }

@@ -248,7 +248,7 @@ export async function getAutomationDashboard(req: Request, res: Response) {
  */
 export async function getProductionSettings(req: Request, res: Response) {
   try {
-    const settings = await getProductionNotificationSettings();
+    const settings = await getProductionNotificationSettings({ strict: true });
     res.json({ ...settings, integration: notificationIntegrationStatus() });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
