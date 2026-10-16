@@ -25,7 +25,7 @@ import { db } from '../lib/firebase';
 import { manualProductIdentity } from '../lib/manualProductIdentity';
 import { buildManualCustomProduction, isPrivateManualArtworkUrl } from '../lib/manualCustomOrder';
 import { isJoinvilleCEP } from '../lib/shipping';
-import { cn } from '../lib/utils';
+import { cn, getEffectivePrice } from '../lib/utils';
 import { resolveProductStampRecipe, resolveProductStampRecipeEntries } from '../../shared/productStampRecipe';
 import { isValidCNPJ, isValidCPF } from '../lib/validation';
 import {
@@ -4194,7 +4194,7 @@ Total: R$ ${totalSum.toFixed(2)}`;
                         <>
                       <ManualProductPicker key={manualProductMode} label={manualProductMode === 'ready' ? 'Produto pronto do catálogo' : 'Peça base do estoque'} products={manualProductMode === 'ready' ? readyManualProducts : assembledManualProducts} selected={selectedProduct} formatPrice={formatManualMoney} onSelect={found => {
                         setSelectedProduct(found);
-                        setItemPrice(found.price);
+                        setItemPrice(getEffectivePrice(found));
                         const firstCol = found.colors?.[0];
                         const initialColor = firstCol && typeof firstCol === 'object' ? firstCol.name || '' : firstCol || '';
                         setSelectedColor(initialColor);
@@ -4252,7 +4252,7 @@ Total: R$ ${totalSum.toFixed(2)}`;
 
                           <div className={`grid grid-cols-1 ${manualOrderKind === 'gift' ? 'sm:grid-cols-2' : 'sm:grid-cols-3'} gap-3 items-end`}>
                             {manualOrderKind === 'sale' && <div className="flex flex-col gap-1">
-                              <label className="text-[8px] font-black uppercase text-gray-400">override R$</label>
+                              <label className="text-[8px] font-black uppercase text-gray-400">Preço unitário (R$)</label>
                               <input 
                                 type="number" 
                                 value={itemPrice}
@@ -4321,7 +4321,7 @@ Total: R$ ${totalSum.toFixed(2)}`;
                                   color: selectedColor || 'PADRÃO',
                                   size: selectedSize,
                                   quantity: itemQty,
-                                  price: manualOrderKind === 'gift' ? 0 : (itemPrice || selectedProduct.price),
+                                  price: manualOrderKind === 'gift' ? 0 : (itemPrice > 0 ? itemPrice : getEffectivePrice(selectedProduct)),
                                   product: selectedProduct,
                                   mode: manualProductMode,
                                   stamps: selectedStamps,

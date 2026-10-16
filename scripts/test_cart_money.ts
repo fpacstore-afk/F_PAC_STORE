@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { calculateCartMoney, formatBRL, toCents } from '../src/lib/money';
+import { getEffectivePrice, getDisplayPrices } from '../src/lib/utils';
 
 const money = calculateCartMoney({
   items: [{ price: 79.9, quantity: 1 }],
@@ -31,5 +32,19 @@ const freeShipping = calculateCartMoney({
 assert.equal(freeShipping.subtotal, 49.9);
 assert.equal(freeShipping.promotionDiscount, 3.5);
 assert.equal(freeShipping.total, 41.4);
+
+for (const [product, expected] of [
+  [{ price: 100, promotionalPrice: 75 }, 75],
+  [{ price: 100 }, 100],
+  [{ price: 100, promotionalPrice: null }, 100],
+  [{ price: 100, promotionalPrice: 0 }, 100],
+  [{ price: 100, promotionalPrice: -1 }, 100],
+  [{ price: 100, promotionalPrice: 120 }, 100],
+] as const) {
+  assert.equal(getEffectivePrice(product), expected);
+  assert.equal(getDisplayPrices(product).effectivePrice, expected);
+  const manualCart = calculateCartMoney({ items: [{ price: getEffectivePrice(product), quantity: 3 }], shipping: 10, promotionDiscount: 0, flashSaleDiscount: 0, couponRate: 0, pixRate: 0, pixEnabled: false });
+  assert.equal(manualCart.total, expected * 3 + 10, 'manual order totals must use the same promotional price displayed in the catalog picker');
+}
 
 console.log('Cart currency rounding checks passed.');

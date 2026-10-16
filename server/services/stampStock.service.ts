@@ -282,6 +282,60 @@ export async function releaseUnmanagedOrderStamps(orderId: string, items: any[])
   return db.runTransaction(transaction => applyOrderStampStockInTransaction(transaction, db, orderId, items, 'order_release'));
 }
 
+/** Reconcile an editable custom order against its current reservation, once per revision. */
+export async function reconcileEditedOrderStampsInTransaction(
+  transaction: Transaction, db: Firestore, orderId: string, oldItems: any[], nextItems: any[], revision: number
+) {
+  const markerRef = db.collection('stamp_stock_events').doc(`${orderId}_order_debit`);
+  const marker = await transaction.get(markerRef);
+  const released = await transaction.get(db.collection('stamp_stock_events').doc(`${orderId}_order_release`));
+  const consumed = await transaction.get(db.collection('stamp_stock_events').doc(`${orderId}_delivery_reconcile`));
+  if (released.exists || consumed.exists) throw new Error('As estampas deste pedido já foram liberadas ou consumidas; revise a produção antes de editar.');
+  const previous: StampRequirement[] = marker.exists ? (marker.data()?.requirements || []) : await collectRequirementInputs(transaction, db, oldItems);
+  if (!marker.exists && previous.length) throw new Error('Concilie a reserva anterior das estampas antes de editar este pedido.');
+  const requested = await collectRequirementInputs(transaction, db, nextItems);
+  const reads = new Map<string, StampRead>();
+  for (const requirement of [...previous, ...requested]) {
+    if (reads.has(requirement.stampId)) continue;
+    let ref = db.collection('designs').doc(requirement.stampId);
+    let snapshot = await transaction.get(ref);
+    if (!snapshot.exists) { ref = db.collection('estampas').doc(requirement.stampId); snapshot = await transaction.get(ref); }
+    if (!snapshot.exists) throw new Error(`Estampa ${requirement.stampId} não cadastrada no acervo.`);
+    reads.set(requirement.stampId, { ref, data: snapshot.data() || {}, stampId: requirement.stampId });
+  }
+  const next = new Map<string, StampRequirement>();
+  for (const requirement of requested) {
+    const size = resolveStockSize(reads.get(requirement.stampId)!.data, requirement.printSize, 'order_debit');
+    addRequirement(next, { stampId: requirement.stampId, quantity: requirement.quantity, ...(size ? { printSize: size } : {}) });
+  }
+  const deltas = new Map<string, StampRequirement>();
+  for (const requirement of previous) addRequirement(deltas, { ...requirement, quantity: -requirement.quantity });
+  for (const requirement of next.values()) addRequirement(deltas, requirement);
+  const changes = new Map<string, { stamp: StampRead; balance: number; bySize: Record<string, number>; movements: any[] }>();
+  const now = new Date().toISOString();
+  for (const requirement of deltas.values()) {
+    if (!requirement.quantity) continue;
+    const stamp = reads.get(requirement.stampId)!;
+    const change = changes.get(requirement.stampId) || { stamp, balance: Number(stamp.data.stockBalance || 0), bySize: { ...(stamp.data.stockBySize || {}) }, movements: [] };
+    const delta = -requirement.quantity;
+    const before = change.balance;
+    const sizeKey = requirement.printSize ? stockMapKey(change.bySize, requirement.printSize) : undefined;
+    const sizeBefore = sizeKey ? Number(change.bySize[sizeKey] ?? (registeredSizeKeys(stamp.data).length === 1 ? stamp.data.stockBalance || 0 : 0)) : undefined;
+    if (sizeKey) change.bySize[sizeKey] = (sizeBefore || 0) + delta;
+    change.balance += delta;
+    change.movements.push({ stampId: requirement.stampId, delta, quantity: Math.abs(delta), balanceBefore: before, balanceAfter: change.balance, ...(sizeKey ? { size: sizeKey, sizeBalanceBefore: sizeBefore, sizeBalanceAfter: change.bySize[sizeKey] } : {}) });
+    changes.set(requirement.stampId, change);
+  }
+  for (const [stampId, change] of changes) {
+    transaction.update(change.stamp.ref, { stockBalance: change.balance, ...(Object.keys(change.bySize).length ? { stockBySize: change.bySize } : {}), stockUpdatedAt: now });
+    for (const movement of change.movements) {
+      const suffix = movement.size ? `_${sizeIdentity(movement.size).replace(/[^a-z0-9]+/g, '-')}` : '';
+      transaction.set(db.collection('stamp_movements').doc(`${orderId}_edit_${revision}_${stampId}${suffix}`), { ...movement, orderId, type: 'order_edit', revision, createdAt: now, reason: 'Diferença de estampas após edição do pedido personalizado.' });
+    }
+  }
+  transaction.set(markerRef, JSON.parse(JSON.stringify({ ...(marker.data() || {}), orderId, action: 'order_debit', createdAt: marker.data()?.createdAt || now, initialRequirements: marker.data()?.initialRequirements || previous, requirements: [...next.values()], editedAt: now, editRevision: revision })));
+}
+
 export async function adjustStampBalance(stampId: string, quantity: number, operator: string, reason: string, size?: string) {
   const db = getDb();
   return db.runTransaction(async transaction => {

@@ -1,4 +1,5 @@
 import { PrimeOrderPlacements } from './PrimeOrderPlacements';
+import { ManualCustomOrderEditor } from './admin/ManualCustomOrderEditor';
 import { OrderCustomerEditor, OrderCustomerDetails } from './admin/OrderCustomerEditor';
 import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -704,10 +705,12 @@ export const OrderProductionDrawer: React.FC<OrderProductionDrawerProps> = ({
                   <ShoppingBag size={12} className="text-[#eab308]" /> 
                   Itens do Pedido para Produção ({totalItemsCount} Peças)
                 </h4>
-                <button type="button" onClick={() => setIsEditingOrderDetails((value) => !value)} className="text-[8px] font-black uppercase border border-black/15 px-2 py-1 hover:border-[#eab308]">
+                {!(order.isManual && order.items?.every((item: any) => item.customProduct)) && <button type="button" onClick={() => setIsEditingOrderDetails((value) => !value)} className="text-[8px] font-black uppercase border border-black/15 px-2 py-1 hover:border-[#eab308]">
                   <Edit3 size={10} className="inline mr-1" />{isEditingOrderDetails ? 'Cancelar edição' : 'Editar pedido'}
-                </button>
+                </button>}
               </div>
+
+              {order.isManual && !order.isGift && order.orderKind !== 'gift' && order.items?.length > 0 && order.items.every((item: any) => item.customProduct) && <ManualCustomOrderEditor key={order.id} order={order} stamps={stamps} />}
 
               {isEditingOrderDetails && (
                 <div className="space-y-3 border border-[#eab308]/50 bg-amber-50 p-3">
