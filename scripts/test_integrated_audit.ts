@@ -74,10 +74,10 @@ const checks: Array<[string, () => void]> = [
     assert.match(printCss, /body > #root[\s\S]*display: none !important/);
     assert.match(printCss, /break-inside: avoid/);
   }],
-  ['financial goals use received payments and are promoted on the dashboard', () => {
-    assert.match(goals, /summarizeReceipts/);
+  ['sales goals follow the order month and are promoted on the dashboard', () => {
+    assert.match(goals, /salesGoalProgress/);
     assert.match(goals, /FinancialGoalSummary/);
-    assert.match(goals, /Meta de faturamento do mês/);
+    assert.match(goals, /Meta de vendas do mês/);
   }],
   ['accounts payable has compact mobile cards and payment history', () => {
     assert.match(payables, /md:hidden/);

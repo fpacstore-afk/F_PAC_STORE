@@ -306,8 +306,13 @@ export interface Supplier {
 }
 
 export interface CashForecastSummary {
+  cashIn?: number;
+  cashOut?: number;
   historicalSalesRecords?: number;
   estimatedFeeOrders?: number;
+  estimatedFeeAmount?: number;
+  estimatedShippingOrders?: number;
+  estimatedShippingAmount?: number;
   unscheduledReceivables?: number;
   unscheduledPayables?: number;
   currentCashBalance: number;

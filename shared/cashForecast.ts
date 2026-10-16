@@ -31,8 +31,13 @@ export function calculateCashForecast(orders: any[], payables: any[], cashflow: 
   const sum = (list: typeof obligations, predicate: (due: string) => boolean) => roundMoney(list.reduce((n, e) => n + (predicate(e.due) ? e.amount : 0), 0));
   const summary: Record<string, number> = {
     currentCashBalance: cash.netCashFlow,
+    cashIn: cash.cashIn,
+    cashOut: cash.cashOut,
     historicalSalesRecords: cashflow.filter(isActiveFinancialRecord).filter(isSalesCashFlowEntry).length,
     estimatedFeeOrders: cash.estimatedFeeOrders,
+    estimatedFeeAmount: cash.estimatedFeeAmount,
+    estimatedShippingOrders: cash.estimatedShippingOrders,
+    estimatedShippingAmount: cash.estimatedShippingAmount,
     unscheduledReceivables: roundMoney(unscheduledReceivables),
     unscheduledPayables: roundMoney(unscheduledPayables),
     overduePayablesCount, dueTodayPayablesCount, due3DaysPayablesCount,
