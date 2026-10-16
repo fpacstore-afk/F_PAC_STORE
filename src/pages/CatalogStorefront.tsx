@@ -115,6 +115,7 @@ export default function CatalogStorefront() {
           product.productType,
           product.category,
           ...(Array.isArray(product.tags) ? product.tags : []),
+          ...(Array.isArray(product.searchAliases) ? product.searchAliases : []),
         ].map(normalize).join(' ');
         if (!haystack.includes(term)) return false;
       }

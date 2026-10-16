@@ -25,6 +25,17 @@ await test('draft, inactive and archived products never enter public feed', () =
   assert.equal(projectPublicProduct('plain', { status: 'Ativa', productFinish: 'plain' }), null);
   assert.ok(projectPublicProduct('legacy', { name: 'Legacy active' }));
 });
+await test('public artwork links preserve identity and omit operational recipe details', () => {
+  const source = { name: 'Camisa', status: 'active', stampIds: ['art-1', { cost: 10 }, 'bad/path'],
+    stampIdsByColor: { Preto: ['art-2'], Branco: [], private: { supplier: 'secret' } },
+    stampSizes: ['30x30'], stampSizesByColor: { Preto: ['8x6'] }, stampCosts: [20] };
+  const before = JSON.stringify(source);
+  const result = projectPublicProduct('art-shirt', source);
+  assert.deepEqual(result?.stampIds, ['art-1']);
+  assert.deepEqual(result?.stampIdsByColor, { Preto: ['art-2'], Branco: [] });
+  assert.doesNotMatch(JSON.stringify(result), /cost|supplier|secret|stampSizes|30x30|8x6/);
+  assert.equal(JSON.stringify(source), before);
+});
 await test('stock-editor legacy active label is published with the corrected line and model', async () => {
   const database = (await import('../server/firebase.ts')).createInMemoryDb();
   await database.collection('products').doc('mark-logo').set({ slug: 'mark-logo', name: 'Logo', status: 'Ativa', collection: 'MARK', baseModel: 'Oversized Premium 240GSM', costPrice: 35 });

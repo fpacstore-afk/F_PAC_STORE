@@ -5,6 +5,7 @@ import vm from 'node:vm';
 import ts from 'typescript';
 import { observeHeaderCatalog, type HeaderCatalogState } from '../src/services/headerCatalog';
 import { matchesStorefrontSearch } from '../src/lib/storefrontSearch';
+import { withStorefrontProductNames } from '../src/lib/productTitles';
 
 let checks = 0;
 async function check(name: string, run: () => void | Promise<void>) { await run(); checks++; console.log('PASS ' + name); }
@@ -46,7 +47,12 @@ function fixture() {
   const compiled = ts.transpileModule(readFileSync('src/services/publicProducts.ts', 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
   vm.runInNewContext(compiled, {
     exports, AbortSignal, Error, Date, Promise, Set,
-    require: (name: string) => name.includes('cachedRequest') ? { createCachedRequest } : { getPublicApiUrl: (path: string) => path },
+    require: (name: string) => {
+      if (name.includes('cachedRequest')) return { createCachedRequest };
+      if (name.includes('publicStamps')) return { fetchPublicStamps: async () => ({ stamps: [] }) };
+      if (name.includes('productTitles')) return { withStorefrontProductNames };
+      return { getPublicApiUrl: (path: string) => path };
+    },
     fetch: () => { calls++; return pending.promise; },
     setInterval: () => 1, clearInterval: () => {},
     document: { visibilityState: 'visible', addEventListener: (_: string, f: () => void) => { listener = f; }, removeEventListener: () => {} },

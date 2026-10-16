@@ -27,6 +27,9 @@ const publicStamp = toPublicStamp('fp-black', {
   history: [{ author: 'admin', action: 'stock adjusted' }],
 });
 assert.equal(publicStamp?.name, 'FP preta');
+const namedMusic = toPublicStamp('sSSnxdoqwqjXzqhbulog', { name: 'INK DROP', pngUrl: '/music.png', code: 'EST-022' });
+assert.equal(namedMusic?.name, 'Notas Musicais');
+assert.ok(namedMusic?.tags.includes('INK DROP'), 'the previous public name remains a search alias');
 assert.equal(publicStamp?.availableSizes.length, 0);
 assert.ok(!('stockBalance' in (publicStamp || {})), 'public stamp projection must omit aggregate stock');
 assert.ok(!('stockBySize' in (publicStamp || {})), 'public stamp projection must omit stock by size');
@@ -39,6 +42,7 @@ for (const [name, section] of [['grid', gridView], ['list', listView]] as const)
   assert.doesNotMatch(section, /design\.category/, `${name} cards must not expose the stamp category`);
   assert.doesNotMatch(section, /design\.compatibleProducts/, `${name} cards must not expose product compatibility`);
   assert.match(section, /Ver informações/, `${name} cards must provide the details action`);
+  assert.match(section, /\{design\.name\}/, `${name} cards must display the artwork name next to its image`);
 }
 
 assert.match(detailModal, /selectedDesign\.code/, 'detail modal must retain the internal code');
