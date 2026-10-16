@@ -286,17 +286,24 @@ export async function restoreDefaultProductionSettings(req: Request, res: Respon
  */
 export async function triggerProductionStageNotification(req: Request, res: Response) {
   try {
-    const { orderId, newStageId, previousStageId, changedBy, forceResend } = req.body;
+    const { orderId, newStageId, previousStageId, changedBy, forceResend, channels } = req.body;
     if (!orderId || !newStageId) {
       return res.status(400).json({ error: "orderId and newStageId are required" });
     }
+
+    if (channels !== undefined && (
+      !channels || typeof channels !== 'object' || Array.isArray(channels)
+      || Object.keys(channels).some(key => !['whatsapp', 'email'].includes(key) || typeof channels[key] !== 'boolean')
+      || (channels.whatsapp !== true && channels.email !== true)
+    )) return res.status(400).json({ error: 'Selecione um canal válido para o envio.' });
 
     const result = await dispatchStageNotification({
       orderId,
       newStageId,
       previousStageId,
       changedBy: (req as any).user?.email || (req as any).user?.uid || 'Admin',
-      forceResend: Boolean(forceResend)
+      forceResend: Boolean(forceResend),
+      ...(channels === undefined ? {} : { channels: { whatsapp: channels.whatsapp === true, email: channels.email === true } })
     });
 
     res.json(result);
