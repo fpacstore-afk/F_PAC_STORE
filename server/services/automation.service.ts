@@ -44,12 +44,14 @@ export async function logAutomationEvent(
   event: 'checkout.abandoned' | 'payment.approved' | 'order.shipped' | 'customer.recovered' | 'whatsapp.sent' | 'email.sent' | 'lead.saved' | 'lead.updated' | 'production.stage_notification' | string,
   type: 'info' | 'warn' | 'error' | 'success' | 'warning',
   message: string,
-  target: string
+  target: string,
+  notificationDetails?: { orderId: string; stageId: string; stageLabel: string; whatsappSent: boolean; emailSent: boolean; whatsappStatus: string; emailStatus: string; errorDetails: string }
 ) {
   try {
     const db = getDb();
     const logId = `LOG-${Date.now()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
     await db.collection('automation_logs').doc(logId).set({
+      ...(notificationDetails || {}),
       id: logId,
       event,
       type,
@@ -260,7 +262,7 @@ export async function sendWhatsAppMessage(phone: string, type: 'payment_approved
     } else {
       switch (type) {
         case 'payment_approved':
-          content = `✅ *PAGAMENTO CONFIRMADO!* ✅\n\nSeu pagamento do pedido *${orderId}* foi aprovado com sucesso! 🎉\n\nNossa equipe já foi acionada e suas peças entraram em nossa linha de produção para serem preparadas com todo o carinho.`;
+          content = `✅ *PAGAMENTO CONFIRMADO!* ✅\n\nSeu pagamento do pedido *${orderId}* foi aprovado com sucesso! 🎉\n\nNossa equipe foi avisada. A produção e a entrega serão informadas conforme o andamento do seu pedido.`;
           break;
         case 'abandoned_60m':
           content = `Olá! Você pediu um lembrete da sua sacola F PAC STORE. Se quiser continuar, abra a sacola no mesmo navegador utilizado na compra:\nhttps://fpacstore.com.br/bag\n\nPreços e disponibilidade serão conferidos ao finalizar. A sacola não reserva estoque.\nCancelar lembretes: ${recoveryCancelUrl(payload)}`;
@@ -273,7 +275,7 @@ export async function sendWhatsAppMessage(phone: string, type: 'payment_approved
           content = `🚀 *SEU PEDIDO FOI ENVIADO!* 🚀\n\nExcelente notícia: seu pedido *${orderId}* já foi despachado e está a caminho de sua casa para trazer o máximo de estilo e identidade! 📦\n\n📊 *DADOS DE RASTREIO E ENVIO:*\nCódigo/Link de Rastreio: \`${tracking}\``;
           break;
         case 'manual_order_pending':
-          content = `Seu pedido *${orderId}* foi gerado com sucesso pela equipe da *F PAC*.\n\n📋 *Status atual:* Aguardando Pagamento.\n\nAssim que o pagamento for confirmado, seu pedido seguirá automaticamente para produção.\n\nCaso tenha qualquer dúvida, nossa equipe está à disposição.\n\nObrigado por escolher a *F PAC*! 🖤💛`;
+          content = `Seu pedido *${orderId}* foi gerado com sucesso pela equipe da *F PAC*.\n\n📋 *Status atual:* Aguardando Pagamento.\n\nA produção e a entrega seguem o combinado com nossa equipe.\n\nCaso tenha qualquer dúvida, nossa equipe está à disposição.\n\nObrigado por escolher a *F PAC*! 🖤💛`;
           break;
       }
     }

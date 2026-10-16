@@ -73,7 +73,8 @@
     "test:home-identity-refresh": "node --import tsx scripts/test_home_identity_refresh.ts",
     "test:storefront-checkout-pricing": "NODE_ENV=test node --import tsx scripts/test_storefront_checkout_pricing.ts",
     "test:quote-order-conversion": "node --import tsx scripts/test_quote_order_conversion.ts",
-    "test:mockup-approval": "node --import tsx scripts/test_mockup_approval.ts"
+    "test:mockup-approval": "node --import tsx scripts/test_mockup_approval.ts",
+    "test:notification-tools": "NODE_ENV=test node --import tsx scripts/test_notification_tools.ts"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

@@ -355,19 +355,17 @@ export async function processPaymentUpdate(orderId: string, paymentData: any) {
 
     // 6. Notification side-effects are intentionally non-critical to stock/payment truth.
     if (finalOrder?.paymentStatus === 'approved') {
-      await sendStatusEmail(orderId, 'payment_approved').catch(e => logger.warn(`[EMAIL-ERR] ${e.message}`));
+      await sendStatusEmail(orderId, 'payment_approved', true).catch(e => logger.warn(`[EMAIL-ERR] ${e.message}`));
 
       try {
-        const { handleRecoveredCheckout, sendWhatsAppMessage } = await import('./automation.service.js');
+        const { handleRecoveredCheckout } = await import('./automation.service.js');
         await handleRecoveredCheckout(finalOrder.customerEmail || '', finalOrder.checkout_session_id || undefined);
-        if (finalOrder.customerPhone) {
-          await sendWhatsAppMessage(finalOrder.customerPhone, 'payment_approved', finalOrder);
-        }
+
       } catch (autoErr: any) {
         logger.warn(`⚠️ [AUTOMATION-TRIGGER-ERR] Failed payment_approved automations: ${autoErr.message}`);
       }
     } else if (finalOrder && ['rejected', 'cancelled', 'refunded'].includes(finalOrder.paymentStatus)) {
-      await sendStatusEmail(orderId, 'cancelled').catch(e => logger.warn(`[EMAIL-ERR] ${e.message}`));
+      await sendStatusEmail(orderId, finalOrder.paymentStatus, true).catch(e => logger.warn(`[EMAIL-ERR] ${e.message}`));
     }
 
     return { success: true, status: mapMPStatusToInternal(paymentData.status, paymentData.status_detail) };

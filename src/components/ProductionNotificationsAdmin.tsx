@@ -23,6 +23,19 @@ import {
   ProductionNotificationConfig 
 } from '../constants/notificationTemplates';
 import { authenticatedFetch } from '../lib/api';
+import { manualWhatsAppUrl, notificationChannelStatus, normalizeNotificationEmail, normalizeNotificationPhone } from '../../shared/notificationContacts';
+
+const NOTIFICATION_STAGES = [
+  { id: 'received', label: 'Pedido recebido', emoji: '✅', progress: null },
+  { id: 'payment_pending', label: 'Aguardando pagamento', emoji: '💳', progress: null },
+  { id: 'payment_approved', label: 'Pagamento confirmado', emoji: '✅', progress: null },
+  ...PRODUCTION_STAGES,
+  { id: 'shipped', label: 'Pedido enviado', emoji: '🚚', progress: null },
+  { id: 'delivered', label: 'Pedido entregue', emoji: '🎉', progress: null },
+  { id: 'payment_rejected', label: 'Pagamento não aprovado', emoji: '💳', progress: null },
+  { id: 'payment_refunded', label: 'Estorno registrado', emoji: '💳', progress: null },
+  { id: 'cancelled', label: 'Pedido cancelado', emoji: '⚠️', progress: null },
+];
 
 export function ProductionNotificationsAdmin() {
   const [integration, setIntegration] = useState<any>(null);
@@ -38,6 +51,7 @@ export function ProductionNotificationsAdmin() {
   const [testPhone, setTestPhone] = useState<string>('');
   const [testEmail, setTestEmail] = useState<string>('');
   const [isSendingTest, setIsSendingTest] = useState<boolean>(false);
+  const [testResult, setTestResult] = useState<string>('');
 
   // Active stage template local state
   const [currentTemplate, setCurrentTemplate] = useState<string>('');
@@ -65,6 +79,8 @@ export function ProductionNotificationsAdmin() {
           const data = await res.json();
           if (data && typeof data === 'object') {
             setIntegration(data.integration || null);
+            setTestEmail(data.testEmail || '');
+            setTestPhone(data.testPhone || '');
             setConfig(prev => ({
               ...prev,
               ...data,
@@ -103,12 +119,12 @@ export function ProductionNotificationsAdmin() {
 
   const handleSaveAll = async (updatedConfig?: ProductionNotificationConfig) => {
     setIsSaving(true);
-    const targetConfig = updatedConfig || {
+    const targetConfig = {
       ...config,
-      templates: {
-        ...config.templates,
-        [activeStageId]: currentTemplate
-      }
+      ...updatedConfig,
+      testEmail: updatedConfig?.testEmail ?? testEmail,
+      testPhone: updatedConfig?.testPhone ?? testPhone,
+      templates: { ...config.templates, [activeStageId]: currentTemplate, ...(updatedConfig?.templates || {}) }
     };
 
     try {
@@ -123,10 +139,13 @@ export function ProductionNotificationsAdmin() {
         const resData = await res.json();
         if (resData.settings) {
           setConfig(resData.settings);
+          setTestEmail(resData.settings.testEmail || '');
+          setTestPhone(resData.settings.testPhone || '');
         }
         toast.success('Configurações de notificação salvas com sucesso!');
       } else {
-        toast.error('Erro ao salvar no servidor.');
+        const data = await res.json().catch(() => ({}));
+        toast.error(data.error || 'Erro ao salvar no servidor.');
       }
     } catch (error: any) {
       toast.error('Erro de conexão ao salvar.');
@@ -174,42 +193,44 @@ export function ProductionNotificationsAdmin() {
     }
   };
 
-  const handleSendTest = async () => {
-    if (!testPhone && !testEmail) {
-      toast.error('Informe ao menos um telefone ou e-mail para o teste');
-      return;
-    }
+  const handleSaveTestContacts = async () => {
+    try {
+      const email = normalizeNotificationEmail(testEmail);
+      const phone = normalizeNotificationPhone(testPhone);
+      await handleSaveAll({ ...config, testEmail: email, testPhone: phone });
+    } catch (error: any) { toast.error(error.message); }
+  };
 
+  const handleOpenWhatsAppTest = () => {
+    try {
+      const message = '[TESTE • PEDIDO DE EXEMPLO]\n\n' + renderStageTemplate(currentTemplate, { ...sampleOrderData, id: 'TESTE-999', customerName: 'Cliente Teste F PAC' });
+      window.open(manualWhatsAppUrl(testPhone, message), '_blank', 'noopener,noreferrer');
+      setTestResult('Conversa de teste aberta. Confira a mensagem e toque em Enviar no WhatsApp.');
+    } catch (error: any) { toast.error(error.message); }
+  };
+
+  const handleSendTest = async () => {
+    let email: string;
+    try {
+      email = normalizeNotificationEmail(testEmail);
+      if (!email) throw new Error('Cadastre o e-mail de teste antes de enviar.');
+    } catch (error: any) { toast.error(error.message); return; }
     setIsSendingTest(true);
+    setTestResult('');
     try {
       const res = await authenticatedFetch('/api/automation/stage-notification/test', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-        body: JSON.stringify({
-          stageId: activeStageId,
-          phone: testPhone,
-          email: testEmail,
-          customTemplate: currentTemplate
-        })
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+        body: JSON.stringify({ stageId: activeStageId, channel: 'email', email, customTemplate: currentTemplate })
       });
-
-      const contentType = res.headers.get('content-type') || '';
-      if (contentType.includes('application/json')) {
-        const data = await res.json();
-        if (res.ok && data.success && (!testPhone || data.whatsappSent) && (!testEmail || data.emailSent)) {
-          toast.success('Serviços confirmaram o envio do teste.');
-          setIsTestModalOpen(false);
-        } else {
-          toast.error(data.error || `WhatsApp: ${testPhone ? (data.whatsappSent ? 'enviado' : 'não enviado') : 'não solicitado'} · E-mail: ${testEmail ? (data.emailSent ? 'enviado' : 'não enviado') : 'não solicitado'}`);
-        }
-      } else {
-        toast.error('Erro de servidor ao processar o teste.');
-      }
+      const data = await res.json();
+      if (!res.ok || !data.success || !data.emailSent) throw new Error(data.error || 'O provedor não confirmou o envio do teste.');
+      const message = 'Provedor aceitou o e-mail de teste para ' + email + '. Confira o recebimento e a pasta de spam.';
+      setTestResult(message);
+      toast.success('E-mail de teste aceito pelo provedor.');
     } catch (error: any) {
-      toast.error('Erro de rede ao enviar teste.');
-    } finally {
-      setIsSendingTest(false);
-    }
+      setTestResult('Teste não confirmado: ' + error.message);
+      toast.error(error.message);
+    } finally { setIsSendingTest(false); }
   };
 
   // Sample order for live preview
@@ -223,13 +244,13 @@ export function ProductionNotificationsAdmin() {
     ],
     createdAt: new Date().toISOString(),
     deliveryDate: '3 a 5 dias úteis',
-    paymentMethod: 'PIX (Aprovação Imediata)',
-    trackingCode: 'BR987654321PAC',
-    shippingCompany: 'Correios SEDEX',
-    trackingUrl: 'https://www.fpacstore.com.br/#/order/1024'
+    paymentMethod: 'PIX — exemplo',
+    trackingCode: 'EXEMPLO-SEM-RASTREIO',
+    shippingCompany: 'Transportadora de exemplo',
+    trackingUrl: 'https://fpacstore.com.br/tracking'
   };
 
-  const activeStageConfig = PRODUCTION_STAGES.find(s => s.id === activeStageId) || PRODUCTION_STAGES[0];
+  const activeStageConfig = NOTIFICATION_STAGES.find(s => s.id === activeStageId) || NOTIFICATION_STAGES[0];
   const renderedPreview = renderStageTemplate(currentTemplate, sampleOrderData);
 
   if (isLoading) {
@@ -268,7 +289,7 @@ export function ProductionNotificationsAdmin() {
               🤖 Automações de Produção F PAC
             </h1>
             <p className="text-xs text-gray-300 max-w-2xl leading-relaxed">
-              Disparo automático e instantâneo de mensagens via WhatsApp e E-mail a cada avanço no fluxo de produção dos pedidos.
+              E-mails automáticos nas etapas ativas. WhatsApp manual com mensagem pronta; envio automático disponível quando a integração for configurada e ativada.
             </p>
           </div>
 
@@ -309,6 +330,8 @@ export function ProductionNotificationsAdmin() {
             <label className="relative inline-flex items-center cursor-pointer">
               <input
                 type="checkbox"
+                aria-label="Envio automático por WhatsApp"
+                disabled={!integration?.whatsappConfigured}
                 checked={config.whatsappEnabled}
                 onChange={e => {
                   const updated = { ...config, whatsappEnabled: e.target.checked };
@@ -322,8 +345,8 @@ export function ProductionNotificationsAdmin() {
           </div>
           <div className="flex items-center justify-between pt-2 border-t border-black/5 text-[10px]">
             <span className="text-gray-500 font-bold uppercase">Status da Conexão:</span>
-            <span className="font-black text-emerald-700 bg-emerald-100 px-2 py-0.5 uppercase tracking-wider flex items-center gap-1">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" /> Conectado
+            <span className="font-black bg-gray-100 px-2 py-0.5 uppercase tracking-wider">
+              {integration?.whatsappConfigured ? (config.whatsappEnabled ? 'Automático ativado' : 'API configurada · manual ativo') : 'Manual · API não configurada'}
             </span>
           </div>
         </div>
@@ -343,6 +366,7 @@ export function ProductionNotificationsAdmin() {
             <label className="relative inline-flex items-center cursor-pointer">
               <input
                 type="checkbox"
+                aria-label="Envio automático por e-mail"
                 checked={config.emailEnabled}
                 onChange={e => {
                   const updated = { ...config, emailEnabled: e.target.checked };
@@ -394,19 +418,38 @@ export function ProductionNotificationsAdmin() {
 
       </div>
 
+      <section className="border border-black/10 bg-white p-5 space-y-4" aria-label="Destinatários fixos dos testes">
+        <h2 className="text-sm font-black uppercase">Destinatários fixos dos testes</h2>
+        <p className="text-xs text-gray-600">Salve seu e-mail e seu próprio WhatsApp. Os testes usam dados de exemplo e o texto atual da etapa selecionada.</p>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <label className="text-xs font-bold" htmlFor="notification-test-email">E-mail de teste
+            <input id="notification-test-email" type="email" value={testEmail} onChange={e => setTestEmail(e.target.value)} placeholder="Seu e-mail secundário" className="mt-1 block w-full border border-black/20 p-3 font-normal" />
+          </label>
+          <label className="text-xs font-bold" htmlFor="notification-test-phone">Seu WhatsApp de teste
+            <input id="notification-test-phone" type="tel" value={testPhone} onChange={e => setTestPhone(e.target.value)} placeholder="DDD e número" className="mt-1 block w-full border border-black/20 p-3 font-normal" />
+          </label>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <button type="button" disabled={isSaving} onClick={handleSaveTestContacts} className="border border-black px-4 py-3 text-xs font-bold disabled:opacity-50">Salvar destinatários de teste</button>
+          <button type="button" onClick={handleOpenWhatsAppTest} className="bg-[#25D366] px-4 py-3 text-xs font-bold text-white">Testar WhatsApp manual</button>
+          <button type="button" disabled={isSendingTest} onClick={handleSendTest} className="bg-black px-4 py-3 text-xs font-bold text-[#eab308] disabled:opacity-50">{isSendingTest ? 'Enviando teste…' : 'Enviar e-mail de teste'}</button>
+        </div>
+        {testResult && <p role="status" className="border-l-4 border-[#eab308] bg-amber-50 p-3 text-sm">{testResult}</p>}
+      </section>
+
       {/* 3. STAGE TABS SELECTOR */}
       <div className="bg-white border border-black/10 shadow-sm p-4 space-y-4">
         <div className="flex items-center justify-between border-b border-black/10 pb-3">
           <h2 className="text-xs font-black uppercase tracking-widest text-black flex items-center gap-2">
-            <Layers size={16} className="text-[#eab308]" /> Modelos de Mensagem por Etapa de Produção
+            <Layers size={16} className="text-[#eab308]" /> Modelos de Mensagem por Etapa do Pedido
           </h2>
           <span className="text-[10px] font-bold text-gray-500 uppercase">
             Clique na etapa para editar o texto correspondente
           </span>
         </div>
 
-        <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-none">
-          {PRODUCTION_STAGES.map(stage => {
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 pb-2">
+          {NOTIFICATION_STAGES.map(stage => {
             const isActive = stage.id === activeStageId;
             const isStageEnabled = config.activeStages?.[stage.id] !== false;
 
@@ -431,7 +474,7 @@ export function ProductionNotificationsAdmin() {
                     )}
                   </div>
                   <span className={`text-[8px] font-mono font-bold ${isActive ? 'text-gray-300' : 'text-gray-400'}`}>
-                    Progresso: {stage.progress}%
+                    {stage.progress === null ? 'Atualização do pedido' : `Progresso: ${stage.progress}%`}
                   </span>
                 </div>
               </button>
@@ -496,7 +539,7 @@ export function ProductionNotificationsAdmin() {
             <textarea
               rows={16}
               value={currentTemplate}
-              onChange={e => setCurrentTemplate(e.target.value)}
+              onChange={e => { const text = e.target.value; setCurrentTemplate(text); setConfig(prev => ({ ...prev, templates: { ...prev.templates, [activeStageId]: text } })); }}
               className="w-full p-4 border border-black/20 text-xs font-mono bg-zinc-950 text-emerald-400 focus:outline-none focus:border-[#eab308] leading-relaxed selection:bg-[#eab308] selection:text-black shadow-inner"
               placeholder="Digite a mensagem padrão da etapa..."
             />
@@ -641,10 +684,10 @@ export function ProductionNotificationsAdmin() {
                       {log.timestamp ? new Date(log.timestamp).toLocaleString('pt-BR') : 'Recentemente'}
                     </td>
                     <td className="p-3 font-black text-black uppercase">
-                      #{log.orderId || log.recipient || 'M-ORD'}
+                      {log.orderId ? '#' + log.orderId : '—'}
                     </td>
                     <td className="p-3 font-bold uppercase text-gray-800">
-                      {log.recipient || log.details?.split(' ')[1] || 'Cliente'}
+                      {log.recipient || log.target || '—'}
                     </td>
                     <td className="p-3">
                       <span className="px-2 py-0.5 bg-black text-[#eab308] text-[9px] font-black uppercase tracking-wider rounded-2xs">
@@ -653,20 +696,20 @@ export function ProductionNotificationsAdmin() {
                     </td>
                     <td className="p-3">
                       <span className={`px-2 py-0.5 text-[9px] font-black uppercase tracking-wider flex items-center gap-1 w-fit ${
-                        log.whatsappStatus === 'Enviado' || log.event?.includes('sent')
+                        ['Enviado', 'Já enviado'].includes(notificationChannelStatus(log, 'whatsapp'))
                           ? 'bg-emerald-100 text-emerald-800' 
                           : 'bg-red-100 text-red-800'
                       }`}>
-                        <MessageCircle size={10} /> {log.whatsappStatus || 'Enviado'}
+                        <MessageCircle size={10} /> {notificationChannelStatus(log, 'whatsapp')}
                       </span>
                     </td>
                     <td className="p-3">
                       <span className={`px-2 py-0.5 text-[9px] font-black uppercase tracking-wider flex items-center gap-1 w-fit ${
-                        log.emailStatus === 'Enviado'
+                        ['Enviado', 'Já enviado'].includes(notificationChannelStatus(log, 'email'))
                           ? 'bg-blue-100 text-blue-800'
                           : 'bg-gray-100 text-gray-600'
                       }`}>
-                        <Mail size={10} /> {log.emailStatus || 'Enviado'}
+                        <Mail size={10} /> {notificationChannelStatus(log, 'email')}
                       </span>
                     </td>
                     <td className="p-3 text-right">
@@ -703,36 +746,13 @@ export function ProductionNotificationsAdmin() {
             </div>
 
             <p className="text-[10px] text-gray-600 leading-relaxed font-medium">
-              Envie o modelo atual da etapa <strong className="uppercase font-black">"{activeStageConfig.label}"</strong> para o seu WhatsApp ou e-mail de teste para validar o formato.
+              Teste o texto atual da etapa <strong className="uppercase font-black">"{activeStageConfig.label}"</strong> com os destinatários salvos. O WhatsApp abre a conversa para envio manual; o e-mail usa o serviço da loja.
             </p>
 
-            <div className="space-y-3 text-xs">
-              <div>
-                <label className="block text-[10px] font-black uppercase tracking-wider text-black mb-1">
-                  Telefone / WhatsApp de Teste
-                </label>
-                <input
-                  type="text"
-                  placeholder="Ex: 47997465602"
-                  value={testPhone}
-                  onChange={e => setTestPhone(e.target.value)}
-                  className="w-full p-2.5 border border-black/20 text-xs font-mono focus:outline-none focus:border-[#eab308]"
-                />
-              </div>
-
-              <div>
-                <label className="block text-[10px] font-black uppercase tracking-wider text-black mb-1">
-                  E-mail de Teste
-                </label>
-                <input
-                  type="email"
-                  placeholder="Ex: seu-email@gmail.com"
-                  value={testEmail}
-                  onChange={e => setTestEmail(e.target.value)}
-                  className="w-full p-2.5 border border-black/20 text-xs font-mono focus:outline-none focus:border-[#eab308]"
-                />
-              </div>
-            </div>
+            <p className="text-xs">E-mail: {testEmail || 'Cadastre o destinatário na seção de testes.'}</p>
+            <p className="text-xs">WhatsApp: {testPhone || 'Cadastre seu número na seção de testes.'}</p>
+            <button type="button" onClick={handleOpenWhatsAppTest} className="bg-[#25D366] text-white px-4 py-3 text-xs font-bold">Testar WhatsApp manual</button>
+            {testResult && <p role="status" className="text-sm">{testResult}</p>}
 
             <div className="flex items-center justify-end gap-3 pt-3 border-t border-black/10">
               <button
@@ -749,7 +769,7 @@ export function ProductionNotificationsAdmin() {
                 className="px-6 py-2 bg-black text-[#eab308] hover:bg-[#eab308] hover:text-black font-black text-[10px] uppercase tracking-widest flex items-center gap-2 transition-all cursor-pointer"
               >
                 {isSendingTest ? <RefreshCw className="animate-spin" size={14} /> : <Send size={14} />}
-                Enviar Teste Agora
+                Enviar e-mail de teste
               </button>
             </div>
           </div>

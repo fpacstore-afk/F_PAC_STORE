@@ -1,21 +1,24 @@
 
-import { Resend } from "resend";
-import { getDb } from "../firebase.js";
+import { dispatchStageNotification } from "./productionNotification.service.js";
+import { getOrderPaymentStatus } from "../utils/orderFinancial.js";
 
 async function getEmailHtml(order: any, orderId: string, title: string, subtitle: string, intro: string, trackingUrl: string) {
+  const charged = order.shippingFinances?.shippingCharged ?? order.pricing?.shipping ??
+    (typeof order.shipping === 'number' || typeof order.shipping === 'string' ? order.shipping : undefined) ?? order.frete;
+  const shippingText = charged === undefined || charged === null ? 'A confirmar' : Number(charged) > 0 ? 'R$ ' + Number(charged).toFixed(2) : 'GRÁTIS';
   const itemsHtml = order.items?.map((item: any) => `
     <tr>
       <td style="padding: 15px 0; border-bottom: 1px solid #111;">
-        <span style="color: #fff; font-size: 13px; font-weight: 700; text-transform: uppercase; display: block; letter-spacing: 1px;">${item.name}</span>
-        ${item.size ? `<span style="color: #666; font-size: 11px; text-transform: uppercase;">TAMANHO: ${item.size}</span>` : ''}
+        <span style="color: #fff; font-size: 13px; font-weight: 700; text-transform: uppercase; display: block; letter-spacing: 1px;">${escapeHtml(String(item.name || 'Produto F PAC'))}</span>
+        ${item.size ? `<span style="color: #666; font-size: 11px; text-transform: uppercase;">TAMANHO: ${escapeHtml(String(item.size))}</span>` : ''}
       </td>
-      <td align="center" style="padding: 15px 0; color: #fff; font-size: 13px; font-weight: 700; border-bottom: 1px solid #111;">${item.quantity}</td>
+      <td align="center" style="padding: 15px 0; color: #fff; font-size: 13px; font-weight: 700; border-bottom: 1px solid #111;">${Number(item.quantity) || 1}</td>
       <td align="right" style="padding: 15px 0; color: #fff; font-size: 13px; font-weight: 700; border-bottom: 1px solid #111;">R$ ${Number(item.price || 0).toFixed(2)}</td>
     </tr>
   `).join('') || '';
 
   const pixInfo = order.point_of_interaction?.transaction_data;
-  const isPendingPix = (order.status === 'received' || order.status === 'Aguardando Pagamento PIX' || order.status === 'payment_pending') && pixInfo;
+  const isPendingPix = ['pending', 'processing'].includes(getOrderPaymentStatus(order)) && pixInfo;
 
   const pixHtml = isPendingPix ? `
     <!-- PIX Payment Section -->
@@ -34,7 +37,7 @@ async function getEmailHtml(order: any, orderId: string, title: string, subtitle
             </div>
             
             <p style="color: #888; font-size: 10px; line-height: 1.4; margin: 0;">
-                O pagamento é aprovado instantaneamente e seu pedido entra em produção na mesma hora.<br>
+                Após o pagamento, aguarde a confirmação. A produção e a entrega seguem o prazo combinado.<br>
                 Aponte a câmera do seu banco ou copie o código acima no app pagamentos.
             </p>
         </td>
@@ -94,7 +97,7 @@ async function getEmailHtml(order: any, orderId: string, title: string, subtitle
                         <!-- Body Intro -->
                         <tr>
                             <td style="padding: 40px; color: #fff; line-height: 1.6; font-size: 14px;">
-                                Olá, <strong>${order.customerName}</strong>!<br><br>
+                                Olá, <strong>${escapeHtml(String(order.customerName || 'Cliente'))}</strong>!<br><br>
                                 ${intro}
                             </td>
                         </tr>
@@ -124,7 +127,7 @@ async function getEmailHtml(order: any, orderId: string, title: string, subtitle
                                         <td width="55%" style="vertical-align: top;">
                                             <h4 style="color: #f7c600; font-size: 9px; font-weight: 900; text-transform: uppercase; letter-spacing: 2px; margin: 0 0 10px;">ENDEREÇO DE ENTREGA</h4>
                                             <p style="color: #666; font-size: 12px; margin: 0; line-height: 1.4;">
-                                                ${order.customerName}<br>
+                                                ${escapeHtml(String(order.customerName || 'Cliente'))}<br>
                                                 ${shippingAddressStr}
                                             </p>
                                         </td>
@@ -132,24 +135,24 @@ async function getEmailHtml(order: any, orderId: string, title: string, subtitle
                                             <table border="0" cellpadding="0" cellspacing="0" width="100%">
                                                 <tr>
                                                     <td style="color: #666; padding: 5px 0; font-size: 12px;">Subtotal</td>
-                                                    <td align="right" style="color: #fff; padding: 5px 0; font-size: 12px;">R$ ${((order.total || 0) + (order.discount || 0)).toFixed(2)}</td>
+                                                    <td align="right" style="color: #fff; padding: 5px 0; font-size: 12px;">R$ ${Number(order.subtotal ?? ((Number(order.total) || 0) + (Number(order.discount) || 0) - (Number(charged) || 0))).toFixed(2)}</td>
                                                 </tr>
                                                 ${order.discount ? `
                                                 <tr>
                                                     <td style="color: #666; padding: 5px 0; font-size: 12px;">Desconto</td>
-                                                    <td align="right" style="color: #ff4444; padding: 5px 0; font-size: 12px;">- R$ ${order.discount.toFixed(2)}</td>
+                                                    <td align="right" style="color: #ff4444; padding: 5px 0; font-size: 12px;">- R$ ${Number(order.discount).toFixed(2)}</td>
                                                 </tr>` : ''}
                                                 <tr>
                                                     <td style="color: #666; padding: 5px 0; font-size: 12px;">Frete</td>
-                                                    <td align="right" style="color: #00ff00; padding: 5px 0; font-size: 12px; font-weight: 700;">GRÁTIS</td>
+                                                    <td align="right" style="color: #00ff00; padding: 5px 0; font-size: 12px; font-weight: 700;">${shippingText}</td>
                                                 </tr>
                                                 <tr>
                                                     <td style="color: #666; padding: 5px 0; font-size: 12px;">Pagamento</td>
-                                                    <td align="right" style="color: #fff; padding: 5px 0; font-size: 12px; font-weight: 700; text-transform: uppercase;">${pMethod}</td>
+                                                    <td align="right" style="color: #fff; padding: 5px 0; font-size: 12px; font-weight: 700; text-transform: uppercase;">${escapeHtml(String(pMethod))}</td>
                                                 </tr>
                                                 <tr>
                                                     <td style="color: #fff; padding: 15px 0 0; font-size: 14px; font-weight: 900; text-transform: uppercase; letter-spacing: 1px;">TOTAL</td>
-                                                    <td align="right" style="color: #f7c600; padding: 15px 0 0; font-size: 18px; font-weight: 900;">R$ ${(order.total || 0).toFixed(2)}</td>
+                                                    <td align="right" style="color: #f7c600; padding: 15px 0 0; font-size: 18px; font-weight: 900;">R$ ${Number(order.total || 0).toFixed(2)}</td>
                                                 </tr>
                                             </table>
                                         </td>
@@ -180,97 +183,17 @@ async function getEmailHtml(order: any, orderId: string, title: string, subtitle
   `;
 }
 
-export async function sendOrderReceivedEmail(orderId: string) {
-  const key = process.env.RESEND_API_KEY;
-  if (!key) return;
+const escapeHtml = (value: string) => value.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!));
 
-  try {
-    const db = getDb();
-    const orderSnap = await db.collection('orders').doc(orderId).get();
-    if (!orderSnap.exists) return;
-    const order = orderSnap.data();
-
-    const resend = new Resend(key);
-    const trackingUrl = `https://fpacstore.com.br/order/${orderId}`;
-
-    const html = await getEmailHtml(
-      order, 
-      orderId, 
-      "PEDIDO RECEBIDO",
-      `#${orderId}`,
-      "Recebemos seu pedido com sucesso. No momento estamos aguardando a confirmação do pagamento para iniciar a produção das suas peças exclusivas.",
-      trackingUrl
-    );
-
-    await resend.emails.send({
-      from: 'F PAC STORE <atendimento@fpacstore.com.br>',
-      to: [order?.customerEmail],
-      subject: `Pedido Recebido! #${orderId}`,
-      html: html
-    });
-    console.log(`📧 [EMAIL] Order Received email sent for ${orderId}`);
-  } catch (err) {
-    console.warn("📧 [EMAIL] Failed to send received email:", err);
-  }
+export function sendOrderReceivedEmail(orderId: string) {
+  return sendStatusEmail(orderId, 'received');
 }
 
-export async function sendStatusEmail(orderId: string, status: string) {
-  const key = process.env.RESEND_API_KEY;
-  if (!key) return;
-
-  try {
-    const db = getDb();
-    const orderSnap = await db.collection('orders').doc(orderId).get();
-    if (!orderSnap.exists) return;
-    const order = orderSnap.data();
-
-    const resend = new Resend(key);
-    const readableStatus = mapStatusToText(status);
-    const trackingUrl = `https://fpacstore.com.br/order/${orderId}`;
-    
-    const isApproval = status === 'payment_approved';
-    const title = isApproval ? "PAGAMENTO CONFIRMADO" : "STATUS ATUALIZADO";
-    const subject = isApproval ? `Pagamento Confirmado! #${orderId}` : `Pedido #${orderId} - ${readableStatus}`;
-    const intro = isApproval 
-      ? "Seu pagamento foi confirmado com sucesso. Já estamos preparando suas peças exclusivas para envio. Sua autenticidade é nossa identidade."
-      : `O status do seu pedido foi atualizado para: <strong>${readableStatus.toUpperCase()}</strong>.`;
-
-    const html = await getEmailHtml(
-      order,
-      orderId,
-      title,
-      readableStatus,
-      intro,
-      trackingUrl
-    );
-
-    await resend.emails.send({
-      from: 'F PAC STORE <atendimento@fpacstore.com.br>',
-      to: [order?.customerEmail],
-      subject: subject,
-      html: html
-    });
-    console.log(`📧 [EMAIL] Status email (${status}) sent for ${orderId}`);
-  } catch (err) {
-    console.warn("📧 [EMAIL] Failed to send status email:", err);
-  }
+export function sendStatusEmail(orderId: string, status: string, includeWhatsApp = false) {
+  const stage = ({ approved: 'payment_approved', rejected: 'payment_rejected', refunded: 'payment_refunded', 'Pagamento Aprovado': 'payment_approved', 'Aguardando Pagamento PIX': 'payment_pending' } as Record<string, string>)[status] || status;
+  return dispatchStageNotification({
+    orderId, newStageId: stage, changedBy: 'Sistema', channels: { whatsapp: includeWhatsApp },
+    emailHtml: async (message, order) => getEmailHtml(order, orderId, 'ATUALIZAÇÃO DO PEDIDO', stage,
+      escapeHtml(message.replace(/\*/g, '')).replace(/\n/g, '<br>'), 'https://fpacstore.com.br/tracking')
+  });
 }
-
-function mapStatusToText(status: string) {
-  const map: any = {
-    'received': 'Recebido',
-    'payment_pending': 'Aguardando Pagamento',
-    'payment_approved': 'Pagamento Aprovado',
-    'Pagamento Aprovado': 'Pagamento Aprovado',
-    'Aguardando Pagamento PIX': 'Aguardando Pagamento PIX',
-    'Pagamento Não Realizado': 'Pagamento Não Realizado',
-    'processing': 'Em Produção',
-    'shipped': 'Enviado',
-    'delivered': 'Entregue',
-    'cancelled': 'Cancelado',
-    'rejected': 'Pagamento Recusado',
-    'refunded': 'Reembolsado'
-  };
-  return map[status] || status;
-}
-

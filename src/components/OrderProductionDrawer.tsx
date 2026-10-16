@@ -13,6 +13,7 @@ import {
 import { PRODUCTION_STAGES, getStageFromStatus, ProductionStage } from '../constants/productionStages';
 import { DEFAULT_STAGE_TEMPLATES } from '../constants/notificationTemplates';
 import { resolveProductionStageMessage } from '../lib/productionStageMessage';
+import { manualWhatsAppUrl } from '../../shared/notificationContacts';
 import { isJoinvilleCEP } from '../lib/shipping';
 import { getApiUrl, getBaseUrl, authenticatedFetch, parseApiJson } from '../lib/api';
 import { registerPartialPayment } from '../services/orders/orderService';
@@ -143,7 +144,7 @@ export const OrderProductionDrawer: React.FC<OrderProductionDrawerProps> = ({
   const sentNotifs = order.sentStageNotifications || {};
   const currentStageNotif = sentNotifs[currentStage.id];
   const lastLogs = Array.isArray(order.notificationLogs) ? order.notificationLogs : [];
-  const latestLog = lastLogs[0];
+  const latestLog = lastLogs.find((log: any) => log.stageId === currentStage.id);
 
   const handleStageChange = async (newStage: ProductionStage) => {
     setIsUpdatingStatus(true);
@@ -161,7 +162,7 @@ export const OrderProductionDrawer: React.FC<OrderProductionDrawerProps> = ({
   const getCompiledMessage = () => resolveProductionStageMessage(
     currentStage.id,
     order,
-    currentStageNotif,
+    undefined,
     notificationTemplates
   );
 
@@ -194,15 +195,11 @@ export const OrderProductionDrawer: React.FC<OrderProductionDrawerProps> = ({
   };
 
   const handleOpenWhatsAppManual = () => {
-    const cleanPhone = String(order.customerPhone || order.customer?.phone || '').replace(/\D/g, '');
-    if (!cleanPhone) {
-      toast.error('Telefone do cliente não cadastrado no pedido');
-      return;
-    }
-    const msg = getCompiledMessage();
-    const waUrl = `https://wa.me/${cleanPhone.length <= 11 ? '55' + cleanPhone : cleanPhone}?text=${encodeURIComponent(msg)}`;
-    window.open(waUrl, '_blank');
-    toast.success('Abrindo WhatsApp Web com a mensagem preenchida...');
+    try {
+      const phone = String(order.customerPhone || order.phone || order.customer?.phone || order.customer?.phone2 || '');
+      window.open(manualWhatsAppUrl(phone, getCompiledMessage()), '_blank', 'noopener,noreferrer');
+      toast('WhatsApp aberto com a mensagem pronta. Confira e toque em Enviar.');
+    } catch (error: any) { toast.error(error.message); }
   };
 
   const handlePrevStage = () => {
@@ -662,7 +659,7 @@ export const OrderProductionDrawer: React.FC<OrderProductionDrawerProps> = ({
                       title="Envia a mensagem automaticamente via API"
                     >
                       {isSendingNotif ? <RefreshCw className="animate-spin" size={10} /> : <Send size={10} />}
-                      ⚡ Automático
+                      Reenviar avisos
                     </button>
 
                     <button
@@ -672,7 +669,7 @@ export const OrderProductionDrawer: React.FC<OrderProductionDrawerProps> = ({
                       title="Abre o WhatsApp com mensagem pronta"
                     >
                       <MessageCircle size={10} />
-                      💬 Manual WA
+                      Abrir WhatsApp
                     </button>
                   </div>
 
@@ -690,7 +687,7 @@ export const OrderProductionDrawer: React.FC<OrderProductionDrawerProps> = ({
                     <button
                       type="button"
                       onClick={() => {
-                        window.location.hash = '#/admin?tab=notifications';
+                        window.location.assign('/gestao?tab=notifications');
                         toast('Redirecionando para Notificações...', { icon: '⚙️' });
                       }}
                       className="flex-1 bg-white/10 hover:bg-white/20 text-white border border-white/10 py-1 px-1 text-[7px] font-black uppercase tracking-wider flex items-center justify-center gap-0.5 transition-all cursor-pointer"
@@ -1070,23 +1067,10 @@ export const OrderProductionDrawer: React.FC<OrderProductionDrawerProps> = ({
                 <MessageCircle size={14} /> Históricos, Pagamentos & Automações
               </h4>
               <button
-                onClick={async () => {
-                  toast.promise(
-                    authenticatedFetch('/api/automation/send-manual-order-whatsapp', {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ orderId: order.id })
-                    }).then(r => r.json()),
-                    {
-                      loading: 'Enviando WhatsApp...',
-                      success: 'Notificação enviada com sucesso!',
-                      error: 'Falha ao enviar WhatsApp'
-                    }
-                  );
-                }}
+                onClick={handleOpenWhatsAppManual}
                 className="bg-green-600 text-white px-3 py-1.5 text-[9px] font-black uppercase tracking-wider hover:bg-black transition-colors"
               >
-                💬 Reenviar WhatsApp de Confirmação
+                Abrir WhatsApp com mensagem atual
               </button>
             </div>
 

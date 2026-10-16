@@ -28,7 +28,7 @@ const NotificationBox = ({ order }: { order: any }) => (
       </div>
       <p className="text-[11px] text-gray-400 uppercase font-black leading-relaxed tracking-widest max-w-sm">
         O seu pedido foi recebido e está reservado. <br />
-        Após a confirmação do pagamento, seu pedido será processado e enviado no próximo dia útil.
+        A produção, a entrega ou a retirada seguem o prazo combinado. Você poderá acompanhar cada etapa confirmada por aqui.
       </p>
     </div>
   </div>
@@ -223,7 +223,7 @@ export default function OrderStatus() {
         return {
           icon: <CheckCircle size={48} className="text-green-500" />,
           title: 'Pagamento Confirmado',
-          description: 'Seu pagamento foi confirmado! Suas peças já entraram em produção.',
+          description: 'Seu pagamento foi confirmado. Acompanhe abaixo o andamento da produção e da entrega.',
           color: 'text-green-500'
         };
       case 'processing':

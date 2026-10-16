@@ -689,73 +689,12 @@ apiRouter.post("/admin/orders/:orderId/returns/physical-receive", adminApiLimite
 
 apiRouter.post("/automation/send-manual-order-whatsapp", adminApiLimiter, authenticateAdmin, async (req, res) => {
   try {
-    const { orderId } = req.body;
-    if (!orderId) {
-      return res.status(400).json({ error: "orderId is required" });
-    }
-    const db = getDb();
-    const orderRef = db.collection("orders").doc(orderId);
-    const orderSnap = await orderRef.get();
-    if (!orderSnap.exists) {
-      return res.status(404).json({ error: "Order not found" });
-    }
-    const orderData = orderSnap.data()!;
-    
-    if (orderData.whatsappMessages?.pedidoCriado) {
-      return res.json({ success: true, alreadySent: true, message: "Mensagem automática 'Pedido Criado' já foi enviada anteriormente." });
-    }
-
-    const { sendWhatsAppMessage } = await import("./server/services/automation.service.js");
-    
-    const phone = orderData.customerPhone || orderData.phone || "";
-    const name = orderData.customerName || orderData.name || "Cliente";
-    
-    logger.info(`Sending manual order creation whatsapp for order ${orderId} to ${phone}`);
-    const success = await sendWhatsAppMessage(phone, 'manual_order_pending', {
-      id: orderId,
-      customerName: name,
-    });
-    
-    const timestamp = new Date().toISOString();
-    const logEntry: any = {
-      type: "pedidoCriado",
-      status: success ? "success" : "error",
-      timestamp,
-      message: success 
-        ? "Mensagem automática 'Pedido Criado' enviada via WhatsApp."
-        : "Falha ao enviar mensagem automática 'Pedido Criado'."
-    };
-    
-    if (!success) {
-      logEntry.error = "Evolution API / Webhook return failure or phone is invalid.";
-    }
-    
-    const whatsappMessages = orderData.whatsappMessages || {};
-    whatsappMessages.pedidoCriado = true;
-    
-    const whatsappLogs = orderData.whatsappLogs || [];
-    whatsappLogs.push(logEntry);
-    
-    await orderRef.update({
-      whatsappMessages,
-      whatsappLogs,
-      updatedAt: new Date()
-    });
-
-    const user = (req as any).user;
-    await recordAuditLog({
-      userId: user?.uid,
-      userEmail: user?.email,
-      action: 'SEND_MANUAL_WHATSAPP',
-      resource: 'orders',
-      resourceId: orderId,
-      ip: req.ip
-    });
-    
-    res.json({ success, logEntry });
+    const { orderId } = req.body || {};
+    if (typeof orderId !== 'string' || !orderId.trim() || orderId.includes('/')) return res.status(400).json({ error: 'Informe um pedido válido.' });
+    const { prepareManualOrderWhatsApp } = await import('./server/services/productionNotification.service.js');
+    return res.json(await prepareManualOrderWhatsApp(orderId));
   } catch (error: any) {
-    logger.error(`❌ [MANUAL-ORDER-WA-ERR] Error sending manual order whatsapp: ${error.message}`);
-    res.status(500).json({ error: error.message });
+    return res.status(error.status === 404 ? 404 : 400).json({ success: false, error: error.message });
   }
 });
 
