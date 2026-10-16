@@ -85,9 +85,10 @@ export async function editManualCustomOrderController(req: Request, res: Respons
       const subtotal = gift ? 0 : nextItems.reduce((sum, item) => sum + Math.round(item.price * 100) * item.quantity, 0) / 100;
       const shipping = Number(order.pricing?.shipping ?? order.shipping ?? 0);
       const discount = Number(order.pricing?.couponDiscount ?? order.couponDiscount ?? 0);
-      const total = gift ? 0 : Math.max(0, Math.round((subtotal + shipping - discount) * 100) / 100);
+      const surcharge = Number(order.pricing?.surcharge ?? order.surcharge ?? 0);
+      const total = gift ? 0 : Math.max(0, Math.round((subtotal + shipping + surcharge - discount) * 100) / 100);
       const paid = gift ? 0 : getOrderPaidAmount(order);
-      if (![shipping, discount, total, paid].every(Number.isFinite) || shipping < 0 || discount < 0 || paid < 0) invalid('Os valores financeiros anteriores precisam de conferência.');
+      if (![shipping, discount, surcharge, total, paid].every(Number.isFinite) || shipping < 0 || discount < 0 || surcharge < 0 || paid < 0) invalid('Os valores financeiros anteriores precisam de conferência.');
       if (Math.round(total * 100) < Math.round(paid * 100)) invalid('O novo total ficaria abaixo do valor já recebido. Registre o estorno necessário antes de reduzir as peças.');
       const pending = Math.max(0, Math.round((total - paid) * 100) / 100);
       const status = gift ? 'not_applicable' : pending === 0 ? 'approved' : paid > 0 ? 'partially_paid' : 'pending';

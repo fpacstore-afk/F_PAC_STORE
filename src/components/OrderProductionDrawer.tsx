@@ -1,5 +1,6 @@
 import { PrimeOrderPlacements } from './PrimeOrderPlacements';
 import { ManualCustomOrderEditor } from './admin/ManualCustomOrderEditor';
+import { MockupApprovalPanel } from './admin/MockupApprovalPanel';
 import { OrderCustomerEditor, OrderCustomerDetails } from './admin/OrderCustomerEditor';
 import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -532,6 +533,8 @@ export const OrderProductionDrawer: React.FC<OrderProductionDrawerProps> = ({
                     <h4 className="text-xs font-black text-black uppercase truncate">{order.customerName}</h4>
                     <p className="text-[9px] text-gray-500 font-bold truncate">{order.customerEmail || 'Sem e-mail'}</p>
                     <p className="text-[9px] font-mono text-gray-600 font-bold mt-0.5">{order.customerPhone || 'Sem telefone'}</p>
+                    {order.customerContact && !order.customerPhone && !order.customerEmail && <p className="mt-1 text-[10px] break-words">Contato informado: {order.customerContact}</p>}
+                    {order.sourceQuote && <p className="mt-2 text-[10px]">Orçamento {String(order.sourceQuote.id).slice(0, 8)} · v{order.sourceQuote.version}{order.productionDeadline ? ` · Prazo combinado: ${order.productionDeadline}` : ''}</p>}
                   </div>
                   {onSaveCustomerDetails && <div className="mt-3"><OrderCustomerEditor order={order} onSave={onSaveCustomerDetails} /></div>}
                 </div>
@@ -619,6 +622,7 @@ export const OrderProductionDrawer: React.FC<OrderProductionDrawerProps> = ({
                         <span>- R$ {Number(order.couponDiscount).toFixed(2)}</span>
                       </div>
                     )}
+                    {Number(order.surcharge || 0) > 0 && <div className="flex justify-between text-gray-500 font-bold"><span>Acréscimos:</span><span>R$ {Number(order.surcharge).toFixed(2)}</span></div>}
                   </div>
                 </div>
                 <div className="pt-1.5 border-t border-black/10 flex justify-between items-center text-black font-black">
@@ -711,6 +715,7 @@ export const OrderProductionDrawer: React.FC<OrderProductionDrawerProps> = ({
               </div>
 
               {order.isManual && !order.isGift && order.orderKind !== 'gift' && order.items?.length > 0 && order.items.every((item: any) => item.customProduct) && <ManualCustomOrderEditor key={order.id} order={order} stamps={stamps} />}
+              <MockupApprovalPanel key={`approval-${order.id}`} order={order} />
 
               {isEditingOrderDetails && (
                 <div className="space-y-3 border border-[#eab308]/50 bg-amber-50 p-3">

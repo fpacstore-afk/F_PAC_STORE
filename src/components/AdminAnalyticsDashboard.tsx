@@ -980,15 +980,12 @@ export default function AdminAnalyticsDashboard({ embedded = false }: { embedded
             Funil de <span className="text-[#f7c600]">Conversão</span>
           </h2>
           <p className="text-[8px] font-bold text-white/30 uppercase tracking-wider mb-6">
-            Sessões em cada etapa. Cor e tamanho só aparecem com rastreamento ativo; os valores escolhidos não são armazenados.
+            Sessões com estatísticas autorizadas. Cliques em cor e tamanho são opcionais. A perda compara as mesmas sessões entre produto, sacola, checkout e compra aprovada; os valores escolhidos não são armazenados.
           </p>
 
           <div className="space-y-5">
             {funnelData.map((step, index) => {
-              const previousCount = index > 0 ? funnelData[index - 1].count : step.count;
-              const stepAbandonRate = previousCount > 0 
-                ? Math.round(((previousCount - step.count) / previousCount) * 100) 
-                : 0;
+              const stepAbandonRate = step.dropRate ?? 0;
 
               return (
                 <div key={step.name} className="relative">
@@ -1009,7 +1006,7 @@ export default function AdminAnalyticsDashboard({ embedded = false }: { embedded
                     {/* Tiny stats over bar */}
                     {index > 0 && stepAbandonRate > 0 && (
                       <span className="absolute right-2 text-[7px] font-black uppercase text-red-500 bg-red-950/40 px-1 border border-red-900/30">
-                        -{stepAbandonRate}% DROP
+                        {stepAbandonRate}% NÃO AVANÇARAM
                       </span>
                     )}
                   </div>

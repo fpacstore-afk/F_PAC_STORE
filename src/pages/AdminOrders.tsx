@@ -556,6 +556,12 @@ function AdminOrdersInner() {
 
   const needsOrderSubscription = ['orders', 'production', 'shipping', 'loyalty'].includes(activeTab);
   useEffect(() => {
+    const requestedOrder = searchParams.get('orderId');
+    if (activeTab !== 'orders' || !ordersLoaded || !requestedOrder || !orders.some(order => order.id === requestedOrder)) return;
+    setSearchTerm(requestedOrder);
+    setExpandedOrders(current => current.includes(requestedOrder) ? current : [...current, requestedOrder]);
+  }, [activeTab, ordersLoaded, orders, searchParams]);
+  useEffect(() => {
     // Other management modules own their queries; do not duplicate them here.
     if (!isAdmin || !needsOrderSubscription) return;
     setOrdersLoaded(false);

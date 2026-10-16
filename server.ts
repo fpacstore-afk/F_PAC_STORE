@@ -43,6 +43,7 @@ import { authenticateAdmin } from "./server/middleware/auth.middleware.js";
 import { createPricingRouter } from "./server/controllers/pricingWorkbench.js";
 import { uploadAdminMediaController } from "./server/controllers/media.controller.js";
 import { uploadArtwork, readArtwork } from './server/controllers/artwork.controller.js';
+import { createMockupAdminRouter, createMockupPublicRouter } from './server/controllers/mockupApproval.js';
 import { readCatalogArtworkBounds } from './server/controllers/catalogArtworkBounds.controller.js';
 import { 
   publicApiLimiter, 
@@ -317,6 +318,8 @@ console.log('----------------------------------------------------');
 // 5. API Routes Router
 const apiRouter = express.Router();
 apiRouter.use('/admin/pricing-workbench', adminApiLimiter, authenticateAdmin, createPricingRouter());
+apiRouter.use('/admin/orders/:orderId/mockup-approvals', adminApiLimiter, authenticateAdmin, createMockupAdminRouter());
+apiRouter.use('/mockup-approvals', publicApiLimiter, createMockupPublicRouter());
 
 // Public Endpoints
 apiRouter.get("/health", publicApiLimiter, (req, res) => {

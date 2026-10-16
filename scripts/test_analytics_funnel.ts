@@ -18,5 +18,15 @@ assert.deepEqual(steps.map(step => [step.name, step.count, step.rate]), [
   ['7. Compra aprovada', 1, 25],
 ]);
 assert.deepEqual(buildConversionFunnel([]).map(step => [step.count, step.rate]), Array.from({ length: 7 }, () => [0, 0]));
+const optional = buildConversionFunnel([
+  { viewedProducts: ['force'], cartStarted: true, checkoutStarted: true, purchaseCompleted: true },
+  { viewedProducts: ['mark'] },
+  { cartStarted: true, checkoutStarted: true },
+]);
+assert.equal(optional[2].dropRate, null, 'missing optional color clicks are not abandonment');
+assert.equal(optional[3].dropRate, null, 'missing optional size clicks are not abandonment');
+assert.equal(optional[4].dropRate, 50, 'compare the sessions that viewed a product, not unrelated returning carts');
+assert.equal(optional[5].dropRate, 0);
+assert.equal(optional[6].dropRate, 50, 'approved purchases are compared with the same checkout sessions');
 
 console.log('Conversion funnel counts unique sessions by product, option, cart, checkout, and approved purchase.');

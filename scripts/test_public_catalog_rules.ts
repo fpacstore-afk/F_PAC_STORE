@@ -89,7 +89,7 @@ try {
     }
   }
   console.log('30 ingestion privacy and write-denial rule checks passed.');
-  for (const collectionName of ['pricing_workbench','pricing_workbench_quotes','pricing_workbench_events','pricing_workbench_imports']) {
+  for (const collectionName of ['pricing_workbench','pricing_workbench_quotes','pricing_workbench_events','pricing_workbench_imports','mockup_approval_requests','mockup_approval_events']) {
     await environment.withSecurityRulesDisabled(async context => { await setDoc(doc(context.firestore(), collectionName, 'private'), { cost: 99 }); });
     for (const context of [environment.unauthenticatedContext(), environment.authenticatedContext('customer'), environment.authenticatedContext('manager', { email: 'fpacstore@gmail.com' })]) {
       await assertFails(getDoc(doc(context.firestore(), collectionName, 'private')));

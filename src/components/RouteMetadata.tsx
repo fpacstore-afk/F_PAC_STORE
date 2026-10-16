@@ -20,7 +20,7 @@ const defaultDescription = 'Streetwear F PAC STORE para quem transforma estilo e
 
 export function RouteMetadata() {
   const { pathname } = useLocation();
-  const privatePage = /^\/(gestao|admin|order|order-status|checkout|account|success|tracking|bag|privacy)(\/|$)/.test(pathname);
+  const privatePage = /^\/(gestao|admin|order|order-status|checkout|account|success|tracking|bag|privacy|aprovar-mockup)(\/|$)/.test(pathname);
   const title = titles[pathname] || (pathname.startsWith('/gestao') ? 'Gestão da loja' : pathname.startsWith('/order/') ? 'Meu pedido' : 'Streetwear com identidade');
   const canonicalPath = pathname === '/' ? '/' : pathname.replace(/\/+$/, '') || '/';
   const canonicalUrl = `https://fpacstore.com.br${canonicalPath}`;

@@ -24,7 +24,7 @@ let checks = 0;
 async function check(name: string, test: () => void | Promise<void>) { await test(); checks++; console.log('PASS ' + name); }
 try {
   await check('telemetry removes query secrets and private route identifiers', () => {
-    for (const path of ['/order/private?token=secret', '/gestao?tab=finance', '/account', '/checkout', '/success']) assert.equal(publicAnalyticsPath(path), null);
+    for (const path of ['/order/private?token=secret', '/gestao?tab=finance', '/account', '/checkout', '/success', '/aprovar-mockup/private#token=secret']) assert.equal(publicAnalyticsPath(path), null);
     assert.equal(publicAnalyticsPath('/product/oversized?email=private#token'), '/product/oversized');
   });
   await check('persistent cart excludes identity, address, session tokens and notes', () => {
