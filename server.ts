@@ -1,4 +1,5 @@
 import { saveCompanyMovementFromSheet } from './server/services/companyMovementSheet.service';
+import { editManualCustomOrderController, getManualOrderEditHistoryController } from './server/controllers/manualOrderEdit.controller.js';
 import { FieldValue } from 'firebase-admin/firestore';
 import express from "express";
 import crypto from "crypto";
@@ -493,6 +494,8 @@ apiRouter.all("/admin/run-integrity-tests", adminApiLimiter, authenticateAdmin, 
 apiRouter.get("/admin/orders-maintenance/preview", adminApiLimiter, authenticateAdmin, previewHistoricalOrderCloseout);
 apiRouter.post("/admin/orders-maintenance/execute", adminApiLimiter, authenticateAdmin, executeHistoricalOrderCloseout);
 apiRouter.post("/admin/orders/manual", adminApiLimiter, authenticateAdmin, createManualOrderController);
+apiRouter.put("/admin/orders/:orderId/custom-details", adminApiLimiter, authenticateAdmin, editManualCustomOrderController);
+apiRouter.get("/admin/orders/:orderId/edit-history", adminApiLimiter, authenticateAdmin, getManualOrderEditHistoryController);
 apiRouter.post(
   "/admin/media/upload",
   adminApiLimiter,
