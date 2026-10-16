@@ -1,3 +1,4 @@
+import { transferGarmentsToProduction } from '../services/productionStock.service.js';
 import { FieldValue } from 'firebase-admin/firestore';
 import { calculateCashForecast } from '../../shared/cashForecast';
 import { roundMoney } from '../../shared/financialDefaults';
@@ -140,6 +141,7 @@ export async function updateOrderProductionStatus(req: Request, res: Response) {
         updatePayload.productionDueDate = productionDueDate;
       }
 
+      if (['estamparia', 'embalagem', 'ready', 'completed'].includes(newStatus)) await transferGarmentsToProduction(transaction, db, orderId, orderData, newStatus);
       transaction.update(orderRef, updatePayload);
 
       return { currentProdStatus, timestamp, stageName };
@@ -279,7 +281,7 @@ export async function createManualOrderController(req: Request, res: Response) {
           err.code = 'MANUAL_ORDER_ALREADY_EXISTS';
           throw err;
         }
-        await applyOrderStampStockInTransaction(transaction, db, orderId, order.items, 'order_debit');
+        await applyOrderStampStockInTransaction(transaction, db, orderId, order.printSupplyMode === 'on_demand' ? order.items.map((item: any) => ({ ...item, printSupplyMode: 'on_demand' })) : order.items, 'order_debit');
         transaction.set(ref, orderPayload);
       });
     }
@@ -943,6 +945,7 @@ export async function recordStockMovement(req: Request, res: Response) {
         color: stats.color,
         size: stats.size,
         physicalQuantity: newPhysicalQuantity,
+        physicalCountVerified: currentVariant.physicalCountVerified === true || type === 'adjust' || !invSnap.exists,
         reservedQuantity: newReservedQuantity,
         availableQuantity: newAvailableQuantity,
         stock: newPhysicalQuantity,
@@ -1123,6 +1126,7 @@ export async function recordBulkStockMovement(req: Request, res: Response) {
           color: stats.color,
           size: stats.size,
           physicalQuantity: newPhysicalQuantity,
+          physicalCountVerified: true,
           reservedQuantity: newReservedQuantity,
           availableQuantity: newAvailableQuantity,
           stock: newPhysicalQuantity,

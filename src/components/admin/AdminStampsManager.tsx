@@ -942,7 +942,7 @@ export function AdminStampsManager() {
                   {design.name && design.name !== design.code && (
                     <span className="text-[10px] text-neutral-400 block line-clamp-1">{design.name}</span>
                   )}
-                  <span className={cn('text-[10px] font-black', Number(design.stockBalance || 0) < 0 ? 'text-rose-400' : 'text-emerald-400')}>Saldo: {design.stockBalance || 0}</span>
+                  <span className={cn('text-[10px] font-black', Number(design.stockBalance || 0) < 0 ? 'text-rose-400' : 'text-emerald-400')}>Físicas (opcional): {design.stockBalance || 0}</span>
                 </div>
 
                 <div className="flex flex-wrap gap-1.5 pt-1">
@@ -1028,7 +1028,7 @@ export function AdminStampsManager() {
                     <span className="text-[9px] text-neutral-400 uppercase">• {design.category} • {(design.compatibleProducts || [ALL_PRODUCTS_OPTION]).join(', ')}</span>
                   </div>
                   <h4 className="font-black text-xs text-white uppercase font-mono">{design.code}</h4>
-                  <span className={cn('text-[10px] font-black', Number(design.stockBalance || 0) < 0 ? 'text-rose-400' : 'text-emerald-400')}>Saldo: {design.stockBalance || 0}</span>
+                  <span className={cn('text-[10px] font-black', Number(design.stockBalance || 0) < 0 ? 'text-rose-400' : 'text-emerald-400')}>Físicas (opcional): {design.stockBalance || 0}</span>
                 </div>
               </div>
 
@@ -1230,7 +1230,7 @@ export function AdminStampsManager() {
                   <div className="rounded border border-neutral-800 bg-neutral-950 p-3">
                     <p className="mb-3 text-[9px] leading-relaxed text-neutral-500">Informe somente as medidas que esta arte realmente possui, por exemplo: <span className="text-neutral-300">Peito 10 × 10 cm</span> ou <span className="text-neutral-300">Costas 28 × 35 cm</span>. Campos vazios não serão salvos.</p>
                     <p className="mb-3 text-[9px] leading-relaxed text-neutral-500">A quantidade fica ao lado de cada medida. Em uma estampa nova, informe o estoque inicial; em uma estampa existente, informe a contagem física e registre-a abaixo. Salvar os dados da estampa não altera o estoque.</p>
-                    {stampStockNeedsCount && <p className="mb-3 rounded border border-amber-400/40 bg-amber-400/10 p-2 text-[9px] font-bold leading-relaxed text-amber-200">Há saldo antigo sem medida atribuída. Faça uma contagem física completa para separar as quantidades sem estimar a distribuição.</p>}
+                    {stampStockNeedsCount && <p className="mb-3 rounded border border-amber-400/40 bg-amber-400/10 p-2 text-[9px] font-bold leading-relaxed text-amber-200">Controle opcional de estampas físicas. Este saldo não bloqueia vendas sob encomenda. Há saldo antigo sem medida atribuída. Faça uma contagem física completa para separar as quantidades sem estimar a distribuição.</p>}
                     <div className="space-y-2">
                       {Array.from({ length: 5 }, (_, index) => (
                         <div key={index} className="grid grid-cols-[minmax(0,1fr)_minmax(5.5rem,0.72fr)] gap-2 rounded border border-neutral-800 bg-neutral-900/40 p-2 sm:grid-cols-[minmax(0,1fr)_10rem]">

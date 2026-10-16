@@ -42,6 +42,8 @@ export interface OrderItem {
   productId?: string;
   slug?: string;
   parentSlug?: string;
+  stockBaseSlug?: string;
+  inventoryAllocations?: import('../../shared/sharedGarmentStock').InventoryAllocation[];
   variantId?: string;
   variantKey?: string;
   name: string;

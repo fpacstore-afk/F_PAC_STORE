@@ -1,3 +1,4 @@
+import { resolveGarmentBase, stockSlug } from '../../../../shared/sharedGarmentStock';
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
   FileText, Image as ImageIcon, Palette, Film, Box, Tag, Layers, 
@@ -277,6 +278,8 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
         })),
         minStock: product.minStock ?? 1,
         baseModel: inferBaseModel(product),
+        stockBaseSlug: product.stockBaseSlug,
+        stockMode: product.stockMode,
         productFinish: inferProductFinish(product),
         stampIds: Array.isArray(product.stampIds) ? product.stampIds.slice(0, 5) : [],
         stampIdsByColor: product.stampIdsByColor || {},
@@ -459,6 +462,7 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
 
   if (!isOpen) return null;
   const isPlainProduct = formData.productFinish === 'plain';
+  const sharedBase = resolveGarmentBase(formData, inventoryProducts);
 
   // Auto generate SKU & Slug from Name
   const handleNameChange = (val: string) => {
@@ -838,6 +842,8 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
         // A linha comercial pertence ao produto; novos produtos não são filhos de
         // documentos estruturais FORCE/MARK/PRIME.
         parentSlug: product?.parentSlug,
+        stockBaseSlug: formData.stockBaseSlug || null,
+        stockMode: formData.stockMode || 'shared',
         is_prime: !isPlainStockItem && formData.collection === 'PRIME',
         // Inventory 2.0 is the quantity authority. Quantity mirrors are written
         // only after the official backend mutation succeeds.
@@ -1465,6 +1471,18 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
             {/* 3 & 4. 🎨📦 VARIAÇÕES & ESTOQUE (Cores, Tamanhos, Combinações e Grade de Estoque) */}
             {activeTab === 'variations_stock' && (
               <div className="space-y-6 animate-in fade-in">
+                {!isPlainProduct && <div className="border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950 space-y-3">
+                  <strong>Estoque das lisas compartilhado entre os desenhos</strong>
+                  <p>As quantidades da grade abaixo são somente peças já estampadas, de pronta entrega. Cadastre a quantidade das lisas uma única vez no produto base.</p>
+                  <label className="block">Camisa lisa usada para produzir este produto
+                    <select className="block w-full border p-2 mt-1 bg-white text-black" value={formData.stockMode === 'ready_only' ? '__ready' : formData.stockBaseSlug || ''} onChange={event => setFormData({ ...formData, stockBaseSlug: event.target.value === '__ready' ? undefined : event.target.value || undefined, stockMode: event.target.value === '__ready' ? 'ready_only' : 'shared' })}>
+                      <option value="">Automática pelo modelo da peça</option>
+                      <option value="__ready">Vender somente pronta entrega</option>
+                      {inventoryProducts.filter(p => p.productFinish === 'plain').map(p => <option key={p.id} value={stockSlug(p)}>{p.name} · {p.baseModel}</option>)}
+                    </select>
+                  </label>
+                  <p>{sharedBase ? `Base ligada: ${sharedBase.name} · ${sharedBase.baseModel}. Todas as estampas desta base usam o mesmo saldo por cor e tamanho.` : formData.stockMode === 'ready_only' ? 'Este produto usa somente suas peças prontas.' : 'Escolha uma base lisa para habilitar a produção sob encomenda.'}</p>
+                </div>}
                 {/* TOP CARD: ESTOQUE TOTAL DO PRODUTO */}
                 <div className="bg-gradient-to-r from-black/80 via-black/60 to-black/80 border border-[#eab308]/40 p-5 rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-4 shadow-xl">
                   <div className="flex items-center gap-3">
@@ -1483,7 +1501,7 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
 
                   <div className="bg-black/80 border border-[#eab308]/30 px-5 py-3 rounded-xl text-center sm:text-right shrink-0">
                     <span className="text-[9px] font-black uppercase text-gray-400 block tracking-wider">
-                      📦 ESTOQUE TOTAL
+                      {isPlainProduct ? 'ESTOQUE DE LISAS' : 'PRONTA ENTREGA'}
                     </span>
                     <span className="text-2xl font-mono font-black text-[#eab308]">
                       {variantRows.reduce((sum, r) => sum + calculateResultingStock(r), 0)}{' '}

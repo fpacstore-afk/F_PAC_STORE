@@ -1,3 +1,4 @@
+import { resolveGarmentBase, stockSlug, garmentAvailability, countedReadyInventory } from '../../shared/sharedGarmentStock';
 import { useState, useEffect } from 'react';
 import { db, handleFirestoreError, OperationType } from '../lib/firebase';
 import { collection, onSnapshot } from 'firebase/firestore';
@@ -135,10 +136,15 @@ export function useInventory({ administrative = false, enabled = true }: { admin
     return () => unsubscribe();
   }, [administrative, enabled]);
 
-  const getBestInventoryItem = (id: string) => {
+  const getBestInventoryItem = (id: string, sellable = false) => {
     const matchingProduct = products.find(p => p.slug === id || p.id === id);
+    if (administrative && sellable && matchingProduct) {
+      const base = resolveGarmentBase(matchingProduct, products);
+      if (base) return normalizeInventoryDocument(garmentAvailability(matchingProduct, base, inventory[stockSlug(matchingProduct)], inventory[stockSlug(base)]));
+      if (matchingProduct.productFinish === 'printed') return normalizeInventoryDocument(countedReadyInventory(inventory[stockSlug(matchingProduct)]) || {});
+    }
     if (!administrative) {
-      const physicalId = matchingProduct?.parentSlug || matchingProduct?.slug || matchingProduct?.id || id;
+      const physicalId = matchingProduct?.stockBaseSlug ? (matchingProduct.slug || matchingProduct.id) : (matchingProduct?.parentSlug || matchingProduct?.slug || matchingProduct?.id || id);
       return inventory[physicalId] || inventory[id] || null;
     }
     const candidates: any[] = [];
@@ -249,13 +255,13 @@ export function useInventory({ administrative = false, enabled = true }: { admin
     if (administrative && (id === 'force' || id === 'mark' || id === 'prime')) {
       const children = products.filter(p => p.parentSlug === id && p.slug !== id);
       if (children.length === 0) return false;
-      const parentItem = getBestInventoryItem(id);
+      const parentItem = getBestInventoryItem(id, true);
       if (parentItem && parentItem.available === false) return false;
       if (variantKey) return children.some(child => isAvailable(child.slug, variantKey, undefined, new Set(visited)));
       return children.some(child => isAvailable(child.slug, undefined, undefined, new Set(visited)));
     }
 
-    const item = getBestInventoryItem(id);
+    const item = getBestInventoryItem(id, true);
     // Inventory 2.0 is the only quantity authority. Missing inventory is not sellable.
     if (!item) return false;
     if (item.available === false) return false;
@@ -283,7 +289,7 @@ export function useInventory({ administrative = false, enabled = true }: { admin
       return children.reduce((acc, child) => acc + getStock(child.slug, undefined, undefined, new Set(visited)), 0);
     }
 
-    const item = getBestInventoryItem(id);
+    const item = getBestInventoryItem(id, true);
     if (!item) return 0;
     if (variantKey) return Math.max(0, Number(item.variants?.[variantKey]?.availableQuantity) || 0);
     return Math.max(0, Number(item.availableQuantity) || 0);

@@ -1,3 +1,4 @@
+import { getInventoryOverview, saveInventoryCount } from './server/controllers/inventoryCount.controller.js';
 import { getEmailDeliveryHistory } from './server/services/emailDelivery.service.js';
 import { saveCompanyMovementFromSheet } from './server/services/companyMovementSheet.service';
 import { editManualCustomOrderController, getManualOrderEditHistoryController } from './server/controllers/manualOrderEdit.controller.js';
@@ -554,6 +555,8 @@ apiRouter.post("/admin/orders/:orderId/gateway-fee", adminApiLimiter, authentica
 apiRouter.post("/admin/orders/:orderId/shipping-status", adminApiLimiter, authenticateAdmin, updateOrderShippingStatus);
 apiRouter.put("/admin/orders/:orderId/shipping-status", adminApiLimiter, authenticateAdmin, updateOrderShippingStatus);
 apiRouter.post("/admin/stock/bulk-adjust", adminApiLimiter, authenticateAdmin, recordBulkStockMovement);
+apiRouter.get('/admin/stock/inventory-overview', adminApiLimiter, authenticateAdmin, getInventoryOverview);
+apiRouter.post('/admin/stock/inventory-counts', adminApiLimiter, authenticateAdmin, saveInventoryCount);
 apiRouter.post("/admin/stock/movement", adminApiLimiter, authenticateAdmin, recordStockMovement);
 apiRouter.post('/admin/stamps/:stampId/stock', adminApiLimiter, authenticateAdmin, async (req, res) => {
   try {

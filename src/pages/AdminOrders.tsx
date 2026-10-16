@@ -1845,7 +1845,7 @@ function AdminOrdersInner() {
 
       const customLines = tempItems.filter((item) => item.mode === 'custom');
       const customOrderDetails = buildManualCustomProduction(customLines);
-      const orderStockControl = customLines.length ? 'no_move' : stockControl;
+      const orderStockControl = stockControl;
 
       const orderPayload = {
         id: orderId,
@@ -1893,6 +1893,7 @@ function AdminOrdersInner() {
         shippingMethod: isRetirada ? 'Retirada' : manualShippingMethod,
         shippingMethodName: isRetirada ? 'Retirada na Loja' : manualShippingMethodName,
         shippingServiceId: isRetirada ? 0 : manualShippingServiceId,
+        printSupplyMode: 'on_demand',
         stockControl: orderStockControl, // Produtos personalizados não têm SKU de camisa; as estampas do catálogo continuam baixando por código e medida.
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
@@ -1967,11 +1968,11 @@ function AdminOrdersInner() {
         .map((stamp: any) => `${stamp.code || stamp.name} (${stamp.color}, ${stamp.stockPrintSize || stamp.printSize || 'medida padrão'}) x${item.quantity}`))
         .join(', ');
       const estoqueChoiceLabel = customLines.length
-        ? `Peças personalizadas sem baixa de SKU; estampas do catálogo debitadas: ${catalogArtworkAudit || 'nenhuma'}`
+        ? `Personalizado com controle ${orderStockControl === 'move' ? 'de camisas lisas compartilhadas' : 'sem movimentação física'}`
         : (orderStockControl === 'move' ? 'Movimentar Estoque' : 'Não Movimentar Estoque');
       const userResponsible = user?.email || 'Administrador (fpacstore@gmail.com)';
       const auditLogDesc = customLines.length
-        ? 'Pedido Manual Personalizado - Baixa de Estampas por Variante/Medida'
+        ? 'Pedido Manual Personalizado - Camisas Lisas Compartilhadas'
         : (orderStockControl === 'move' ? 'Pedido Manual - Estoque Movimentado' : 'Pedido Manual - Sem Movimentação de Estoque');
       
       const manualOrderDateFormatted = new Date().toLocaleDateString('pt-BR');
@@ -4173,7 +4174,7 @@ Total: R$ ${totalSum.toFixed(2)}`;
                       <div className="grid grid-cols-1 gap-2 sm:grid-cols-3" role="group" aria-label="Tipo de produto do pedido">
                         <button type="button" disabled={hasCustomManualItems} onClick={() => { setManualProductMode('ready'); setSelectedProduct(null); updateSelectedManualStamps([]); }} className={cn('min-h-14 border px-3 py-2 text-left text-[10px] font-black uppercase disabled:cursor-not-allowed disabled:opacity-40', manualProductMode === 'ready' ? 'border-black bg-black text-[#eab308]' : 'border-black/15 bg-white text-gray-600')}><span className="block text-xs">1. Produto pronto</span><span className="mt-1 block text-[8px] font-medium normal-case opacity-75">Item já cadastrado no catálogo</span></button>
                         <button type="button" disabled={hasCustomManualItems} onClick={() => { setManualProductMode('assembled'); setSelectedProduct(null); updateSelectedManualStamps([]); }} className={cn('min-h-14 border px-3 py-2 text-left text-[10px] font-black uppercase disabled:cursor-not-allowed disabled:opacity-40', manualProductMode === 'assembled' ? 'border-black bg-black text-[#eab308]' : 'border-black/15 bg-white text-gray-600')}><span className="block text-xs">2. Produto montado</span><span className="mt-1 block text-[8px] font-medium normal-case opacity-75">Peça base + estampas do catálogo</span></button>
-                        <button type="button" disabled={hasCatalogManualItems} onClick={() => { setManualProductMode('custom'); setSelectedProduct(null); updateSelectedManualStamps([]); setStockControl('no_move'); }} className={cn('min-h-14 border px-3 py-2 text-left text-[10px] font-black uppercase disabled:cursor-not-allowed disabled:opacity-40', manualProductMode === 'custom' ? 'border-black bg-black text-[#eab308]' : 'border-black/15 bg-white text-gray-600')}><span className="block text-xs">3. Personalizados</span><span className="mt-1 block text-[8px] font-medium normal-case opacity-75">Descreva a peça, tamanhos e, se houver, as artes</span></button>
+                        <button type="button" disabled={hasCatalogManualItems} onClick={() => { setManualProductMode('custom'); setSelectedProduct(null); updateSelectedManualStamps([]); setStockControl('move'); }} className={cn('min-h-14 border px-3 py-2 text-left text-[10px] font-black uppercase disabled:cursor-not-allowed disabled:opacity-40', manualProductMode === 'custom' ? 'border-black bg-black text-[#eab308]' : 'border-black/15 bg-white text-gray-600')}><span className="block text-xs">3. Personalizados</span><span className="mt-1 block text-[8px] font-medium normal-case opacity-75">Descreva a peça, tamanhos e, se houver, as artes</span></button>
                       </div>
                       {manualProductMode === 'custom' ? (
                         <><ManualCustomProductForm
@@ -4183,7 +4184,7 @@ Total: R$ ${totalSum.toFixed(2)}`;
                           onDraftStateChange={setIsManualProductDraftDirty}
                           onAdd={(items) => {
                             setTempItems((current) => [...current, ...items]);
-                            setStockControl('no_move');
+                            setStockControl('move');
                             toast.success('Produto adicionado. Você pode incluir outra peça, cor ou tamanho.');
                           }}
                         />{hasCustomManualItems && <p className="text-[10px] font-bold text-gray-600">Produtos já adicionados ao carrinho: {tempItems.filter((item) => item.mode === 'custom').length} linha(s). Preencha e adicione outra peça se precisar.</p>}</>
@@ -4528,11 +4529,6 @@ Total: R$ ${totalSum.toFixed(2)}`;
                   <h4 className="text-[10px] font-black uppercase text-black tracking-widest mb-3 flex items-center gap-1.5">
                     ⚙️ CONTROLE DE ESTOQUE DESTE PEDIDO *
                   </h4>
-                  {(manualProductMode === 'custom' || hasCustomManualItems) ? (
-                    <div className="border border-amber-300 bg-amber-50 p-3 text-[10px] font-bold leading-relaxed text-amber-950">
-                      O estoque de peças do catálogo não será alterado, pois esta camisa foi cadastrada como produto personalizado. Estampas selecionadas no catálogo continuam com baixa automática pelo código/variante e pela medida escolhida; artes próprias ficam sem baixa de estampa.
-                    </div>
-                  ) : (
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <label className="flex items-start gap-3 p-3 bg-white border border-black/5 hover:border-[#eab308] cursor-pointer transition-colors relative">
                       <input 
@@ -4546,7 +4542,7 @@ Total: R$ ${totalSum.toFixed(2)}`;
                       <div className="flex-1">
                         <span className="text-xs font-black uppercase block text-black">🔘 Movimentar Estoque</span>
                         <p className="text-[9px] text-gray-400 font-bold uppercase mt-1 leading-normal">
-                          Subtrai as quantidades do estoque. Atualiza inventário, saldo disponível e produtos com baixo estoque. Registra movimentação no histórico.
+                          Reserva as peças prontas ou as camisas lisas compartilhadas. A camisa lisa é consumida ao entrar na estamparia; a estampa é encomendada após a venda.
                         </p>
                       </div>
                     </label>
@@ -4568,7 +4564,7 @@ Total: R$ ${totalSum.toFixed(2)}`;
                       </div>
                     </label>
                   </div>
-                  )}
+
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-12 gap-4">

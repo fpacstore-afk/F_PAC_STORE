@@ -73,6 +73,7 @@ import { fetchPublicStamps } from "../services/publicStamps";
 import { fetchPublicProducts, subscribePublicProductSnapshot } from "../services/publicProducts";
 
 interface Product {
+  stockBaseSlug?: string;
   id: string;
   name: string;
   slug: string;
@@ -563,6 +564,7 @@ export default function ProductDetail() {
     selectedColor && selectedSize
       ? `${selectedColor}_${selectedSize}`
       : undefined;
+  const madeToOrderProduct = Boolean(product?.stockBaseSlug);
   const stockCount = product
     ? getStock(product.slug, currentVariantKey, product.parentSlug)
     : 0;
@@ -2792,6 +2794,7 @@ export default function ProductDetail() {
               })()}
 
 
+              {madeToOrderProduct && <div className="border border-amber-200 bg-amber-50 p-3 rounded-xl text-xs text-amber-950"><strong>Produzido sob encomenda</strong><p className="mt-1">A disponibilidade considera as camisas lisas por cor e tamanho. Peças já estampadas são atendidas primeiro; as demais seguem para personalização. Confirme o prazo de produção com a F PAC antes de comprar.</p></div>}
               {/* Quantity Selector */}
               <div className="space-y-2.5 bg-white border border-neutral-100 p-4 rounded-2xl">
                 <div className="flex justify-between items-center">
