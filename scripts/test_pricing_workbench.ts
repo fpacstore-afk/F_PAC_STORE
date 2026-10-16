@@ -64,7 +64,7 @@ await test('DTF rounds whole meters and applies inclusive purchase tiers, not ga
     assert.equal(result.dtf.purchaseMeters,meters);
     assert.equal(result.dtf.pricePerMeter,rate);
     assert.equal(result.dtf.purchaseCost,meters * rate);
-    assert.equal(result.items[0].components[1].unitCost,rate / 20);
+    assert.ok(Math.abs(result.items[0].components[1].unitCost! - rate / 20) < 1e-9);
   }
   // A 60 cm sheet becomes a whole-meter purchase, but cost still uses consumed material.
   assert.equal(dtfPurchase([item],catalog).purchaseMeters,1);
