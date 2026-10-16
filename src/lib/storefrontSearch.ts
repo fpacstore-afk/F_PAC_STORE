@@ -6,6 +6,7 @@ export function matchesStorefrontSearch(product: any, query: string): boolean {
   const searchable = normalize([
     product.name, product.sku, product.headline, product.collection, product.category,
     product.productType, product.baseModel, product.description, ...(Array.isArray(product.tags) ? product.tags : []),
+    ...(Array.isArray(product.searchAliases) ? product.searchAliases : []),
   ].join(' '));
   return words.every(word => searchable.includes(word));
 }

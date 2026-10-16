@@ -15,6 +15,9 @@ const nestedFields: Record<string, string[]> = {
   sizeChart: ['size', 'length', 'width', 'sleeve', 'notes'],
 };
 const scalar = (value: unknown) => value === null || ['string', 'boolean'].includes(typeof value) || (typeof value === 'number' && Number.isFinite(value));
+const publicStampIds = (value: unknown): string[] => Array.isArray(value)
+  ? value.filter((id): id is string => typeof id === 'string' && /^[\w-]{1,150}$/.test(id)).slice(0, 5)
+  : [];
 
 /** Whitelist at every nesting level: costs, suppliers and arbitrary metadata never pass through. */
 export function projectPublicProduct(id: string, source: Record<string, any>) {
@@ -22,6 +25,13 @@ export function projectPublicProduct(id: string, source: Record<string, any>) {
   const item: Record<string, any> = { id };
   for (const field of scalarFields) if (source[field] !== undefined && scalar(source[field])) item[field] = source[field];
   item.status = normalizeProductStatus(source.status);
+  // Only public artwork identifiers, never print sizes, usage, costs or stock-bearing recipes.
+  if (Array.isArray(source.stampIds)) item.stampIds = publicStampIds(source.stampIds);
+  if (source.stampIdsByColor && typeof source.stampIdsByColor === 'object' && !Array.isArray(source.stampIdsByColor)) {
+    item.stampIdsByColor = Object.fromEntries(Object.entries(source.stampIdsByColor)
+      .filter(([color, ids]) => color.length <= 80 && Array.isArray(ids))
+      .slice(0, 64).map(([color, ids]) => [color, publicStampIds(ids)]));
+  }
   for (const field of listFields) if (Array.isArray(source[field])) item[field] = source[field].filter((v: unknown) => typeof v === 'string');
   for (const [field, allowed] of Object.entries(nestedFields)) {
     if (!Array.isArray(source[field])) continue;

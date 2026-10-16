@@ -1,4 +1,5 @@
 import { getDb } from '../firebase.js';
+import { getStampDisplayName, getStampSearchAliases } from '../../shared/stampDisplayNames.js';
 
 export type PublicStamp = {
   id: string;
@@ -41,14 +42,14 @@ export function toPublicStamp(id: string, data: any): PublicStamp | null {
   return {
     id,
     code: String(data?.code || `EST-${id.slice(0, 4).toUpperCase()}`),
-    name: String(data?.name || 'Estampa Sem Nome').trim() || 'Estampa Sem Nome',
+    name: getStampDisplayName({ id, name: data?.name }) || 'Estampa Sem Nome',
     category: String(data?.category || 'Frases'),
     collection: String(data?.collection || 'MARK'),
     compatibleProducts: Array.isArray(data?.compatibleProducts) && data.compatibleProducts.length
       ? data.compatibleProducts.map((value: unknown) => String(value).trim()).filter(Boolean)
       : ['Todos os produtos'],
     theme: String(data?.theme || 'Streetwear'),
-    tags: Array.isArray(data?.tags) ? data.tags.map((value: unknown) => String(value)) : [],
+    tags: getStampSearchAliases({ id, name: data?.name, tags: data?.tags }),
     description: String(data?.description || ''),
     pngUrl,
     mockupUrl,

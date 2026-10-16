@@ -159,7 +159,8 @@ export default function ModelStamps() {
       const headlineMatch = (p.headline || '').toLowerCase().includes(searchLower);
       const descMatch = (p.description || '').toLowerCase().includes(searchLower);
       const parentMatch = (p.parentSlug || '').toLowerCase().includes(searchLower);
-      if (!nameMatch && !headlineMatch && !descMatch && !parentMatch) return false;
+      const aliasMatch = (p.searchAliases || []).some((alias: string) => alias.toLowerCase().includes(searchLower));
+      if (!nameMatch && !headlineMatch && !descMatch && !parentMatch && !aliasMatch) return false;
     }
 
     // Campaign filter (promotions)
@@ -711,7 +712,7 @@ export default function ModelStamps() {
                           </h3>
                         </Link>
                         <p className="text-[9px] text-[#eab308] font-extrabold uppercase tracking-[0.25em] line-clamp-1">
-                          {product.headline || "COLEÇÃO EXCLUSIVA F PAC"}
+                          {product.name || product.headline || "COLEÇÃO EXCLUSIVA F PAC"}
                         </p>
                       </div>
 

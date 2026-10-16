@@ -243,6 +243,7 @@ export default function StampsGallery() {
 
                 {/* Card Action */}
                 <div className="p-2 md:p-3 border-t border-neutral-100 bg-white">
+                  <h2 className="mb-2 min-h-9 text-[10px] md:text-xs font-black leading-snug text-black break-words">{design.name}</h2>
                   <button
                     type="button"
                     onClick={() => setSelectedDesign(design)}
@@ -272,6 +273,7 @@ export default function StampsGallery() {
                   <StampMedia design={design} className="h-full w-full" imageClassName="object-contain p-2" />
                 </button>
 
+                <h2 className="flex-1 text-sm font-black text-black break-words">{design.name}</h2>
                 <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
                   <button
                     onClick={() => setSelectedDesign(design)}
@@ -314,6 +316,7 @@ export default function StampsGallery() {
               {/* Close Button */}
               <button
                 onClick={() => setSelectedDesign(null)}
+                aria-label="Fechar informações da estampa"
                 className="absolute top-3 right-3 z-10 bg-black hover:bg-neutral-800 text-white p-1.5 cursor-pointer"
               >
                 <X size={16} />
@@ -334,9 +337,8 @@ export default function StampsGallery() {
                     <span className="text-[10px] text-[#ca8a04] font-mono font-bold uppercase tracking-widest block">
                       {selectedDesign.category}
                     </span>
-                    <h2 className="text-xl font-black uppercase tracking-tight text-black font-mono">
-                      SKU: {selectedDesign.code}
-                    </h2>
+                    <h2 className="text-xl font-black tracking-tight text-black">{selectedDesign.name}</h2>
+                    <p className="mt-1 text-[10px] text-neutral-500 font-mono">SKU: {selectedDesign.code}</p>
                   </div>
 
                   {/* Visual Metadata */}

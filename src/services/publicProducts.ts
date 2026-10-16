@@ -1,5 +1,7 @@
 import { getPublicApiUrl } from '../lib/api';
 import { createCachedRequest } from '../../shared/cachedRequest';
+import { fetchPublicStamps } from './publicStamps';
+import { withStorefrontProductNames } from '../lib/productTitles';
 
 type Catalog = { products: any[]; primeBases: any[]; availability: Record<string, any> };
 type Subscriber = { next: (catalog: Catalog) => void; error?: (error: Error) => void };
@@ -7,11 +9,14 @@ const subscribers = new Set<Subscriber>();
 let timer: ReturnType<typeof setInterval> | null = null;
 
 export const fetchPublicCatalog = createCachedRequest<Catalog>(async () => {
-  const response = await fetch(getPublicApiUrl('/api/products'), { headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(15_000) });
+  const [response, { stamps }] = await Promise.all([
+    fetch(getPublicApiUrl('/api/products'), { headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(15_000) }),
+    fetchPublicStamps().catch(() => ({ stamps: [] })),
+  ]);
   if (!response.ok) throw new Error('Não foi possível atualizar o catálogo. Tente novamente em instantes.');
   const payload = await response.json();
   if (!Array.isArray(payload?.products) || !payload.availability || typeof payload.availability !== 'object' || Array.isArray(payload.availability)) throw new Error('Resposta de catálogo incompleta.');
-  return { products: payload.products, primeBases: Array.isArray(payload.primeBases) ? payload.primeBases : [], availability: payload.availability };
+  return { products: withStorefrontProductNames(payload.products, stamps), primeBases: Array.isArray(payload.primeBases) ? payload.primeBases : [], availability: payload.availability };
 });
 
 export const fetchPublicProducts = () => fetchPublicCatalog().then(data => data.products).catch(() => []);
