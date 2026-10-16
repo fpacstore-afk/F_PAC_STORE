@@ -1,4 +1,6 @@
 import { PrimeOrderPlacements } from './PrimeOrderPlacements';
+import { ProductionNotificationStatus } from './ProductionNotificationStatus';
+import { useProductionNotificationSettings } from '../hooks/useProductionNotificationSettings';
 import { ManualCustomOrderEditor } from './admin/ManualCustomOrderEditor';
 import { MockupApprovalPanel } from './admin/MockupApprovalPanel';
 import { OrderCustomerEditor, OrderCustomerDetails } from './admin/OrderCustomerEditor';
@@ -62,22 +64,10 @@ export const OrderProductionDrawer: React.FC<OrderProductionDrawerProps> = ({
   const [selectedShippingService, setSelectedShippingService] = useState(order.shippingServiceId || 2);
   const [notifyWaOnStageChange, setNotifyWaOnStageChange] = useState(true);
   const [notifyEmailOnStageChange, setNotifyEmailOnStageChange] = useState(true);
-  const [notificationTemplates, setNotificationTemplates] = useState<Record<string, string>>(DEFAULT_STAGE_TEMPLATES);
+  const notificationSettings = useProductionNotificationSettings();
+  const notificationTemplates = notificationSettings.data?.templates || DEFAULT_STAGE_TEMPLATES;
 
-  useEffect(() => {
-    let isActive = true;
-    authenticatedFetch('/api/automation/production-settings', {
-      headers: { Accept: 'application/json' }
-    }).then(res => parseApiJson<any>(res)).then(data => {
-      if (isActive && data?.templates && typeof data.templates === 'object') {
-        setNotificationTemplates({ ...DEFAULT_STAGE_TEMPLATES, ...data.templates });
-      }
-    }).catch(error => console.warn('Could not load production notification templates:', error));
-    return () => { isActive = false; };
-  }, [order.id]);
-  
   // Notification communication card states
-  const [isSendingNotif, setIsSendingNotif] = useState(false);
   const [isPreviewMessageOpen, setIsPreviewMessageOpen] = useState(false);
   const [previewMessageText, setPreviewMessageText] = useState('');
 
@@ -140,12 +130,6 @@ export const OrderProductionDrawer: React.FC<OrderProductionDrawerProps> = ({
   const currentStage = getStageFromStatus(order.production?.status || order.productionStatus || order.status || 'waiting');
   const currentStageIndex = PRODUCTION_STAGES.findIndex(s => s.id === currentStage.id);
 
-  // Latest notification sent data
-  const sentNotifs = order.sentStageNotifications || {};
-  const currentStageNotif = sentNotifs[currentStage.id];
-  const lastLogs = Array.isArray(order.notificationLogs) ? order.notificationLogs : [];
-  const latestLog = lastLogs.find((log: any) => log.stageId === currentStage.id);
-
   const handleStageChange = async (newStage: ProductionStage) => {
     setIsUpdatingStatus(true);
     try {
@@ -166,36 +150,9 @@ export const OrderProductionDrawer: React.FC<OrderProductionDrawerProps> = ({
     notificationTemplates
   );
 
-  const handleManualResendNotification = async () => {
-    setIsSendingNotif(true);
-    try {
-      const res = await authenticatedFetch('/api/automation/stage-notification', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          orderId: order.id,
-          newStageId: currentStage.id,
-          previousStageId: currentStage.id,
-          changedBy: 'Operador (Reenvio Manual)',
-          forceResend: false
-        })
-      });
-
-      const data = await parseApiJson<any>(res);
-      if (res.ok && data.success) {
-        toast(`WhatsApp: ${data.whatsappStatus || 'não enviado'} · E-mail: ${data.emailStatus || 'não enviado'}`, { duration: 8000 });
-      } else {
-        toast.error(`Falha ao reenviar: ${data.reason || 'Erro no servidor'}`);
-      }
-    } catch (error: any) {
-      toast.error('Erro ao conectar com o servidor para reenviar.');
-    } finally {
-      setIsSendingNotif(false);
-    }
-  };
-
   const handleOpenWhatsAppManual = () => {
     try {
+      if (!notificationSettings.data) throw new Error(notificationSettings.error || 'Aguarde a conferência da configuração dos avisos.');
       const phone = String(order.customerPhone || order.phone || order.customer?.phone || order.customer?.phone2 || '');
       window.open(manualWhatsAppUrl(phone, getCompiledMessage()), '_blank', 'noopener,noreferrer');
       toast('WhatsApp aberto com a mensagem pronta. Confira e toque em Enviar.');
@@ -635,14 +592,7 @@ export const OrderProductionDrawer: React.FC<OrderProductionDrawerProps> = ({
                     <span className="text-[9px] font-black uppercase tracking-wider text-[#eab308] flex items-center gap-1">
                       💬 Notificação ({currentStage.emoji})
                     </span>
-                    <span className={cn(
-                      "px-1 py-0.5 text-[7px] font-black uppercase rounded-2xs",
-                      latestLog?.whatsappStatus === 'Enviado' || currentStageNotif?.whatsappSent
-                        ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/40"
-                        : "bg-amber-500/20 text-amber-300 border border-amber-500/40"
-                    )}>
-                      {latestLog?.whatsappStatus || (currentStageNotif?.whatsappSent ? 'Enviado' : 'Pendente')}
-                    </span>
+
                   </div>
                   <p className="text-[8px] text-gray-300 font-mono line-clamp-2 mt-1.5 leading-tight">
                     {getCompiledMessage()}
@@ -650,28 +600,11 @@ export const OrderProductionDrawer: React.FC<OrderProductionDrawerProps> = ({
                 </div>
 
                 <div className="space-y-1 pt-1.5 border-t border-zinc-800">
-                  <div className="grid grid-cols-2 gap-1">
-                    <button
-                      type="button"
-                      onClick={handleManualResendNotification}
-                      disabled={isSendingNotif}
-                      className="bg-[#eab308] hover:bg-amber-400 text-black py-1.5 px-1 text-[8px] font-black uppercase tracking-wider flex items-center justify-center gap-1 transition-all cursor-pointer shadow-xs truncate"
-                      title="Envia a mensagem automaticamente via API"
-                    >
-                      {isSendingNotif ? <RefreshCw className="animate-spin" size={10} /> : <Send size={10} />}
-                      Reenviar avisos
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={handleOpenWhatsAppManual}
-                      className="bg-[#25D366] hover:bg-emerald-600 text-white py-1.5 px-1 text-[8px] font-black uppercase tracking-wider flex items-center justify-center gap-1 transition-all cursor-pointer shadow-xs truncate"
-                      title="Abre o WhatsApp com mensagem pronta"
-                    >
-                      <MessageCircle size={10} />
-                      Abrir WhatsApp
-                    </button>
-                  </div>
+                  {notificationSettings.error && <div role="alert" className="text-xs text-amber-200">
+                    <p>{notificationSettings.error}</p>
+                    <button type="button" onClick={() => void notificationSettings.refresh()} className="mt-2 min-h-11 rounded border border-amber-300 px-3 py-2">Conferir avisos novamente</button>
+                  </div>}
+                  <ProductionNotificationStatus order={order} settings={notificationSettings.data} dark />
 
                   <div className="flex gap-1">
                     <button

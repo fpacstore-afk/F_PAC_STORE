@@ -1,4 +1,5 @@
 import { ProductionNotificationStatus } from '../../ProductionNotificationStatus';
+import { useProductionNotificationSettings } from '../../../hooks/useProductionNotificationSettings';
 import { PrimeOrderPlacements } from '../../PrimeOrderPlacements';
 import React, { useState, useMemo } from 'react';
 import {
@@ -30,6 +31,8 @@ export const AdminProductionCenter: React.FC<AdminProductionCenterProps> = ({
   currentUserEmail = 'Admin',
   onRefreshOrders
 }) => {
+  const notificationSettings = useProductionNotificationSettings();
+
   // State
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedPriority, setSelectedPriority] = useState<string>('all');
@@ -421,6 +424,10 @@ export const AdminProductionCenter: React.FC<AdminProductionCenterProps> = ({
 
   return (
     <div className="space-y-6 pb-12 font-sans text-neutral-900">
+      {notificationSettings.error && <div role="alert" className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm">
+        <p>{notificationSettings.error}</p>
+        <button type="button" onClick={() => void notificationSettings.refresh()} className="mt-2 min-h-11 rounded border border-amber-500 px-3 py-2 font-bold">Conferir avisos novamente</button>
+      </div>}
 
       {/* 1. Header Banner & Key Indicators */}
       <div className="bg-neutral-900 text-white rounded-2xl p-6 shadow-xl border border-neutral-800">
@@ -441,7 +448,7 @@ export const AdminProductionCenter: React.FC<AdminProductionCenterProps> = ({
           <div className="flex items-center gap-2 shrink-0">
             {onRefreshOrders && (
               <button
-                onClick={onRefreshOrders}
+                onClick={() => { onRefreshOrders(); void notificationSettings.refresh(); }}
                 className="px-4 py-2.5 bg-neutral-800 hover:bg-neutral-700 text-white text-xs font-bold rounded-xl transition-all flex items-center gap-2 border border-neutral-700 cursor-pointer"
               >
                 <RefreshCw className="w-4 h-4 text-[#eab308]" />
@@ -713,7 +720,7 @@ export const AdminProductionCenter: React.FC<AdminProductionCenterProps> = ({
                           </div>
                         )}
 
-                        <ProductionNotificationStatus order={order} onRefresh={onRefreshOrders} />
+                        <ProductionNotificationStatus order={order} settings={notificationSettings.data} onRefresh={onRefreshOrders} />
 
                         {/* Items Summary */}
                         <div className="mt-2.5 pt-2 border-t border-neutral-100 space-y-1">
@@ -897,7 +904,7 @@ export const AdminProductionCenter: React.FC<AdminProductionCenterProps> = ({
                           </div>
                         )}
 
-                        <ProductionNotificationStatus order={order} onRefresh={onRefreshOrders} />
+                        <ProductionNotificationStatus order={order} settings={notificationSettings.data} onRefresh={onRefreshOrders} />
                         <div className="mt-3 text-xs space-y-1 bg-neutral-50 p-2.5 rounded-lg border border-neutral-200/60">
                           {Array.isArray(order.items) && order.items.map((item: any, idx: number) => (
                             <div key={idx} className="font-medium text-neutral-800">
