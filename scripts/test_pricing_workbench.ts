@@ -139,6 +139,20 @@ await test('DTF shows each art area cost separately from minimum purchase for on
   assert.equal(dtfPurchase([{ ...item, prints: [{ ...thirtyByForty, width: null }] }], fullDtf).materialCost, null);
   assert.equal(dtfPurchase([{ ...item, prints: [{ ...thirtyByForty, manualCost: 5 }] }], fullDtf).arts.length, 0);
 });
+await test('consumed material uses the same area cost in the item and artwork preview, even with grid waste', () => {
+  const consumed: Catalog = { ...fullDtf, rules: { ...fullDtf.rules, dtfCostBasis: 'consumed' } };
+  const line = { ...packedItem, prints: mixedPrints, quantity: 2 };
+  const result = calculateQuote({ ...ready, items: [line] },consumed);
+  const components = result.items[0].components.filter(component => component.name.startsWith('Estampa '));
+  assert.equal(components.length,mixedPrints.length);
+  components.forEach((component,index) => {
+    assert.equal(component.unitCost,result.dtf.arts[index].unitMaterialCost);
+    assert.match(component.source,/material aplicado por área/);
+  });
+  assert.ok(Math.abs(components.reduce((sum,component)=>sum+component.unitCost! * line.quantity,0)-result.dtf.materialCost!)<1e-9);
+  assert.ok(result.dtf.materialCost! < result.dtf.purchaseCost!);
+  assert.notEqual(components[0].unitCost,dtfCost(30,40,consumed.rules)!.unitCost);
+});
 await test('mixed sizes share the same sheet and purchase is allocated once across artwork', () => {
   const mixed = { ...ready, items: [{ ...ready.items[0], quantity: 1, prints: mixedPrints }] };
   const result = calculateQuote(mixed,fullDtf);
