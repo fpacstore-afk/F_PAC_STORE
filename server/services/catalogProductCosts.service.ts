@@ -1,4 +1,4 @@
-import { catalogProductCost } from '../../shared/catalogProductCost.js';
+import { catalogProductCost, productCostRecipeKey } from '../../shared/catalogProductCost.js';
 import { buildAutomaticCostMetadata } from '../../shared/productCostProfiles.js';
 
 const clean = (value: any) => JSON.parse(JSON.stringify(value));
@@ -20,7 +20,7 @@ export async function completeMissingProductCosts(db: any, actor: string) {
       if (!profile) return { id: productDoc.id, name: product.name || productDoc.id, reason: 'Modelo sem cotação individual compatível nos cadastros de precificação' };
       const now = new Date().toISOString();
       const next = clean({ productId: productDoc.id, slug: product.slug || '', costPrice: profile.unitCost, cost: profile.unitCost,
-        costCalculation: { ...buildAutomaticCostMetadata(profile, now), catalogVersion: config.data().version || 0 }, updatedAt: now });
+        costCalculation: { ...buildAutomaticCostMetadata(profile, now), catalogVersion: config.data().version || 0, productRecipeKey: productCostRecipeKey(product) }, updatedAt: now });
       tx.set(db.collection('product_cost_events').doc(), { type: 'complete_missing', productId: productDoc.id, before: clean(cost || {}), after: next, actor, createdAt: now });
       tx.set(costRef, next, { merge: true });
       return 'updated';

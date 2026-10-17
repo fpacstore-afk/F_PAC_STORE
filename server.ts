@@ -57,7 +57,7 @@ import {
 } from "./server/middleware/rateLimiter.js";
 import { validateSheetSyncPayload } from "./server/utils/sheetValidation.js";
 import { buildAutomaticCostMetadata, inferProductCostSelector, resolveProductCostProfile } from "./shared/productCostProfiles.js";
-import { catalogProductCost } from './shared/catalogProductCost.js';
+import { catalogProductCost, productCostRecipeKey } from './shared/catalogProductCost.js';
 import { completeMissingProductCosts } from './server/services/catalogProductCosts.service.js';
 import { recordAuditLog } from "./server/utils/auditLogger.js";
 import { migrateOrdersToCanonical } from "./server/services/migration.service.js";
@@ -1521,12 +1521,14 @@ apiRouter.put("/admin/product-costs/:productId", adminApiLimiter, authenticateAd
       ]);
       if (!productDoc.exists) throw new Error('Produto não encontrado para o custo.');
       const existingCost = Number(existing.data()?.costPrice ?? existing.data()?.cost);
-      const keepRecorded = existingCost > 0 && numericCost === existingCost && req.body?.costCalculation?.method !== 'catalog_recipe_v1';
+      const keepRecorded = existingCost > 0 && numericCost === existingCost
+        && (!existing.data()?.costCalculation?.productRecipeKey || existing.data().costCalculation.productRecipeKey === productCostRecipeKey(productDoc.data()));
+      if (keepRecorded) payload.costCalculation = existing.data()?.costCalculation || payload.costCalculation;
       const automatic = !keepRecorded && (numericCost === null || numericCost === 0 || req.body?.costCalculation?.method === 'catalog_recipe_v1');
       const profile = automatic && config.data()?.catalog ? catalogProductCost(config.data().catalog, productDoc.data()) : null;
       if (profile) {
         payload.costPrice = profile.unitCost; payload.cost = profile.unitCost;
-        payload.costCalculation = JSON.parse(JSON.stringify({ ...buildAutomaticCostMetadata(profile), catalogVersion: config.data().version || 0 }));
+        payload.costCalculation = JSON.parse(JSON.stringify({ ...buildAutomaticCostMetadata(profile), catalogVersion: config.data().version || 0, productRecipeKey: productCostRecipeKey(productDoc.data()) }));
       }
       tx.set(ref, payload, { merge: true });
     });

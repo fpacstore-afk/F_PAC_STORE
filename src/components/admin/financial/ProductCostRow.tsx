@@ -103,7 +103,7 @@ export function ProductRow({ prod, onUpdate, onDelete }: ProductRowProps) {
             />
          </div>
          {hasAutomaticCost && (
-           <span className="ml-2 text-[7px] font-black text-emerald-700 uppercase tracking-wider">Planilha</span>
+           <span className={`ml-2 text-[7px] font-black uppercase tracking-wider ${prod.costCalculation?.coverage === 'partial' ? 'text-amber-700' : 'text-emerald-700'}`}>{prod.costCalculation?.coverage === 'partial' ? 'Estimativa parcial' : 'Planilha'}</span>
          )}
       </td>
 
