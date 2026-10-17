@@ -25,6 +25,7 @@ export type ItemInput = {
   manualGarmentCost: number | null; manualSalePrice: number | null; description: string;
 };
 export type QuoteInput = {
+  title?: string;
   customer: string; contact: string; items: ItemInput[]; discount: number; surcharge: number;
   shipping: number | null; shippingLabel: string; payment: string; deadline: string; validUntil: string; notes: string;
   dtfPurchaseMeters?: number | null;
@@ -222,6 +223,7 @@ export function validateCatalog(value: any): asserts value is Catalog {
 }
 
 export function validateQuote(value: any): asserts value is QuoteInput {
+  if (value?.title != null && (typeof value.title !== 'string' || value.title.length > 300)) throw new Error('Nome do projeto inválido (máximo 300 caracteres).');
   if (!value || !Array.isArray(value.items) || value.items.length > 60) throw new Error('Orçamento inválido (máximo 60 itens).');
   for (const k of ['customer','contact','shippingLabel','payment','deadline','validUntil','notes']) if (typeof value[k] !== 'string' || value[k].length > 5000) throw new Error(`Campo inválido: ${k}.`);
   for (const k of ['discount','surcharge','shipping']) if (value[k] != null && !known(value[k])) throw new Error(`Valor inválido: ${k}.`);

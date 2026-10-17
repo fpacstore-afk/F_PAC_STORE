@@ -4,15 +4,17 @@ Acesse `/gestao?tab=pricing` com uma conta administradora.
 
 ## Uso
 
-- **Visão geral:** busca por produto, material, fornecedor e cotação; atalhos e pendências.
-- **Cadastros:** produtos/fichas, preços por fornecedor/linha/quantidade, estampas, insumos, fornecedores e fretes. Edite ou desative sem apagar o histórico. Custos podem ser específicos por cor e tamanho.
-- **Calcular peça:** escolha ficha, linha, cor, tamanho e quantidade. Adicione estampas e custos aplicáveis; confira a memória de cálculo e adicione ao orçamento. A quantidade da faixa comercial é a deste item, não a soma de produtos diferentes.
-- **Calcular estampa:** adicione uma ou mais artes e confira o custo individual do material, a soma das artes, a compra mínima e a precificação. A quantidade vale igualmente para todas as artes desta consulta; use linhas separadas no orçamento para quantidades diferentes. Valor fixo/manual e adicionais aparecem no resumo de custos. A projeção de venda exige margem e taxa conhecidas.
-- **Orçamento atual:** cliente, itens, frete/retirada, desconto, acréscimo, condições, prazo, validade e observações. Salve rascunhos incompletos; finalize somente com preços e frete definidos. Finalizados são imutáveis; duplique para preparar outra proposta.
-- **Versão cliente / PDF:** prévia comercial com botão de impressão/salvar PDF. Custos, fornecedores, fontes e margens não entram nesse documento. Nada é enviado automaticamente.
-- **Orçamentos salvos:** pesquisa por cliente/produto, data e situação. Carregue registros anteriores para pesquisar além da primeira página. Abrir preserva os valores históricos; duplicar recalcula pelos cadastros atuais.
-- **Histórico:** versões anteriores de cadastros e propostas. É possível baixar cada versão interna.
-- **Configurações:** folha DTF, espaçamento, margem/taxa inicial, prazo e número de dias para avisar sobre cotação antiga.
+A página tem exatamente três abas principais:
+
+- **Histórico:** pesquisa por projeto, cliente e produto, com filtros de data e situação. Abrir mantém os valores da versão salva. **Usar como base** cria uma nova proposta com os preços dos cadastros atuais, preservando a anterior. Registros antigos continuam disponíveis, mesmo sem nome de projeto.
+- **Montar orçamento:** preencha cliente/contato e entrega, depois adicione as peças em sequência. Cada item reúne produto/fornecedor, linha, cor, tamanho, quantidade e suas próprias estampas. Produtos diferentes ficam na mesma tela. Duplicar mantém as informações para editar uma nova variação; remover permite desfazer. Margem, taxa, custo manual, adicionais e composição do custo ficam nos detalhes do item. Um preço de venda manual substitui a sugestão e gera aviso quando não cobre custo e taxa conhecidos. Valores ausentes continuam pendentes. O resumo acompanha os itens; os botões de salvar, finalizar e gerar PDF ficam ao final da página. O nome do projeto é interno, opcional e limitado a 300 caracteres.
+- **Calculadora de estampas:** cada linha tem largura, altura e quantidade independente. Todas as linhas compartilham o encaixe físico com rotação e espaçamento. A prévia destaca as medidas e quantas vezes cada folha deve ser repetida. O resumo separa material aplicado, metros estimados, metros de compra, preço por metro e desembolso. É possível ajustar a compra em metros inteiros, com aviso se ficar abaixo da estimativa, ou voltar ao cálculo automático. A sugestão de venda do DTF segue margem/taxa e a base de custo configuradas, sem incluir peça e aplicação. As medidas permanecem ao alternar as três abas durante a sessão.
+
+O botão **Cadastros e ajustes** abre produtos/fichas, preços por fornecedor/linha/quantidade, estampas, insumos, fornecedores e fretes, além da consulta de preços, regras, importação/backup e histórico de alterações. Todos os cadastros, referências e coleções existentes são reutilizados.
+
+Salve rascunhos incompletos; finalize com cliente, preços e frete definidos. Finalizados preservam seus valores; use uma cópia para alterar. O botão **Cliente aprovou · criar pedido** reaproveita os itens, valores e detalhes de estampas na estrutura existente de pedidos e produção. A conversão permanece idempotente e o pagamento começa pendente. Artes e entrega podem ser completadas no pedido.
+
+A **Versão cliente / PDF** usa a prévia comercial e o botão de impressão/salvar PDF. Custos, fornecedores, margem, título interno e mapa de encaixe não entram no documento. Nada é enviado automaticamente.
 
 ## Importação
 

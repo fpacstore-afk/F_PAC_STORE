@@ -27,6 +27,23 @@ await test('DTF chooses rotated grid, rejects unknowns and oversize', () => {
   assert.equal(dtfCost(80,80,catalog.rules), null);
   assert.equal(dtfCost(10,20,{ ...catalog.rules, gap: null }), null);
 });
+await test('quick simulation preserves independent quantities for each artwork size', () => {
+  const reference: Catalog = { ...catalog, rules: { ...catalog.rules, sheetWidth: 59, sheetHeight: 100, sheetCost: 65, gap: .5 } };
+  const groups = [
+    { quantity: 4, prints: [{ stampId: 'dtf', width: 30, height: 40, position: 'Simulação', manualCost: null }] },
+    { quantity: 2, prints: [{ stampId: 'dtf', width: 10, height: 10, position: 'Simulação', manualCost: null }] },
+  ];
+  const purchase = dtfPurchase(groups, reference);
+  assert.deepEqual(purchase.arts.map(art => art.quantity), [4, 2]);
+  assert.equal(purchase.estimatedMeters, 2);
+  assert.equal(purchase.purchaseCost, 130);
+  assert.equal(purchase.packing!.layouts.reduce((total, layout) => total + layout.repeat * layout.rectangles.length, 0), 6);
+  assert.ok(Math.abs(purchase.arts[0].unitMaterialCost! - 30 * 40 / 5900 * 65) < 1e-9);
+  const adjusted = dtfPurchase(groups, reference, 1);
+  assert.equal(adjusted.estimatedMeters, 2);
+  assert.equal(adjusted.purchaseMeters, 1);
+  assert.ok(adjusted.warnings.some(warning => warning.includes('menor')));
+});
 await test('missing labor is not zero; explicit zero restores complete calculation', () => {
   const r = calculateItem(item,catalog); assert.equal(r.cost,null); assert.equal(r.suggested,null); assert.equal(r.margin,null); assert.equal(r.knownSubtotal,15);
   const c = structuredClone(catalog); c.entries.find(e => e.id === 'labor')!.cost = 0;
@@ -315,6 +332,19 @@ try {
     assert.ok(final.data.result.dtf.packing.layouts.length);
     assert.deepEqual((await request('/quotes/mixed-layout')).data.result,final.data.result);
     assert.doesNotMatch(customerHtml(mixed,final.data.result,'MIXED'),/packing|rectangles|rateio|purchaseCost|Fornecedor interno/);
+  });
+  await test('project titles survive save and history search without entering the customer PDF', async () => {
+    const titled = { ...ready, title: 'Projeto interno de uniformes' };
+    const saved = await request('/quotes/project-title','PUT',{ input: titled, expectedVersion: 0, catalogVersion: 5, status: 'draft' });
+    assert.equal(saved.status, 200);
+    assert.equal((await request('/quotes/project-title')).data.input.title, titled.title);
+    const summary = (await request()).data.quotes.find((quote: any) => quote.id === 'project-title');
+    assert.equal(summary.title, titled.title);
+    assert.equal((await request()).data.quotes.find((quote: any) => quote.id === 'q').title, '');
+    assert.doesNotMatch(customerHtml(titled, saved.data.result, 'TITLE'), /Projeto interno de uniformes/);
+    for (const title of [123, 'x'.repeat(301)]) {
+      assert.equal((await request('/quotes/invalid-title','PUT',{ input: { ...ready, title }, expectedVersion: 0, catalogVersion: 5, status: 'draft' })).status, 400);
+    }
   });
 } finally { await new Promise<void>(resolve => server.close(() => resolve())); resetAuthForTesting(); }
 console.log(`${count} pricing workbench regressions passed.`);

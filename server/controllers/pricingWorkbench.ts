@@ -9,7 +9,7 @@ const bounded = (value: any, limit = 700000) => {
   if (Buffer.byteLength(JSON.stringify(value)) > limit) throw new Error('Registro muito grande. Divida os dados em registros menores.');
 };
 function conflict(message: string): never { throw Object.assign(new Error(message), { status: 409 }); }
-const quoteSummary = (d: any) => { const q = d.data(); return { id: d.id, version: q.version, status: q.status, customer: q.input.customer, updatedAt: q.updatedAt, total: q.result.total, products: q.result.items.map((i: any) => i.product?.name || '').join(' ') }; };
+const quoteSummary = (d: any) => { const q = d.data(); return { id: d.id, version: q.version, status: q.status, title: q.input.title || '', customer: q.input.customer, updatedAt: q.updatedAt, total: q.result.total, products: q.result.items.map((i: any) => i.product?.name || '').join(' ') }; };
 async function page(db: any, collection: string, field: string, size: number, after?: unknown) {
   let query = db.collection(collection).orderBy(field, 'desc');
   if (after) {
