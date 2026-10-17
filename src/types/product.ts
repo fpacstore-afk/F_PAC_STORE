@@ -95,6 +95,8 @@ export interface Product {
     coverage: 'complete' | 'partial';
     pendingComponents?: string[];
     calculatedAt: string;
+    method?: 'catalog_recipe_v1';
+    components?: { name: string; unitCost: number; source: string }[];
   };
 
   // Taxonomy: category describes the garment type; collection describes the commercial line.

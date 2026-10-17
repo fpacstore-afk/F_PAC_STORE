@@ -110,7 +110,22 @@ export function AdminStockCenter() {
       setStockDesigns(snapshot.docs.map(item => ({ ...item.data(), id: item.id })));
     }, () => toast.error('Não foi possível carregar os nomes das estampas. As referências continuam disponíveis.'));
   }, [isAdmin]);
-  const { costsByProductId } = usePrivateProductCosts();
+  const { costsByProductId, refresh: refreshProductCosts } = usePrivateProductCosts();
+  const [completingCosts, setCompletingCosts] = useState(false);
+  const [costCompletion, setCostCompletion] = useState<{ updated: number; preserved: number; unresolved: { id: string; name: string; reason: string }[] } | null>(null);
+  const handleCompleteCosts = async () => {
+    setCompletingCosts(true);
+    try {
+      const response = await authenticatedFetch('/api/admin/product-costs/complete-missing', { method: 'POST' });
+      const result = await parseApiJson<any>(response);
+      if (!response.ok) throw new Error(result.error || 'Não foi possível preencher os custos.');
+      setCostCompletion(result);
+      await refreshProductCosts();
+      window.dispatchEvent(new CustomEvent('fpac:product-costs-changed'));
+      toast.success(`${result.updated} custos preenchidos; ${result.preserved} valores preservados.`);
+    } catch (error) { toast.error(error instanceof Error ? error.message : 'Falha ao preencher custos.'); }
+    finally { setCompletingCosts(false); }
+  };
   const products = useMemo(
     () => mergeProductsWithPrivateCosts(rawProducts, costsByProductId),
     [rawProducts, costsByProductId]
@@ -718,6 +733,9 @@ export function AdminStockCenter() {
           </div>
 
           <div className="flex flex-wrap gap-2">
+            <button onClick={handleCompleteCosts} disabled={completingCosts} className="bg-white/10 text-white hover:bg-white/20 disabled:opacity-50 px-3 py-2 text-[9px] font-black uppercase tracking-wider flex items-center gap-1.5 border border-white/20">
+              <RefreshCw size={13} /> {completingCosts ? 'Preenchendo custos...' : 'Preencher custos zerados'}
+            </button>
             <button
               onClick={() => importFileInputRef.current?.click()}
               className="bg-white/10 text-white hover:bg-white/20 transition-all px-3 py-2 text-[9px] font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer border border-white/20"
@@ -748,6 +766,10 @@ export function AdminStockCenter() {
 
       {/* 2. INDICATOR CARDS (KPIs) - ESTAMPAS STANDARD PATTERN */}
       <div className="max-w-7xl mx-auto px-4 md:px-8 -translate-y-3 relative z-20">
+        {costCompletion && <div role="status" className="mb-4 border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950">
+          <p>{costCompletion.updated} custos preenchidos com os cadastros de precificação. {costCompletion.preserved} valores existentes preservados. Os custos calculados são referências parciais; confira os componentes pendentes no produto.</p>
+          {costCompletion.unresolved.length > 0 && <p className="mt-2">Sem regra compatível: {costCompletion.unresolved.map(item => item.name).join(', ')}.</p>}
+        </div>}
         {productLoadError && <p role="alert" className="mb-4 border border-red-300 bg-red-50 p-4 text-sm text-red-900">Não foi possível carregar os produtos. Os números abaixo podem estar incompletos. Atualize a página e confira sua sessão.</p>}
         {!loadingProducts && !productLoadError && products.length === 0 && <p role="status" className="mb-4 border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950">Nenhum produto cadastrado foi encontrado. Registros antigos de estoque e pedidos são preservados, mas não criam produtos automaticamente na loja.</p>}
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">

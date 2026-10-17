@@ -11,6 +11,8 @@ export interface ProductCostProfile {
   sourceLabel?: string;
   sourceUpdatedAt?: string;
   active?: boolean;
+  components?: { name: string; unitCost: number; source: string }[];
+  method?: 'catalog_recipe_v1';
 }
 
 export interface ProductCostSelector {
@@ -27,6 +29,8 @@ export interface ProductCostCalculationMetadata {
   coverage: ProductCostCoverage;
   pendingComponents?: string[];
   calculatedAt: string;
+  components?: { name: string; unitCost: number; source: string }[];
+  method?: 'catalog_recipe_v1';
 }
 
 export function inferProductCostSelector(product: Record<string, any>): ProductCostSelector {
@@ -108,7 +112,8 @@ export function buildAutomaticCostMetadata(
     sourceUpdatedAt: profile.sourceUpdatedAt,
     coverage: profile.coverage,
     pendingComponents: profile.pendingComponents || [],
-    calculatedAt
+    calculatedAt,
+    ...(profile.method ? { method: profile.method, components: profile.components || [] } : {})
   };
 }
 
