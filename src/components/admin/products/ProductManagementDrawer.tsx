@@ -22,7 +22,7 @@ import { savePrivateProductCost } from '../../../services/productCostService';
 import { useProductCostProfiles } from '../../../hooks/useProductCostProfiles';
 import { useProductColorPresets } from '../../../hooks/useProductColorPresets';
 import { validateProductColorPreset } from '../../../../shared/productColorPresets';
-import { buildAutomaticCostMetadata, resolveProductCostProfile } from '../../../../shared/productCostProfiles';
+import { buildAutomaticCostMetadata } from '../../../../shared/productCostProfiles';
 import toast from 'react-hot-toast';
 import { normalizeDesignDocument } from '../../../lib/stampCatalog';
 import { hasSharedProductSlug, resolveProductStockSlug, readProductVariantQuantity, hasConflictingProductSku, normalizeProductSku } from '../../../../shared/productStockIdentity';
@@ -30,6 +30,7 @@ import { buildVariantStockChanges } from '../../../../shared/productStockChanges
 import { normalizeProductStatus } from '../../../../shared/productPublication';
 import { normalizePrimePrintSize } from '../../../../shared/primeArtworkSizing';
 import { completeEditableStampRecipe, readEditableStampRecipe } from '../../../../shared/productStampRecipeEditor';
+import { productCostRecipeKey } from '../../../../shared/catalogProductCost';
 import { categoryForBaseModel, getStockCategory, OVERSIZED_CATEGORY, TRADITIONAL_CATEGORY } from '../../../lib/stockCategory';
 
 interface ProductManagementDrawerProps {
@@ -168,7 +169,7 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
 }) => {
   const { formatMoney, formatPercent, maskFinancial, showFinancialValues } = useFinancialPrivacy();
   const { inventory, products: inventoryProducts } = useInventory({ administrative: true });
-  const { profiles: costProfiles, loading: costProfilesLoading, syncError: costProfilesSyncError, isUsingFallback } = useProductCostProfiles();
+  const { resolveForProduct, loading: costProfilesLoading, syncError: costProfilesSyncError, isUsingFallback } = useProductCostProfiles();
   const colorPresets = useProductColorPresets(isOpen);
   const lastAutomaticCostProfileId = useRef<string | null>(null);
   const [activeTab, setActiveTab] = useState<
@@ -383,11 +384,16 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
     }
   }, [initialProductFinish, product, isOpen]);
 
-  const automaticCostProfile = useMemo(() => resolveProductCostProfile(costProfiles, {
-    baseModel: formData.baseModel,
-    productFinish: formData.productFinish,
-    collection: formData.collection
-  }), [costProfiles, formData.baseModel, formData.productFinish, formData.collection]);
+  const automaticCostProfile = useMemo(() => {
+    const profile = resolveForProduct(formData);
+    // Opening/saving an unrelated field must not reprice a recorded cost.
+    if (product && Number(product.costPrice ?? product.cost) > 0 && productCostRecipeKey(product) === productCostRecipeKey(formData)) {
+      if (product.costCalculation?.mode !== 'automatic') return null;
+      return profile ? { ...profile, ...product.costCalculation, method: product.costCalculation.method, components: product.costCalculation.components,
+        sourceLabel: product.costCalculation.sourceLabel || 'Custo registrado', id: product.costCalculation.profileId || profile.id, unitCost: Number(product.costPrice ?? product.cost) } : null;
+    }
+    return profile;
+  }, [resolveForProduct, product, productCostRecipeKey(formData)]);
 
   // The cost is governed by the central profile whenever the selected product
   // attributes match one. Firestore snapshots make source changes appear here
@@ -1399,7 +1405,8 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
                         {automaticCostProfile.pendingComponents && automaticCostProfile.pendingComponents.length > 0 && (
                           <span className="block mt-1 text-amber-300/90">Pendente: {automaticCostProfile.pendingComponents.join(', ')}.</span>
                         )}
-                        {isUsingFallback && <span className="block mt-1">Base auditada local; a planilha conectada ainda não enviou perfis.</span>}
+                        {isUsingFallback && !automaticCostProfile.method && <span className="block mt-1">Base auditada local; a planilha conectada ainda não enviou perfis.</span>}
+                        {automaticCostProfile.components?.map((component, index) => <span key={index} className="block mt-1">{component.name}: {formatMoney(component.unitCost, { forceShow: true })}</span>)}
                       </div>
                     ) : (
                       <p className="mt-2 text-[9px] text-gray-500">

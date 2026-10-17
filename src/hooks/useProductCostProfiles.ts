@@ -1,6 +1,8 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { db } from '../lib/firebase';
+import { useOrderCostCatalog } from './useOrderCostCatalog';
+import { catalogProductCost } from '../../shared/catalogProductCost';
 import {
   AUDITED_FALLBACK_COST_PROFILES,
   ProductCostProfile,
@@ -9,6 +11,7 @@ import {
 } from '../../shared/productCostProfiles';
 
 export function useProductCostProfiles() {
+  const costCatalog = useOrderCostCatalog();
   const [remoteProfiles, setRemoteProfiles] = useState<ProductCostProfile[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [syncError, setSyncError] = useState(false);
@@ -37,11 +40,15 @@ export function useProductCostProfiles() {
     [remoteProfiles]
   );
 
+  const resolveForProduct = useCallback((selector: ProductCostSelector & Record<string, any>) => remoteProfiles
+    ? resolveProductCostProfile(profiles, selector) || catalogProductCost(costCatalog.catalog, selector)
+    : catalogProductCost(costCatalog.catalog, selector) || resolveProductCostProfile(profiles, selector), [costCatalog.catalog, profiles, remoteProfiles]);
+
   return {
     profiles,
-    loading,
-    syncError,
+    loading: loading || costCatalog.loading,
+    syncError: syncError || Boolean(costCatalog.error),
     isUsingFallback: remoteProfiles === null,
-    resolveForProduct: (selector: ProductCostSelector) => resolveProductCostProfile(profiles, selector)
+    resolveForProduct
   };
 }

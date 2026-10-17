@@ -50,7 +50,7 @@ import {
   getOrderPaymentStatus,
   getOrderTotal
 } from '../utils/orderFinancial';
-import { buildAutomaticCostMetadata, resolveProductCostProfile } from '../../shared/productCostProfiles';
+import { buildAutomaticCostMetadata } from '../../shared/productCostProfiles';
 
 export type FinancialPeriod = 'all' | 'today' | '7days' | 'current_month' | 'previous_month' | 'quarter' | 'year';
 
@@ -136,7 +136,7 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
   }, [initialSubTab]);
   
   const { inventory } = useInventory({ administrative: true });
-  const { profiles: costProfiles, loading: costProfilesLoading, isUsingFallback: isUsingCostFallback } = useProductCostProfiles();
+  const { resolveForProduct, loading: costProfilesLoading, isUsingFallback: isUsingCostFallback } = useProductCostProfiles();
   const lastNewProductAutomaticCostProfileId = useRef<string | null>(null);
   
   // Data States
@@ -184,11 +184,11 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
     collection: 'FORCE'
   });
 
-  const newProductAutomaticCost = useMemo(() => resolveProductCostProfile(costProfiles, {
+  const newProductAutomaticCost = useMemo(() => resolveForProduct({
     baseModel: newProdForm.baseModel,
     productFinish: newProdForm.productFinish,
     collection: newProdForm.collection
-  }), [costProfiles, newProdForm.baseModel, newProdForm.productFinish, newProdForm.collection]);
+  }), [resolveForProduct, newProdForm.baseModel, newProdForm.productFinish, newProdForm.collection]);
 
   useEffect(() => {
     if (!newProductAutomaticCost) {
@@ -1972,7 +1972,7 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
                            {costProfilesLoading
                              ? 'Consultando a fonte central de custos…'
                              : newProductAutomaticCost
-                               ? `Custo automático pela planilha · ${newProductAutomaticCost.coverage === 'complete' ? 'completo' : 'estimativa parcial'}${isUsingCostFallback ? ' · base auditada local' : ''}`
+                               ? `Custo automático pela planilha · ${newProductAutomaticCost.coverage === 'complete' ? 'completo' : 'estimativa parcial'}${isUsingCostFallback && !newProductAutomaticCost.method ? ' · base auditada local' : ''}`
                                : 'Sem perfil compatível na planilha; o custo fica disponível para preenchimento manual.'}
                          </p>
 

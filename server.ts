@@ -57,6 +57,8 @@ import {
 } from "./server/middleware/rateLimiter.js";
 import { validateSheetSyncPayload } from "./server/utils/sheetValidation.js";
 import { buildAutomaticCostMetadata, inferProductCostSelector, resolveProductCostProfile } from "./shared/productCostProfiles.js";
+import { catalogProductCost, productCostRecipeKey } from './shared/catalogProductCost.js';
+import { completeMissingProductCosts } from './server/services/catalogProductCosts.service.js';
 import { recordAuditLog } from "./server/utils/auditLogger.js";
 import { migrateOrdersToCanonical } from "./server/services/migration.service.js";
 import { assertShippingOrderEligible, isLocalDeliveryOrder, canTransitionShippingStatus, normalizeShippingStatus, isShippingStatus } from "./server/services/stateMachine.service.js";
@@ -1472,6 +1474,18 @@ apiRouter.get("/admin/product-costs", adminApiLimiter, authenticateAdmin, async 
   }
 });
 
+apiRouter.post('/admin/product-costs/complete-missing', adminApiLimiter, authenticateAdmin, async (req, res) => {
+  try {
+    const dbInstance = getDb();
+    if (!dbInstance) return res.status(503).json({ error: 'Banco de dados não disponível' });
+    res.setHeader('Cache-Control', 'private, no-store');
+    return res.json(await completeMissingProductCosts(dbInstance, (req as any).user?.uid || 'admin'));
+  } catch (error: any) {
+    logger.error(`❌ [PRODUCT-COSTS-COMPLETE] ${error.message}`);
+    return res.status(500).json({ error: 'Não foi possível concluir o preenchimento. Os custos já existentes foram preservados; tente novamente para completar os restantes.' });
+  }
+});
+
 apiRouter.put("/admin/product-costs/:productId", adminApiLimiter, authenticateAdmin, async (req, res) => {
   try {
     const productId = String(req.params.productId || '').trim();
@@ -1499,7 +1513,25 @@ apiRouter.put("/admin/product-costs/:productId", adminApiLimiter, authenticateAd
         : null,
       updatedAt: FieldValue.serverTimestamp()
     };
-    await dbInstance.collection('product_costs').doc(productId).set(payload, { merge: true });
+    await dbInstance.runTransaction(async (tx: any) => {
+      const ref = dbInstance.collection('product_costs').doc(productId);
+      const [productDoc, config, existing] = await Promise.all([
+        tx.get(dbInstance.collection('products').doc(productId)),
+        tx.get(dbInstance.collection('pricing_workbench').doc('catalog')), tx.get(ref)
+      ]);
+      if (!productDoc.exists) throw new Error('Produto não encontrado para o custo.');
+      const existingCost = Number(existing.data()?.costPrice ?? existing.data()?.cost);
+      const keepRecorded = existingCost > 0 && numericCost === existingCost
+        && (!existing.data()?.costCalculation?.productRecipeKey || existing.data().costCalculation.productRecipeKey === productCostRecipeKey(productDoc.data()));
+      if (keepRecorded) payload.costCalculation = existing.data()?.costCalculation || payload.costCalculation;
+      const automatic = !keepRecorded && (numericCost === null || numericCost === 0 || req.body?.costCalculation?.method === 'catalog_recipe_v1');
+      const profile = automatic && config.data()?.catalog ? catalogProductCost(config.data().catalog, productDoc.data()) : null;
+      if (profile) {
+        payload.costPrice = profile.unitCost; payload.cost = profile.unitCost;
+        payload.costCalculation = JSON.parse(JSON.stringify({ ...buildAutomaticCostMetadata(profile), catalogVersion: config.data().version || 0, productRecipeKey: productCostRecipeKey(productDoc.data()) }));
+      }
+      tx.set(ref, payload, { merge: true });
+    });
     return res.json({ success: true });
   } catch (error: any) {
     logger.error(`❌ [PRODUCT-COSTS-SAVE] ${error.message}`);

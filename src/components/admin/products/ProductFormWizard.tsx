@@ -12,7 +12,7 @@ import { db } from '../../../lib/firebase';
 import { doc, setDoc, updateDoc, addDoc, collection, serverTimestamp, deleteField } from 'firebase/firestore';
 import { cleanFirestoreData } from '../../../lib/utils';
 import { useProductCostProfiles } from '../../../hooks/useProductCostProfiles';
-import { buildAutomaticCostMetadata, resolveProductCostProfile } from '../../../../shared/productCostProfiles';
+import { buildAutomaticCostMetadata } from '../../../../shared/productCostProfiles';
 import { savePrivateProductCost } from '../../../services/productCostService';
 import toast from 'react-hot-toast';
 
@@ -33,7 +33,7 @@ export const ProductFormWizard: React.FC<ProductFormWizardProps> = ({
 }) => {
   const [activeTab, setActiveTab] = useState<'info' | 'mockups' | 'colors' | 'gallery' | 'videos' | 'stock' | 'seo'>('info');
   const [saving, setSaving] = useState(false);
-  const { profiles: costProfiles, loading: costProfilesLoading, isUsingFallback } = useProductCostProfiles();
+  const { resolveForProduct, loading: costProfilesLoading, isUsingFallback } = useProductCostProfiles();
   const lastAutomaticCostProfileId = useRef<string | null>(null);
 
   // Form State
@@ -103,11 +103,12 @@ export const ProductFormWizard: React.FC<ProductFormWizardProps> = ({
     }
   }, [initialProduct]);
 
-  const automaticCostProfile = useMemo(() => resolveProductCostProfile(costProfiles, {
+  const automaticCostProfile = useMemo(() => resolveForProduct({
+    ...formData,
     baseModel: formData.baseModel || (/oversized/i.test(`${formData.name || ''} ${(formData.specs || []).join(' ')}`) ? 'Oversized Premium 240GSM' : undefined),
     productFinish: formData.productFinish || 'printed',
     collection: formData.collection
-  }), [costProfiles, formData.baseModel, formData.name, formData.specs, formData.productFinish, formData.collection]);
+  }), [resolveForProduct, formData.baseModel, formData.name, formData.specs, formData.productFinish, formData.collection, formData.stampSizes, formData.stampSizesByColor]);
 
   useEffect(() => {
     if (!automaticCostProfile) {
@@ -443,7 +444,7 @@ export const ProductFormWizard: React.FC<ProductFormWizardProps> = ({
                   {costProfilesLoading
                     ? 'Consultando a fonte central de custos…'
                     : automaticCostProfile
-                      ? `Automático pela planilha · ${automaticCostProfile.coverage === 'complete' ? 'custo completo' : 'estimativa parcial'}${isUsingFallback ? ' · base auditada local' : ''}`
+                      ? `Automático pela planilha · ${automaticCostProfile.coverage === 'complete' ? 'custo completo' : 'estimativa parcial'}${isUsingFallback && !automaticCostProfile.method ? ' · base auditada local' : ''}`
                       : 'Sem perfil compatível; preenchimento manual.'}
                 </p>
               </div>
