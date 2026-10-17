@@ -6,6 +6,7 @@ import { reserveStock, releaseStockReservation, consumeStockReservation, checkSt
 import { loadPublicCatalog } from '../server/services/publicCatalog.service';
 import { transferGarmentsToProduction } from '../server/services/productionStock.service';
 import { reconcileSharedStockEdit } from '../server/services/sharedStockEdit.service';
+import { recordBulkStockMovement } from '../server/controllers/admin.controller';
 import { saveInventoryCount, getInventoryOverview } from '../server/controllers/inventoryCount.controller';
 
 const db = requireIsolatedTestDb();
@@ -115,3 +116,25 @@ const overview = response();
 await getInventoryOverview({ query: { reference: '2026-10' } } as any, overview as any);
 assert.equal(overview.body.latestCount.id, countRes.body.id);
 console.log('PASS shared pool across all designs, mixed variants, ready-first allocation, no print-stock gate, idempotency, production, cancellation, shipping, custom edits, cart limits and persistent monthly inventory with strict transaction ordering.');
+
+// Initial zeroing uses canonical bulk adjustments without pretending to count stock.
+const productsBeforeReset = (await db.collection('products').get()).docs.length;
+const ordersBeforeReset = (await db.collection('orders').get()).docs.length;
+const countsBeforeReset = (await db.collection('inventory_counts').get()).docs.length;
+const productionBeforeReset = (await db.collection('production_stock').get()).docs.length;
+const resetRequest = { body: { productSlug: 'blank', updates: [{ variantKey: 'Preto_M', quantity: 0 }, { variantKey: 'Marrom_G', quantity: 0 }], reason: 'Zeragem inicial — aguardando contagem física', idempotencyKey: 'initial-reset-test-001' }, user: { uid: 'isolated' } } as any;
+const resetResponse = response();
+await recordBulkStockMovement(resetRequest, resetResponse as any);
+assert.equal(resetResponse.statusCode, 200);
+assert.equal((await inv()).variants.Preto_M.physicalQuantity, 0);
+assert.equal((await inv()).variants.Marrom_G.availableQuantity, 0);
+const movementCount = (await db.collection('stock_movements').get()).docs.length;
+await recordBulkStockMovement(resetRequest, response() as any);
+assert.equal((await db.collection('stock_movements').get()).docs.length, movementCount, 'retry never duplicates the adjustment history');
+for (const [collection, expected] of [['products', productsBeforeReset], ['orders', ordersBeforeReset], ['inventory_counts', countsBeforeReset], ['production_stock', productionBeforeReset]] as const) assert.equal((await db.collection(collection).get()).docs.length, expected, `${collection} is preserved`);
+await db.collection('inventory').doc('reserved-base').set({ variants: { Preto_M: { ...variant(2), reservedQuantity: 1, availableQuantity: 1 } } });
+const reservedReset = response();
+await recordBulkStockMovement({ ...resetRequest, body: { ...resetRequest.body, productSlug: 'reserved-base', updates: [{ variantKey: 'Preto_M', quantity: 0 }], idempotencyKey: 'initial-reset-test-002' } }, reservedReset as any);
+assert.equal(reservedReset.statusCode, 400);
+assert.equal((await inv('reserved-base')).variants.Preto_M.physicalQuantity, 2);
+console.log('PASS initial bulk zeroing preserves catalog, orders, production, counts and audit idempotency, and protects active reservations.');

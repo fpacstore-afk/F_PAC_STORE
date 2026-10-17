@@ -5,7 +5,7 @@ import { ClipboardCheck, RefreshCw, Save, AlertTriangle, CheckCircle2, TrendingD
 import toast from 'react-hot-toast';
 import { db } from '../lib/firebase';
 import { useInventory } from '../hooks/useInventory';
-import { updateVariantStockInDb } from '../services/inventory/inventoryService';
+import { adjustMultipleVariantStocksInDb, updateVariantStockInDb } from '../services/inventory/inventoryService';
 
 type InventoryRow = {
   productSlug: string;
@@ -38,6 +38,8 @@ export function InventoryAuditCenter({ operator = 'Administrador' }: { operator?
   const [overviewError, setOverviewError] = useState('');
   const [latestCount, setLatestCount] = useState<any>(null);
   const [savingCount, setSavingCount] = useState(false);
+  const [resettingStock, setResettingStock] = useState(false);
+  const [resetProgress, setResetProgress] = useState('');
   const [movements, setMovements] = useState<StockMovement[]>([]);
 
   useEffect(() => onSnapshot(collection(db, 'stock_movements'), snapshot => {
@@ -45,14 +47,15 @@ export function InventoryAuditCenter({ operator = 'Administrador' }: { operator?
   }, () => setMovements([])), []);
 
   useEffect(() => {
+    if (resettingStock) return;
     let active = true;
     authenticatedFetch(`/api/admin/stock/inventory-overview?reference=${encodeURIComponent(reference)}`).then(async response => {
       const data = await parseApiJson<any>(response);
-      if (!response.ok) throw new Error(data.message);
+      if (!response.ok) throw new Error(data.message || data.error);
       if (active) { setProduction(data.production || []); setLatestCount(data.latestCount); setOverviewError(''); }
     }).catch(error => { if (active) setOverviewError(error.message || 'Inventário de produção indisponível.'); });
     return () => { active = false; };
-  }, [reference, inventory]);
+  }, [reference, inventory, resettingStock]);
 
   const rows = useMemo<InventoryRow[]>(() => {
     const knownProducts = new Map(products.map((product: any) => [String(product.slug || product.id), product]));
@@ -129,6 +132,38 @@ export function InventoryAuditCenter({ operator = 'Administrador' }: { operator?
   const countedRows = visibleRows.filter(row => counts[row.variantKey ? `${row.productSlug}:${row.variantKey}` : row.productSlug] !== undefined);
   const differences = countedRows.filter(row => numberOrZero(counts[`${row.productSlug}:${row.variantKey}`]) !== row.systemQuantity);
 
+  const resetStockForInitialCount = async () => {
+    if (rows.some(row => row.reservedQuantity > 0)) {
+      toast.error('Há peças reservadas. Confira os pedidos antes de reiniciar os saldos.');
+      return;
+    }
+    const pending = rows.filter(row => row.systemQuantity > 0);
+    if (!pending.length) { toast.success('Todos os produtos cadastrados já estão com saldo zero.'); return; }
+    if (!window.confirm(`Zerar os saldos de ${pending.length} variações em todos os produtos cadastrados? Os cadastros, pedidos, produção e histórico serão preservados. Esta operação não registra uma contagem física.`)) return;
+    const groups = new Map<string, InventoryRow[]>();
+    pending.forEach(row => groups.set(row.productSlug, [...(groups.get(row.productSlug) || []), row]));
+    setResettingStock(true);
+    setResetProgress('Preparando zeragem...');
+    let completed = 0;
+    try {
+      const reason = `Zeragem inicial para inventário ${reference} — aguardando contagem física — ${operator}`;
+      const operationId = `inventory-reset-${crypto.randomUUID()}`;
+      let batchIndex = 0;
+      for (const [slug, variants] of groups) {
+        for (let offset = 0; offset < variants.length; offset += 100) {
+          const batch = variants.slice(offset, offset + 100);
+          await adjustMultipleVariantStocksInDb(slug, batch.map(row => ({ variantKey: row.variantKey, quantity: 0, reason })), reason, `${operationId}-${batchIndex++}`);
+          completed += batch.length;
+          setResetProgress(`${completed} de ${pending.length} variações zeradas`);
+        }
+      }
+      setCounts({});
+      toast.success('Saldos zerados com histórico. Agora informe as quantidades da contagem física.');
+    } catch (error: any) {
+      toast.error(`${completed} variações zeradas. ${error.message || 'Falha na zeragem.'} Confira o saldo antes de continuar.`);
+    } finally { setResettingStock(false); }
+  };
+
   const saveMonthlyCount = async () => {
     setSavingCount(true);
     try {
@@ -179,11 +214,16 @@ export function InventoryAuditCenter({ operator = 'Administrador' }: { operator?
           <p className="text-xs text-white/70 mt-1">Conte o estoque real, compare com o sistema e ajuste somente o que divergir.</p>
         </div>
         <label className="text-[10px] font-black uppercase tracking-wider text-white/70">Referência
-          <input aria-label="Referência do inventário" type="month" value={reference} onChange={event => setReference(event.target.value)} className="block mt-1 bg-white text-black px-3 py-2 font-mono" />
+          <input aria-label="Referência do inventário" type="month" disabled={resettingStock} value={reference} onChange={event => setReference(event.target.value)} className="block mt-1 bg-white text-black px-3 py-2 font-mono" />
         </label>
       </header>
 
       <div className="border border-amber-200 bg-amber-50 p-4 text-xs text-amber-950">Conte as lisas uma única vez por modelo, cor e tamanho. A capacidade compartilhada dos desenhos não entra na soma física. Peças enviadas à estamparia aparecem em produção, separadamente. Quantidades antigas de estampadas ficam fora do saldo físico confirmado até a contagem; informe zero quando não existir peça pronta.</div>
+      <div className="border border-black/10 bg-white p-4 space-y-2">
+        <button type="button" disabled={loading || resettingStock || savingCount || savingKey !== null} onClick={resetStockForInitialCount} className="border border-black px-4 py-3 text-xs font-black uppercase disabled:opacity-40">{resettingStock ? 'Zerando saldos...' : 'Zerar saldos para reinício'}</button>
+        <p className="text-xs text-gray-600">Use somente para começar uma nova base de estoque. Zera os produtos cadastrados em lotes por produto, preservando cadastros e histórico. A contagem física será informada depois; não zere novamente nas conferências mensais.</p>
+        {resetProgress && <p role="status" className="text-xs font-bold">{resetProgress}</p>}
+      </div>
       {overviewError && <p role="alert" className="text-red-700 text-sm">{overviewError}</p>}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <Metric label="Variações cadastradas" value={visibleRows.length} />
@@ -219,7 +259,7 @@ export function InventoryAuditCenter({ operator = 'Administrador' }: { operator?
       ) : (
         <div className="bg-white border border-black/10 overflow-x-auto">
           <div className="p-3 border-b border-black/10 flex justify-end">
-            <button onClick={setSystemAsCount} className="inline-flex items-center gap-2 border border-black px-3 py-2 text-[10px] font-black uppercase hover:bg-black hover:text-white"><RefreshCw size={14} /> Preencher saldos já conferidos</button>
+            <button disabled={resettingStock} onClick={setSystemAsCount} className="inline-flex items-center gap-2 border border-black px-3 py-2 text-[10px] font-black uppercase hover:bg-black hover:text-white"><RefreshCw size={14} /> Preencher saldos já conferidos</button>
           </div>
           <table className="w-full min-w-[720px] text-left">
             <thead className="bg-black text-white text-[10px] uppercase tracking-wider"><tr><th className="p-3">Produto</th><th className="p-3">Cor</th><th className="p-3">Tam.</th><th className="p-3">Físico</th><th className="p-3">Reservado</th><th className="p-3">Disponível</th><th className="p-3">Contagem física</th><th className="p-3">Diferença</th><th className="p-3">Ação</th></tr></thead>
@@ -231,9 +271,9 @@ export function InventoryAuditCenter({ operator = 'Administrador' }: { operator?
                 const difference = counted === null ? null : counted - row.systemQuantity;
                 return <tr key={key} className={difference === null || difference === 0 ? '' : 'bg-amber-50'}>
                   <td className="p-3"><span className="block font-black">{row.productName}</span><span className="mt-0.5 block font-mono text-[10px] text-gray-500">{row.productCode}</span></td><td className="p-3">{row.color}</td><td className="p-3">{row.size}</td><td className="p-3 font-mono">{row.systemQuantity}{!row.countVerified && <span className="block text-[9px] text-amber-700">Cadastro anterior · não conferido</span>}</td><td className="p-3 font-mono">{row.reservedQuantity}</td><td className="p-3 font-mono">{row.availableQuantity}</td>
-                  <td className="p-3"><input aria-label={`Contagem física ${row.productName} ${row.color} ${row.size}`} inputMode="numeric" min="0" type="number" value={counts[key] ?? ''} onChange={event => setCounts(current => ({ ...current, [key]: event.target.value }))} className="w-24 border border-black/20 px-2 py-1.5 font-mono" /></td>
+                  <td className="p-3"><input aria-label={`Contagem física ${row.productName} ${row.color} ${row.size}`} disabled={resettingStock} inputMode="numeric" min="0" type="number" value={counts[key] ?? ''} onChange={event => setCounts(current => ({ ...current, [key]: event.target.value }))} className="w-24 border border-black/20 px-2 py-1.5 font-mono" /></td>
                   <td className="p-3 font-mono font-black">{difference === null ? '—' : difference === 0 ? <span className="text-emerald-700">Confere</span> : `${difference > 0 ? '+' : ''}${difference}`}</td>
-                  <td className="p-3"><button disabled={!hasCount || difference === 0 || savingKey === key} onClick={() => saveRow(row)} className="inline-flex items-center gap-1 bg-black text-[#eab308] disabled:opacity-40 px-3 py-2 text-[9px] font-black uppercase"><Save size={13} /> {savingKey === key ? 'Salvando' : 'Ajustar'}</button></td>
+                  <td className="p-3"><button disabled={resettingStock || !hasCount || difference === 0 || savingKey === key} onClick={() => saveRow(row)} className="inline-flex items-center gap-1 bg-black text-[#eab308] disabled:opacity-40 px-3 py-2 text-[9px] font-black uppercase"><Save size={13} /> {savingKey === key ? 'Salvando' : 'Ajustar'}</button></td>
                 </tr>;
               })}
             </tbody>
@@ -244,7 +284,7 @@ export function InventoryAuditCenter({ operator = 'Administrador' }: { operator?
         <div className="border-b border-black/10 p-4"><h2 className="text-sm font-black uppercase">Histórico recente de estoque</h2><p className="text-[10px] text-gray-500">Últimos lançamentos oficiais: entradas, reservas, consumo, saídas e ajustes.</p></div>
         <table className="w-full min-w-[650px] text-left text-xs"><thead className="bg-black text-white text-[9px] uppercase"><tr><th className="p-3">Data</th><th className="p-3">Produto / variação</th><th className="p-3">Movimento</th><th className="p-3">Qtd.</th><th className="p-3">Motivo</th></tr></thead><tbody className="divide-y divide-black/10">{periodTotals.recent.map(movement => <tr key={movement.id}><td className="p-3">{formatMovementDate(movement.createdAt || movement.timestamp)}</td><td className="p-3 font-bold">{movement.productSlug || '—'} · {movement.variantKey || '—'}</td><td className="p-3 uppercase">{String(movement.type || 'ajuste').replace(/_/g, ' ')}</td><td className="p-3 font-mono">{Number(movement.quantity || 0)}</td><td className="p-3 text-gray-500">{movement.reason || '—'}</td></tr>)}</tbody></table>
       </section>
-      <div className="border border-black/10 bg-white p-4 space-y-2"><button disabled={savingCount || countedRows.length === 0 || Boolean(overviewError)} onClick={saveMonthlyCount} className="bg-black text-[#eab308] px-4 py-3 text-xs font-black uppercase disabled:opacity-40">{savingCount ? 'Salvando contagem...' : 'Salvar contagem mensal'}</button><p className="text-xs text-gray-500">Salva as variações contadas e as peças em produção. O saldo físico só muda quando você usa “Ajustar”.</p>{latestCount && <p className="text-xs">Última contagem salva: {formatMovementDate(latestCount.capturedAt)} · {latestCount.countedVariants ?? latestCount.lines?.length ?? 0} variações · {latestCount.differenceCount} diferenças.</p>}</div>
+      <div className="border border-black/10 bg-white p-4 space-y-2"><button disabled={resettingStock || savingCount || countedRows.length === 0 || Boolean(overviewError)} onClick={saveMonthlyCount} className="bg-black text-[#eab308] px-4 py-3 text-xs font-black uppercase disabled:opacity-40">{savingCount ? 'Salvando contagem...' : 'Salvar contagem mensal'}</button><p className="text-xs text-gray-500">Salva as variações contadas e as peças em produção. O saldo físico só muda quando você usa “Ajustar”.</p>{latestCount && <p className="text-xs">Última contagem salva: {formatMovementDate(latestCount.capturedAt)} · {latestCount.countedVariants ?? latestCount.lines?.length ?? 0} variações · {latestCount.differenceCount} diferenças.</p>}</div>
       <p className="text-[10px] text-gray-500">Cada ajuste é registrado como inventário físico de {reference || 'referência não informada'} no histórico de estoque.</p>
     </section>
   );
