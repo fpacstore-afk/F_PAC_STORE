@@ -33,6 +33,10 @@ export function createPricingRouter(dbProvider = getDb) {
     }
   };
   const actor = (req: any) => req.user?.uid || 'admin';
+  router.get('/catalog', handle(async (_req, res) => {
+    const config = await dbProvider().collection('pricing_workbench').doc('catalog').get();
+    res.json({ catalog: config.data()?.catalog || emptyCatalog(), version: config.data()?.version || 0 });
+  }));
   router.get('/', handle(async (_req, res) => {
     const db = dbProvider();
     const [config, quotes] = await Promise.all([db.collection('pricing_workbench').doc('catalog').get(), db.collection('pricing_workbench_quotes').orderBy('updatedAt', 'desc').limit(200).get()]);

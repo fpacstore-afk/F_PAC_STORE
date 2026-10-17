@@ -7,6 +7,7 @@ import { getOrderPaidAmount, getOrderRefundedAmount } from '../utils/orderFinanc
 import { reconcileEditedOrderStampsInTransaction } from '../services/stampStock.service.js';
 import { buildManualCustomOrderLines, buildManualCustomProduction, inferManualStampPrintColor, isPrivateManualArtworkUrl } from '../../src/lib/manualCustomOrder.js';
 import { manualEditLineId, resizeManualInstallments } from '../../shared/manualCustomOrderEditing.js';
+import { calculateCustomOrderCosts } from '../../shared/orderCostComposition.js';
 
 function invalid(message: string, status = 400): never {
   throw Object.assign(new Error(message), { status, code: status === 409 ? 'ORDER_EDIT_CONFLICT' : 'INVALID_ORDER_EDIT' });
@@ -17,7 +18,7 @@ function text(value: unknown, limit = 200): string {
   return (value as string).trim();
 }
 const clean = <T>(value: T): T => JSON.parse(JSON.stringify(value));
-const costArtSignature = (arts: any[]) => JSON.stringify(arts.map(art => [art.source === 'catalog' ? art.id : art.image || 'pending', art.stockPrintSize || art.printSize || art.artSize || '']));
+const costArtSignature = (arts: any[]) => JSON.stringify(arts.map(art => [art.source === 'catalog' ? art.id : art.image || 'pending', art.artSize || art.stockPrintSize || art.printSize || '', art.costRuleId || '']));
 
 /** Reprice from trusted saved unit prices and reconcile only changed print reservations. */
 export async function editManualCustomOrderController(req: Request, res: Response) {
@@ -41,7 +42,7 @@ export async function editManualCustomOrderController(req: Request, res: Respons
       const oldImages = new Set(order.items.flatMap((item: any) => (item.customDetails.artworks || []).map((art: any) => art.image).filter(Boolean)));
       const catalogs = new Map<string, any>();
       const lineIds = new Set<string>();
-      const nextItems: any[] = [];
+      let nextItems: any[] = [];
       for (const raw of lines) {
         const lineId = text(raw?.lineId);
         const source = sources.get(text(raw?.sourceLineId));
@@ -70,17 +71,29 @@ export async function editManualCustomOrderController(req: Request, res: Respons
           if (image && !catalog && !isPrivateManualArtworkUrl(image) && !oldImages.has(image)) invalid('Envie a imagem pelo campo de arquivo ou importe o link antes de salvar.');
           const stockPrintSize = text(art.stockPrintSize, 80);
           if (catalog && (catalog.availableSizes?.length || Object.keys(catalog.stockBySize || {}).length) && !stockPrintSize) invalid('Escolha o tamanho de estoque da estampa do acervo.');
-          artworks.push({ id, ...(catalogStampId ? { catalogStampId } : {}), code: catalog?.code || '', name: catalog ? String(catalog.name || catalog.code || catalogStampId) : text(art.name), location: text(art.location, 100), color: catalog ? inferManualStampPrintColor(catalog) : text(art.color, 80), artSize: text(art.artSize, 80), stockPrintSize, image, notes: text(art.notes, 1000) });
+          artworks.push({ id, ...(catalogStampId ? { catalogStampId } : {}), code: catalog?.code || '', name: catalog ? String(catalog.name || catalog.code || catalogStampId) : text(art.name), location: text(art.location, 100), color: catalog ? inferManualStampPrintColor(catalog) : text(art.color, 80), artSize: text(art.artSize, 80), stockPrintSize, image, notes: text(art.notes, 1000), costRuleId: text(art.costRuleId, 100) });
         }
         const price = Number(source.price);
         if (!Number.isFinite(price) || price < 0) invalid('Preço anterior inválido. Confira o cadastro deste pedido.');
         const details = source.customDetails;
-        const groupId = `edited-${createHash('sha256').update(JSON.stringify([details.productName, details.model, source.color, price, artworks])).digest('hex').slice(0, 24)}`;
-        const built = buildManualCustomOrderLines({ groupId, companyName: details.companyName || '', productName: details.productName || source.name, model: details.model || '', garmentColor: source.color || details.garmentColor || '', notes: details.notes || '', unitPrice: price, sizeRows: [{ id: lineId, size, quantity: raw.quantity }], artworks })[0];
+        const groupId = `edited-${createHash('sha256').update(JSON.stringify([details.productName, details.model, source.color, price, details.costRecipe || null, artworks])).digest('hex').slice(0, 24)}`;
+        const built = buildManualCustomOrderLines({ groupId, companyName: details.companyName || '', productName: details.productName || source.name, model: details.model || '', garmentColor: source.color || details.garmentColor || '', notes: details.notes || '', unitPrice: price, ...(details.costRecipe ? { costRecipe: details.costRecipe } : {}), sizeRows: [{ id: lineId, size, quantity: raw.quantity }], artworks })[0];
         const first = built.stamps[0];
         const prints = built.stamps.map(art => ({ stampId: art.id, location: art.location, printSize: art.stockPrintSize || art.printSize, color: art.color, artSize: art.artSize }));
         const changedCostRecipe = costArtSignature(details.artworks || []) !== costArtSignature(built.customDetails.artworks);
+        if (raw.confirmManualCost !== undefined && typeof raw.confirmManualCost !== 'boolean') invalid('Confirmação de custo inválida.');
+        if (built.customDetails.costRecipe && (changedCostRecipe || source.size !== size)
+          && (built.customDetails.costRecipe.manualMode || built.customDetails.costRecipe.manualUnitCost != null)) {
+          built.customDetails.costRecipe = { ...built.customDetails.costRecipe, manualConfirmed: false };
+        }
+        if (built.customDetails.costRecipe && raw.confirmManualCost === true) {
+          built.customDetails.costRecipe = { ...built.customDetails.costRecipe, manualConfirmed: true };
+        }
         nextItems.push(clean({ ...source, manualLineId: lineId, size, quantity: raw.quantity, price, customDetails: built.customDetails, variantKey: `${source.color || ''}_${size}`, stampId: first?.id || '', stampName: first?.name || '', stampImage: first?.image || '', stampStatus: first?.status || '', customization: { ...(source.customization || {}), prints }, printConfigs: built.stamps.map(art => ({ stampId: art.id, stamp: art.name, image: art.image, status: art.status, location: art.location, color: art.color, artSize: art.artSize, printSize: art.stockPrintSize || art.printSize, stockPrintSize: art.stockPrintSize, notes: art.notes, source: art.source })), ...(Number.isFinite(Number(source.unitCostSnapshot)) ? { totalCostSnapshot: Math.round(Number(source.unitCostSnapshot) * raw.quantity * 100) / 100 } : {}), ...(changedCostRecipe ? { costEditReviewRequired: true, costCoverage: Number(source.unitCostSnapshot) > 0 ? 'estimated' : 'unavailable' } : {}) }));
+      }
+      if (order.costCatalogSnapshot?.catalog) {
+        nextItems = calculateCustomOrderCosts(nextItems, order.costCatalogSnapshot.catalog, order.costCatalogSnapshot.version)
+          .map(item => item.customDetails?.costRecipe ? { ...item, costEditReviewRequired: item.costCoverage !== 'complete' } : item);
       }
       const gift = order.isGift === true || order.orderKind === 'gift';
       const subtotal = gift ? 0 : nextItems.reduce((sum, item) => sum + Math.round(item.price * 100) * item.quantity, 0) / 100;

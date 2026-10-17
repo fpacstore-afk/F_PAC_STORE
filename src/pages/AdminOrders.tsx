@@ -8,6 +8,9 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { OrderFinancialDrawer } from '../components/admin/financial/OrderFinancialDrawer';
 import { ManualProductPicker } from '../components/admin/ManualProductPicker';
 import { ManualCustomProductForm } from '../components/admin/ManualCustomProductForm';
+import { OrderCostSummary } from '../components/admin/OrderCostSummary';
+import { useOrderCostCatalog } from '../hooks/useOrderCostCatalog';
+import { calculateCustomOrderCosts, catalogCostSnapshot } from '../../shared/orderCostComposition';
 import { ManualChoiceWithOther } from '../components/admin/ManualChoiceWithOther';
 import { ManualStampPicker, stampImage, StampThumb } from '../components/admin/ManualStampPicker';
 import { AbandonedCartsRecovery } from '../components/admin/orders/AbandonedCartsRecovery';
@@ -426,6 +429,12 @@ function AdminOrdersInner() {
   const [isManualProductDraftDirty, setIsManualProductDraftDirty] = useState(false);
   const hasCustomManualItems = tempItems.some((item) => item.mode === 'custom');
   const hasCatalogManualItems = tempItems.some((item) => item.mode !== 'custom');
+  const orderCostCatalog = useOrderCostCatalog(isManualModalOpen);
+  const costedManualItems = useMemo(() => calculateCustomOrderCosts(tempItems, orderCostCatalog.catalog, orderCostCatalog.version).map((item: any) => item.mode === 'custom' ? item : {
+    ...item, ...catalogCostSnapshot(item.product.costPrice ?? item.product.cost, Number(item.quantity), item.mode === 'assembled' && item.stamps?.length
+      ? { coverage: 'partial', pendingComponents: [...(item.product.costCalculation?.pendingComponents || []), 'Conferir custo das estampas e aplicação do produto montado'] }
+      : item.product.costCalculation)
+  }), [tempItems, orderCostCatalog.catalog, orderCostCatalog.version]);
 
   // Form order meta
   const [orderOrigin, setOrderOrigin] = useState('WhatsApp');
@@ -1724,6 +1733,10 @@ function AdminOrdersInner() {
       toast.error('Aguarde o envio das imagens antes de salvar.');
       return;
     }
+    if (hasCustomManualItems && (orderCostCatalog.loading || orderCostCatalog.error)) {
+      toast.error('Atualize a base de custos e confira o resumo antes de salvar.');
+      return;
+    }
     if (manualProductMode === 'custom' && isManualProductDraftDirty) {
       toast.error('Clique em “Adicionar produto e continuar” para incluir a peça preenchida antes de salvar.');
       return;
@@ -1749,7 +1762,7 @@ function AdminOrdersInner() {
       const totalSum = manualOrderKind === 'gift' ? 0 : Math.max(0, subTotalSum + Number(manualOrderShipping) - Number(manualOrderDiscount));
 
       // Construct item list expected by standard renderer
-      const finalItems = tempItems.map(item => {
+      const finalItems = costedManualItems.map(item => {
         const quantity = Number(item.quantity);
         const unitCostSnapshot = Number(item.product.costPrice ?? item.product.cost ?? 0);
         const identity = manualProductIdentity(item.product);
@@ -1770,11 +1783,10 @@ function AdminOrdersInner() {
           quantity,
           price: manualOrderKind === 'gift' ? 0 : Number(item.price),
           image: identity.image || '/estampas/logo-fpac.png',
-          unitCostSnapshot,
-          totalCostSnapshot: Number((unitCostSnapshot * quantity).toFixed(2)),
-          costCoverage: unitCostSnapshot <= 0
-            ? 'unavailable'
-            : (item.product.costCalculation?.coverage === 'partial' ? 'estimated' : 'complete'),
+          unitCostSnapshot: item.unitCostSnapshot ?? unitCostSnapshot,
+          totalCostSnapshot: item.totalCostSnapshot ?? Number((unitCostSnapshot * quantity).toFixed(2)),
+          costCoverage: item.costCoverage || 'unavailable',
+          ...(item.costComposition ? { costComposition: item.costComposition } : {}),
           stampId: stamps[0]?.id || '',
           stampName: stamps.map((stamp: any) => stamp.name || stamp.code).filter(Boolean).join(' + '),
           stampStatus: stamps.some((stamp: any) => stamp.status === 'unavailable') ? 'unavailable' : 'active',
@@ -1861,6 +1873,7 @@ function AdminOrdersInner() {
         state: isRetirada ? 'RET' : custState,
         cep: isRetirada ? '' : custCep,
         items: finalItems,
+        ...(hasCustomManualItems ? { expectedCostCatalogVersion: orderCostCatalog.version } : {}),
         ...(customOrderDetails ? { customProduction: customOrderDetails } : {}),
         subtotal: subTotalSum,
         shipping: Number(manualOrderShipping),
@@ -4179,6 +4192,13 @@ Total: R$ ${totalSum.toFixed(2)}`;
                       {manualProductMode === 'custom' ? (
                         <><ManualCustomProductForm
                           stamps={catalogStamps}
+                          costCatalog={orderCostCatalog.catalog}
+                          costCatalogVersion={orderCostCatalog.version}
+                          costsLoading={orderCostCatalog.loading}
+                          costsError={orderCostCatalog.error}
+                          onReloadCosts={() => void orderCostCatalog.refresh()}
+                          formatAmount={formatManualMoney}
+                          showAmounts={manualShowAmounts}
                           isGift={manualOrderKind === 'gift'}
                           onUploadStateChange={setIsManualArtworkUploading}
                           onDraftStateChange={setIsManualProductDraftDirty}
@@ -4430,6 +4450,8 @@ Total: R$ ${totalSum.toFixed(2)}`;
                 </div>
 
                 {/* ORIGEM / METODO PAGAMENTO / STATUS */}
+                <OrderCostSummary items={costedManualItems} formatAmount={formatManualMoney} showSources={manualShowAmounts} />
+                {hasCustomManualItems && <button type="button" onClick={() => void orderCostCatalog.refresh()} disabled={orderCostCatalog.loading} className="min-h-11 border border-black/15 px-3 text-xs font-bold">{orderCostCatalog.loading ? 'Atualizando custos...' : 'Atualizar base de custos e conferir resumo'}</button>}
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4 bg-gray-50 border border-black/5 p-4 text-xs font-black uppercase tracking-wider">
                   <ManualChoiceWithOther label="Canal de Origem" value={orderOrigin} onChange={setOrderOrigin} options={['WhatsApp', 'Instagram', 'Facebook', 'Loja Física', 'Indicação', 'Venda Direta', 'Marketplace']} required />
 

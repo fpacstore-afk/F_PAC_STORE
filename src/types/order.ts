@@ -58,6 +58,7 @@ export interface OrderItem {
   unitCostSnapshot?: number;
   totalCostSnapshot?: number;
   costCoverage?: 'complete' | 'estimated' | 'unavailable';
+  costComposition?: import('../../shared/orderCostComposition').OrderCostComposition;
 }
 
 export interface OrderPricingSnapshot {

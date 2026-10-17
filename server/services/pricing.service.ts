@@ -15,6 +15,7 @@ import { isProductPublished } from '../../shared/productPublication.js';
 import { isPrimeBaseProduct } from '../../shared/primeBaseProduct.js';
 import { calculatePrimePrice } from '../../shared/primePricing.js';
 import { resolveProductStampRecipeEntries } from '../../shared/productStampRecipe.js';
+import { catalogCostSnapshot } from '../../shared/orderCostComposition.js';
 import { getProductVisualKind } from '../../src/lib/productPresentation.js';
 import {
   isCatalogPrimeSizeRegistered,
@@ -278,7 +279,8 @@ export async function calculateOrderPricing(input: PricingInput, context: Partia
     }
 
     const hasCatalogCost = typeof dbCost === 'number' && dbCost > 0;
-    const isCostComplete = hasCatalogCost && canonicalProductData?.costCalculation?.coverage !== 'partial';
+    const hasCustomPrintCostsToReview = isPrimeCustom && Boolean(customization?.prints?.length);
+    const isCostComplete = hasCatalogCost && canonicalProductData?.costCalculation?.coverage !== 'partial' && !hasCustomPrintCostsToReview;
     let unitCost = dbCost;
     if (!unitCost || unitCost <= 0) {
       const lower = `${slug} ${name}`.toLowerCase();
@@ -332,7 +334,10 @@ export async function calculateOrderPricing(input: PricingInput, context: Partia
       customization,
       unitCostSnapshot,
       totalCostSnapshot,
-      costCoverage
+      costCoverage,
+      costComposition: catalogCostSnapshot(unitCost, quantity, hasCustomPrintCostsToReview
+        ? { coverage: 'partial', pendingComponents: [...(canonicalProductData?.costCalculation?.pendingComponents || []), 'Conferir custo das estampas e aplicação do personalizado'] }
+        : hasCatalogCost ? canonicalProductData?.costCalculation : { coverage: 'partial', pendingComponents: ['Confirmar o custo estimado do produto'] }).costComposition,
     });
   }
 

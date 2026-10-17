@@ -49,6 +49,7 @@
     "test:stamps-public-view": "node --import tsx scripts/test_stamps_gallery_customer_view.ts",
     "test:stamp-order": "node --import tsx scripts/test_stamp_order.ts",
     "test:product-cost-automation": "node --import tsx scripts/test_product_cost_automation.ts",
+    "test:order-cost-composition": "NODE_ENV=test node --import tsx scripts/test_order_cost_composition.ts",
     "test:management-experience": "node --import tsx scripts/test_management_experience.ts",
     "test:stock-variant-rows": "node --import tsx scripts/test_stock_variant_rows.ts",
     "test:storefront-mobile": "node --import tsx scripts/test_storefront_mobile_refresh.ts",

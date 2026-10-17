@@ -20,6 +20,7 @@ import {
   previewOrderMaintenance
 } from '../services/orderMaintenance.service.js';
 import { dispatchStageNotification } from '../services/productionNotification.service.js';
+import { prepareManualOrderCosts } from '../services/orderCosts.service.js';
 
 /**
  * Admin Controller for Phase 7 Operational Production Features:
@@ -203,7 +204,7 @@ export async function updateOrderProductionStatus(req: Request, res: Response) {
 
 export async function createManualOrderController(req: Request, res: Response) {
   try {
-    const order = req.body?.order;
+    let order = req.body?.order;
     const orderId = String(order?.id || '').trim();
     if (!orderId.startsWith('MANUAL-') || !Array.isArray(order?.items) || order.items.length === 0) {
       return res.status(400).json({
@@ -213,6 +214,11 @@ export async function createManualOrderController(req: Request, res: Response) {
     }
 
     const db = getDb();
+    const existingOrder = await db.collection('orders').doc(orderId).get();
+    if (existingOrder.exists && existingOrder.data()?.isManual !== true) {
+      return res.status(409).json({ error: 'MANUAL_ORDER_ALREADY_EXISTS', message: 'Este identificador já pertence a outro pedido.' });
+    }
+    order = existingOrder.exists ? existingOrder.data() : await prepareManualOrderCosts(order, db);
     const isGift = order?.isGift === true || order?.orderKind === 'gift';
     const giftItems = isGift
       ? order.items.map((item: any) => ({ ...item, price: 0 }))
@@ -221,8 +227,8 @@ export async function createManualOrderController(req: Request, res: Response) {
       ? giftItems.reduce((summary: { knownCost: number; unknownUnits: number }, item: any) => {
           const quantity = Math.max(1, Number(item?.quantity) || 1);
           const unitCost = Number(item?.unitCostSnapshot);
-          const hasKnownCost = Number.isFinite(unitCost) && unitCost > 0 && item?.costCoverage !== 'unavailable';
-          if (hasKnownCost) summary.knownCost += unitCost * quantity;
+          const hasKnownCost = Number.isFinite(unitCost) && unitCost >= 0 && item?.costCoverage !== 'unavailable';
+          if (hasKnownCost) summary.knownCost += Number(item.totalCostSnapshot ?? unitCost * quantity);
           if (!hasKnownCost || item?.costCoverage !== 'complete') summary.unknownUnits += quantity;
           return summary;
         }, { knownCost: 0, unknownUnits: 0 })
@@ -255,7 +261,6 @@ export async function createManualOrderController(req: Request, res: Response) {
       updatedAt: FieldValue.serverTimestamp()
     };
 
-    const existingOrder = await db.collection('orders').doc(orderId).get();
     if (order.stockControl === 'move') {
       if (!existingOrder.exists) {
         await reserveStock(orderId, order.items, `reserve_order_${orderId}`, orderPayload);
@@ -328,7 +333,7 @@ export async function createManualOrderController(req: Request, res: Response) {
     return res.status(201).json({ success: true, orderId, inventoryLifecycle: orderPayload.inventoryLifecycle, giftCost });
   } catch (error: any) {
     logger.error(`❌ [MANUAL-ORDER-CREATE] ${error.message}`, error);
-    const status = error instanceof OutOfStockError ? 409 : (error?.code === 'MANUAL_ORDER_ALREADY_EXISTS' ? 409 : 500);
+    const status = error instanceof OutOfStockError ? 409 : (error?.code === 'MANUAL_ORDER_ALREADY_EXISTS' ? 409 : error.status || 500);
     return res.status(status).json({
       error: error?.code || (error instanceof OutOfStockError ? 'OUT_OF_STOCK' : 'MANUAL_ORDER_CREATE_FAILED'),
       message: error?.message || 'Não foi possível criar o pedido manual.'

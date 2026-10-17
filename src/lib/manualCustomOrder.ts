@@ -1,3 +1,5 @@
+import type { OrderCostRecipe } from '../../shared/orderCostComposition';
+
 export interface ManualCustomArtworkInput {
   id: string;
   catalogStampId?: string;
@@ -10,6 +12,7 @@ export interface ManualCustomArtworkInput {
   notes?: string;
   image?: string;
   status?: string;
+  costRuleId?: string;
 }
 
 export interface ManualCustomSizeInput {
@@ -27,6 +30,7 @@ export interface ManualCustomOrderInput {
   notes?: string;
   unitPrice: number;
   unitCost?: number;
+  costRecipe?: OrderCostRecipe;
   sizeRows: ManualCustomSizeInput[];
   artworks: ManualCustomArtworkInput[];
 }
@@ -103,6 +107,7 @@ export function buildManualCustomOrderLines(input: ManualCustomOrderInput) {
       image: art.image || '',
       status: art.status || 'active',
       source: catalogStampId ? 'catalog' : 'own_art',
+      ...(art.costRuleId ? { costRuleId: art.costRuleId } : {}),
     };
   });
   const customDetails = {
@@ -112,8 +117,9 @@ export function buildManualCustomOrderLines(input: ManualCustomOrderInput) {
     model,
     garmentColor,
     notes: String(input.notes || '').trim(),
-    artworks: artworks.map(({ id, name, code, location, color, printSize, stockPrintSize, artSize, notes, image, source }) => ({
-      id, name, code, location, color, printSize, stockPrintSize, artSize, notes, image, source,
+    ...(input.costRecipe ? { costRecipe: input.costRecipe } : {}),
+    artworks: artworks.map(({ id, name, code, location, color, printSize, stockPrintSize, artSize, notes, image, source, costRuleId }) => ({
+      id, name, code, location, color, printSize, stockPrintSize, artSize, notes, image, source, ...(costRuleId ? { costRuleId } : {}),
     })),
   };
 

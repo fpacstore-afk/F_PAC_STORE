@@ -7,6 +7,9 @@ import { editedManualSubtotal, manualEditLineId, manualEditProductKey, manualOrd
 import { uploadArtworkToCloudinary, uploadArtworkUrlToCloudinary } from '../../services/cloudinary';
 import { ManualChoiceWithOther } from './ManualChoiceWithOther';
 import { inferManualStampPrintColor } from '../../lib/manualCustomOrder';
+import { calculateCustomOrderCosts } from '../../../shared/orderCostComposition';
+import { OrderCostSummary } from './OrderCostSummary';
+import { useFinancialPrivacy } from '../../context/FinancialPrivacyContext';
 
 const SIZES = ['PP', 'P', 'M', 'G', 'GG', 'XG', 'Único'];
 const POSITIONS = ['Frente', 'Costas', 'Peito esquerdo', 'Peito direito', 'Manga esquerda', 'Manga direita', 'Bolso frontal', 'Bolso traseiro'];
@@ -18,6 +21,7 @@ const field = 'w-full min-h-10 border border-black/15 bg-white px-2 text-xs text
 const button = 'min-h-9 border border-black/20 bg-white px-3 py-2 text-[10px] font-bold hover:border-amber-500 disabled:opacity-40';
 
 export function ManualCustomOrderEditor({ order, stamps = [] }: { order: any; stamps?: any[] }) {
+  const { formatMoney, showFinancialValues } = useFinancialPrivacy();
   const [open, setOpen] = useState(false);
   const [base, setBase] = useState(order);
   const [lines, setLines] = useState<EditableManualLine[]>([]);
@@ -44,6 +48,15 @@ export function ManualCustomOrderEditor({ order, stamps = [] }: { order: any; st
   const paid = getOrderPaidAmount(order);
   const units = lines.reduce((sum, line) => sum + Number(line.quantity || 0), 0);
   const pendingArts = lines.reduce((sum, line) => sum + line.artworks.filter(art => !art.catalogStampId && !art.image).length, 0);
+  const costPreviewLines = lines.map(line => {
+    const source = sources.get(line.sourceLineId);
+    const recipe = source?.customDetails?.costRecipe;
+    const changed = JSON.stringify(line.artworks) !== JSON.stringify(manualOrderEditLines({ items: [source] })[0]?.artworks) || line.size !== source?.size;
+    const costRecipe = recipe && (recipe.manualMode || recipe.manualUnitCost != null)
+      ? { ...recipe, manualConfirmed: line.confirmManualCost === true || (!changed && recipe.manualConfirmed) } : recipe;
+    return { ...source, manualLineId: line.lineId, size: line.size, quantity: line.quantity, customDetails: { ...source?.customDetails, ...(costRecipe ? { costRecipe } : {}), artworks: line.artworks } };
+  });
+  const costPreview = base.costCatalogSnapshot?.catalog ? calculateCustomOrderCosts(costPreviewLines, base.costCatalogSnapshot.catalog, base.costCatalogSnapshot.version) : [];
 
   useEffect(() => {
     if (!dirty) return;
@@ -105,7 +118,7 @@ export function ManualCustomOrderEditor({ order, stamps = [] }: { order: any; st
   return <section aria-label="Editar pedido personalizado" className="space-y-4 border border-amber-400 bg-amber-50/50 p-3 text-xs">
     <div className="flex flex-wrap items-center justify-between gap-2"><h4 className="font-black text-sm">Editar tamanhos, quantidades e artes</h4><button type="button" disabled={saving || !!uploading} onClick={() => dirty ? setDiscarding(true) : setOpen(false)} className={button}><X size={12} className="inline mr-1" />Cancelar edição</button></div>
     <p className="text-gray-600">Cada linha representa peças com as mesmas artes. Use outra linha para um tamanho ou desenho diferente. O preço por peça, o frete e o desconto do pedido são mantidos.</p>
-    <p className="text-gray-600">Se a composição das artes mudar, o custo anterior ficará sinalizado para conferência. O cálculo automático por composição será tratado na atualização de custos.</p>
+    <p className="text-gray-600">O custo automático acompanha medidas e quantidades usando os preços guardados neste pedido. Custos manuais e pedidos antigos podem precisar de conferência após mudar a peça ou a arte.</p>
     {dirty && <p className="text-amber-800" role="status">Há alterações ainda não salvas.</p>}
     {stale && <p role="alert" className="bg-red-50 p-3 text-red-800">Outra pessoa alterou este pedido. Cancele e reabra a edição para conferir a versão atual.</p>}
     {discarding && <div role="alert" className="border border-amber-400 bg-white p-3 space-y-2"><p>Descartar as alterações que ainda não foram salvas?</p><button type="button" className={button} onClick={() => { setOpen(false); setDiscarding(false); }}>Descartar alterações</button> <button type="button" className={button} onClick={() => setDiscarding(false)}>Continuar editando</button></div>}
@@ -113,6 +126,7 @@ export function ManualCustomOrderEditor({ order, stamps = [] }: { order: any; st
       {[...groups.entries()].map(([groupKey, group]) => <div key={groupKey} className="border border-black/15 bg-white p-3 space-y-3">
         <div><h5 className="font-black">{group.source?.name}</h5><p className="text-gray-500">{group.source?.color} · {money(Number(group.source?.price || 0))} por peça</p></div>
         {group.lines.map((line, rowIndex) => <div key={line.lineId} className="border-t border-black/10 pt-3 space-y-3">
+          {(group.source?.customDetails?.costRecipe?.manualMode || group.source?.customDetails?.costRecipe?.manualUnitCost != null) && <label className="flex min-h-11 items-center gap-2 text-amber-900"><input type="checkbox" checked={line.confirmManualCost === true} onChange={e => updateLine(line.lineId, { confirmManualCost: e.target.checked })} />Conferi que o custo manual de {formatMoney(group.source.customDetails.costRecipe.manualUnitCost)} por peça continua válido para estas peças e artes.</label>}
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 items-end"><ManualChoiceWithOther label={`Tamanho da linha ${rowIndex + 1} de ${group.source?.name}`} value={line.size} options={SIZES} onChange={size => updateLine(line.lineId, { size })} required /><label className="text-[9px] font-black uppercase text-gray-500">Quantidade<input aria-label={`Quantidade da linha ${rowIndex + 1} de ${group.source?.name}`} className={`${field} mt-1`} type="number" min={1} max={10000} step={1} value={line.quantity || ''} onChange={event => updateLine(line.lineId, { quantity: Number(event.target.value) })} /></label><button type="button" className={button} disabled={lines.length <= 1} onClick={() => setLines(current => current.filter(row => row.lineId !== line.lineId))}><Trash2 size={12} className="inline mr-1" />Remover linha</button></div>
           <details className="border border-black/10 p-2"><summary className="cursor-pointer font-bold py-1">{line.artworks.length} arte(s) · tamanho {line.size || 'a definir'}{line.artworks.some(art => !art.image && !art.catalogStampId) ? ' · arquivo pendente' : ''}</summary><div className="space-y-3 pt-3">
             {line.artworks.map((art, artIndex) => <div key={art.id} className="border border-black/10 bg-gray-50 p-3 space-y-2">
@@ -124,6 +138,7 @@ export function ManualCustomOrderEditor({ order, stamps = [] }: { order: any; st
               }}><option value="">Arte própria / arquivo do cliente</option>{art.catalogStampId && !stamps.some(stamp => stamp.id === art.catalogStampId) && <option value={art.catalogStampId}>{art.name || art.catalogStampId}</option>}{stamps.map(stamp => <option key={stamp.id} value={stamp.id}>{stamp.name || stamp.code || stamp.id}</option>)}</select></label>
               <label className="block text-[9px] font-bold uppercase">Nome da arte<input aria-label={`Nome da arte ${artIndex + 1} da linha ${line.size}`} className={`${field} mt-1`} maxLength={200} value={art.name} disabled={!!art.catalogStampId} onChange={event => updateArt(line.lineId, art.id, { name: event.target.value })} /></label>
               <div className="grid gap-2 sm:grid-cols-2"><ManualChoiceWithOther label={`Posição da arte ${artIndex + 1} da linha ${line.size}`} value={art.location} options={POSITIONS} onChange={location => updateArt(line.lineId, art.id, { location })} /><ManualChoiceWithOther label={`Medida da arte ${artIndex + 1} da linha ${line.size}`} value={art.artSize} options={ART_SIZES} onChange={artSize => updateArt(line.lineId, art.id, { artSize })} /></div>
+              {group.source?.customDetails?.costRecipe && <label className="block">Regra de custo da estampa<select aria-label={`Regra de custo da arte ${artIndex + 1} da linha ${line.size}`} className={field} value={art.costRuleId || group.source.customDetails.costRecipe.printRuleId || ''} onChange={e => updateArt(line.lineId, art.id, { costRuleId: e.target.value })}><option value="">Selecione a regra</option>{(base.costCatalogSnapshot?.catalog?.entries || []).filter((entry: any) => entry.kind === 'stamp' && entry.active).map((entry: any) => <option key={entry.id} value={entry.id}>{entry.name}</option>)}</select></label>}
               {art.catalogStampId && <ManualChoiceWithOther label={`Tamanho de estoque da arte ${artIndex + 1} da linha ${line.size}`} value={art.stockPrintSize || ''} options={stamps.find(stamp => stamp.id === art.catalogStampId)?.availableSizes || Object.keys(stamps.find(stamp => stamp.id === art.catalogStampId)?.stockBySize || {})} onChange={stockPrintSize => updateArt(line.lineId, art.id, { stockPrintSize })} />}
               {!art.catalogStampId && <><label className="block text-[9px] font-bold uppercase">Cor da impressão<input className={`${field} mt-1`} maxLength={80} value={art.color} onChange={event => updateArt(line.lineId, art.id, { color: event.target.value })} /></label><label className="block font-bold"><Upload size={12} className="inline mr-1" />Enviar ou trocar arquivo<input aria-label={`Arquivo da arte ${artIndex + 1} da linha ${line.size}`} className="mt-2 block w-full text-xs" type="file" accept="image/png,image/jpeg,image/webp" multiple onChange={event => { void upload(line.lineId, art.id, event.target.files); event.target.value = ''; }} /></label><p className="text-gray-500">Ao selecionar vários arquivos, cada imagem adicional vira uma nova arte nesta linha.</p><div className="flex flex-wrap gap-2"><input aria-label={`Link da arte ${artIndex + 1} da linha ${line.size}`} placeholder="Link HTTPS direto da imagem" type="url" className={`${field} flex-1 min-w-40`} value={urlDrafts[art.id] || ''} onChange={event => setUrlDrafts(current => ({ ...current, [art.id]: event.target.value }))} /><button type="button" className={button} onClick={() => void upload(line.lineId, art.id, null, urlDrafts[art.id])}>Importar imagem</button>{art.image && <button type="button" className={button} onClick={() => updateArt(line.lineId, art.id, { image: '' })}>Remover arquivo</button>}</div></>}
               <label className="block text-[9px] font-bold uppercase">Observação da arte<textarea className={`${field} py-2 mt-1`} maxLength={1000} value={art.notes || ''} onChange={event => updateArt(line.lineId, art.id, { notes: event.target.value })} /></label>
@@ -139,6 +154,7 @@ export function ManualCustomOrderEditor({ order, stamps = [] }: { order: any; st
     {pendingArts > 0 && <p role="status" className="text-amber-800">Existem artes sem arquivo anexado. Os detalhes serão preservados para anexar depois.</p>}
     <div className="grid grid-cols-2 gap-3 border border-black/15 bg-white p-3" aria-label="Conferência dos valores"><div>Peças<strong className="block text-lg">{units}</strong></div><div>Total anterior<strong className="block">{money(getOrderTotal(base))}</strong></div><div>Novo total<strong className="block text-lg">{money(total)}</strong></div><div>Já recebido<strong className="block">{money(paid)}</strong></div><div className="col-span-2 border-t pt-2">Novo saldo a receber<strong className="block text-lg">{money(Math.max(0, total - paid))}</strong></div></div>
     {total < paid && <p role="alert" className="text-red-700">O total não pode ficar abaixo do valor já recebido. Confira o estorno antes de reduzir as peças.</p>}
+    <OrderCostSummary items={costPreview} formatAmount={formatMoney} showSources={showFinancialValues} />
     {error && <p role="alert" className="bg-red-50 p-3 text-red-800">{error}</p>}
     <button type="button" disabled={saving || !!uploading || stale || !dirty || total < paid} onClick={() => void save()} className="min-h-11 bg-black px-4 py-2 font-black text-amber-400 disabled:opacity-40"><Save size={14} className="inline mr-2" />{saving ? 'Salvando alterações…' : 'Salvar tamanhos e artes'}</button>
     <details className="border-t border-black/15 pt-3"><summary className="cursor-pointer font-bold">Histórico das alterações</summary><div className="pt-3 space-y-2">{historyError ? <p role="alert">{historyError} <button type="button" className={button} onClick={() => void loadHistory()}>Tentar novamente</button></p> : !history.length ? <p className="text-gray-500">Nenhuma edição de tamanhos ou artes registrada ainda.</p> : history.map(event => <div key={event.revision} className="border border-black/10 bg-white p-2"><p className="font-bold">Revisão {event.revision} · {new Date(event.createdAt).toLocaleString('pt-BR')}</p><p>{event.previousUnits} → {event.units} peças · {money(event.previousTotal)} → {money(event.total)}</p><p className="text-gray-500">{event.actor}</p></div>)}</div></details>

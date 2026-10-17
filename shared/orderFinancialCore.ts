@@ -135,6 +135,12 @@ export function getOrderPaymentStatus(order: any): PaymentStatus {
   return stored === 'processing' ? 'processing' : 'pending';
 }
 
+export function hasRecordedShippingCost(order: any): boolean {
+  const value = order?.shippingFinances?.shippingCost ?? order?.shippingFinances?.shippingActualCost
+    ?? order?.pricing?.shippingActualCost ?? order?.shippingDetails?.actualCost ?? order?.shippingCost;
+  return value !== null && value !== undefined && value !== '' && Number.isFinite(Number(value)) && Number(value) >= 0;
+}
+
 export function getOrderShippingFinances(order: any): {
   shippingCharged: number;
   shippingActualCost: number;
