@@ -5,6 +5,9 @@ import { buildManualCustomOrderLines, filterManualCustomArtworkRows, inferManual
 import { uploadArtworkToCloudinary, uploadArtworkUrlToCloudinary } from '../../services/cloudinary';
 import { stampImage, StampThumb } from './ManualStampPicker';
 import { ManualChoiceWithOther } from './ManualChoiceWithOther';
+import { calculateCustomOrderCosts, type OrderCostRecipe } from '../../../shared/orderCostComposition';
+import { money, type Catalog } from '../../../shared/pricingWorkbench';
+import { OrderCostSummary } from './OrderCostSummary';
 
 const PRODUCT_OPTIONS = ['Camiseta tradicional', 'Camiseta oversized', 'Cropped oversized', 'Moletom / casaco', 'Bermuda', 'Boné', 'Touca'];
 const MODEL_OPTIONS = ['Tradicional', 'Oversized', 'Cropped', 'Moletom', 'Cargo'];
@@ -24,9 +27,16 @@ interface ManualCustomProductFormProps {
   onAdd: (items: any[]) => void;
   onUploadStateChange?: (uploading: boolean) => void;
   onDraftStateChange?: (dirty: boolean) => void;
+  costCatalog: Catalog;
+  costCatalogVersion: number;
+  costsLoading?: boolean;
+  costsError?: string;
+  onReloadCosts?: () => void;
+  formatAmount?: (n: number) => string;
+  showAmounts?: boolean;
 }
 
-export function ManualCustomProductForm({ stamps, disabled = false, isGift, onAdd, onUploadStateChange, onDraftStateChange }: ManualCustomProductFormProps) {
+export function ManualCustomProductForm({ stamps, disabled = false, isGift, onAdd, onUploadStateChange, onDraftStateChange, costCatalog, costCatalogVersion, costsLoading, costsError, onReloadCosts, formatAmount = money, showAmounts = true }: ManualCustomProductFormProps) {
   const [draftVersion, setDraftVersion] = useState(0);
   const [companyName, setCompanyName] = useState('');
   const [productName, setProductName] = useState('');
@@ -35,6 +45,13 @@ export function ManualCustomProductForm({ stamps, disabled = false, isGift, onAd
   const [productionNotes, setProductionNotes] = useState('');
   const [unitPrice, setUnitPrice] = useState('');
   const [unitCost, setUnitCost] = useState('');
+  const [costProductId, setCostProductId] = useState('');
+  const [costLine, setCostLine] = useState('');
+  const [extraIds, setExtraIds] = useState<string[] | null>(null);
+  const [extrasReviewed, setExtrasReviewed] = useState(false);
+  const [manualCostMode, setManualCostMode] = useState(false);
+  const [manualCostConfirmed, setManualCostConfirmed] = useState(false);
+  const [manualCostReason, setManualCostReason] = useState('');
   const [sizeRows, setSizeRows] = useState<ManualCustomSizeInput[]>([{ id: newRowId('size'), size: '', quantity: 1 }]);
   const [artworks, setArtworks] = useState<ManualCustomArtworkInput[]>([]);
   const [artworkLinks, setArtworkLinks] = useState<Record<string, string>>({});
@@ -43,6 +60,17 @@ export function ManualCustomProductForm({ stamps, disabled = false, isGift, onAd
   const isUploading = Boolean(uploadingArtworkId || batchProgress);
   const hasUnaddedProduct = Boolean(productName.trim() || model.trim() || garmentColor.trim() || productionNotes.trim()
     || unitPrice.trim() || unitCost.trim() || sizeRows.some((row) => row.size.trim()) || artworks.length);
+  const costProducts = costCatalog.entries.filter(e => e.kind === 'product' && e.active);
+  const costExtras = costCatalog.entries.filter(e => e.kind === 'extra' && e.active);
+  const printRules = costCatalog.entries.filter(e => e.kind === 'stamp' && e.active);
+  const dtfRules = printRules.filter(e => e.method === 'dtf');
+  const defaultPrintRule = dtfRules.length === 1 ? dtfRules[0].id : '';
+  const selectedExtraIds = extraIds ?? costExtras.filter(e => e.defaultForOrders).map(e => e.id);
+  const costProduct = costProducts.find(e => e.id === costProductId);
+  const costLines = [...new Set(costCatalog.entries.filter(e => e.kind === 'price' && e.active && e.product === costProduct?.name && e.supplier === costProduct?.supplier).map(e => e.line || ''))];
+  const recipe: OrderCostRecipe = { productId: costProductId, line: costLine, printRuleId: defaultPrintRule, extraIds: selectedExtraIds, extrasReviewed,
+    manualMode: manualCostMode, manualUnitCost: manualCostMode && unitCost.trim() ? Number(unitCost) : null, manualConfirmed: manualCostConfirmed, manualReason: manualCostReason.trim() };
+  const costPreview = calculateCustomOrderCosts(buildManualCustomOrderLines({ productName, model, garmentColor, unitPrice: Number(unitPrice) || 0, costRecipe: recipe, sizeRows, artworks: filterManualCustomArtworkRows(artworks) }), costCatalog, costCatalogVersion);
 
   useEffect(() => {
     onUploadStateChange?.(isUploading);
@@ -136,11 +164,15 @@ export function ManualCustomProductForm({ stamps, disabled = false, isGift, onAd
       toast.error('Informe o produto, por exemplo: Camisa para uniforme.');
       return;
     }
+    if (manualCostMode && unitCost.trim() && (!Number.isFinite(Number(unitCost)) || Number(unitCost) < 0)) {
+      toast.error('Informe um custo manual válido, maior ou igual a zero.');
+      return;
+    }
     if (!isGift && (!unitPrice.trim() || !Number.isFinite(Number(unitPrice)) || Number(unitPrice) <= 0)) {
       toast.error('Informe o preço por peça para registrar corretamente o saldo a receber.');
       return;
     }
-    if (!sizeRows.length || sizeRows.some((row) => !row.size.trim() || Number(row.quantity) < 1)) {
+    if (!sizeRows.length || sizeRows.some((row) => !row.size.trim() || !Number.isInteger(Number(row.quantity)) || Number(row.quantity) < 1)) {
       toast.error('Preencha o tamanho e a quantidade de cada peça.');
       return;
     }
@@ -179,6 +211,7 @@ export function ManualCustomProductForm({ stamps, disabled = false, isGift, onAd
       notes: productionNotes,
       unitPrice: isGift ? 0 : Number(unitPrice) || 0,
       unitCost: Number(unitCost) || 0,
+      costRecipe: recipe,
       sizeRows,
       artworks: resolvedArtworks,
     });
@@ -194,6 +227,8 @@ export function ManualCustomProductForm({ stamps, disabled = false, isGift, onAd
     setProductionNotes('');
     setUnitPrice('');
     setUnitCost('');
+    setCostProductId(''); setCostLine(''); setExtraIds(null); setExtrasReviewed(false);
+    setManualCostMode(false); setManualCostConfirmed(false); setManualCostReason('');
     setSizeRows([{ id: newRowId('size'), size: '', quantity: 1 }]);
     setArtworks([]);
     setArtworkLinks({});
@@ -212,6 +247,21 @@ export function ManualCustomProductForm({ stamps, disabled = false, isGift, onAd
             Selecione a variante exata da estampa no catálogo (por exemplo, FP preta ou FP branca). Para uma arte do cliente, anexe a imagem do dispositivo ou importe um link. A arte própria fica guardada no pedido e não reduz o estoque de estampas.
           </div>
 
+          <section className="min-w-0 space-y-3 rounded border border-black/15 bg-gray-50 p-3 text-xs">
+            <h4 className="font-black">Preencher o custo pela peça cadastrada</h4>
+            <label className="flex min-w-0 flex-col gap-1 font-bold">Peça / fornecedor para o custo
+              <select aria-label="Peça / fornecedor para o custo" value={costProductId} onChange={e => {
+                const product = costProducts.find(p => p.id === e.target.value);
+                setCostProductId(e.target.value); setCostLine('');
+                if (product) { setProductName(product.name); if (product.fit) setModel(product.fit); }
+              }} className="min-h-11 w-full min-w-0 border border-black/15 bg-white px-2 text-xs">
+                <option value="">Selecione a referência ou informe um custo manual</option>
+                {costProducts.map(p => <option key={p.id} value={p.id}>{[p.name, p.supplier].filter(Boolean).join(' · ')}</option>)}
+              </select>
+            </label>
+            {costLines.some(Boolean) && <label className="flex flex-col gap-1 font-bold">Linha do fornecedor<select aria-label="Linha do fornecedor" value={costLine} onChange={e => setCostLine(e.target.value)} className="min-h-11 border border-black/15 bg-white px-2"><option value="">Sem linha específica</option>{costLines.filter(Boolean).map(line => <option key={line}>{line}</option>)}</select></label>}
+          </section>
+
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <label className="flex flex-col gap-1 text-[9px] font-black uppercase text-gray-500">
               Empresa / equipe (opcional)
@@ -224,10 +274,6 @@ export function ManualCustomProductForm({ stamps, disabled = false, isGift, onAd
               Preço por peça (R$) *
               <input type="number" min="0" step="0.01" value={unitPrice} onChange={(event) => setUnitPrice(event.target.value)} placeholder="0,00" className="border border-black/15 bg-white px-3 py-2.5 text-xs font-bold font-mono text-black" />
             </label>}
-            <label className="flex flex-col gap-1 text-[9px] font-black uppercase text-gray-500">
-              Custo por peça (opcional)
-              <input type="number" min="0" step="0.01" value={unitCost} onChange={(event) => setUnitCost(event.target.value)} placeholder="Informe se souber" className="border border-black/15 bg-white px-3 py-2.5 text-xs font-bold font-mono text-black" />
-            </label>
           </div>
           <label className="flex flex-col gap-1 text-[9px] font-black uppercase text-gray-500">
             Tecido, acabamento e outros detalhes (opcional)
@@ -297,6 +343,11 @@ export function ManualCustomProductForm({ stamps, disabled = false, isGift, onAd
                     </div>
                   )}
                   <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                    <label className="flex min-w-0 flex-col gap-1 text-[9px] font-bold sm:col-span-2">Regra para calcular esta estampa
+                      <select aria-label={`Regra de custo da arte ${index + 1}`} value={art.costRuleId || defaultPrintRule} onChange={e => updateArtwork(art.id, 'costRuleId', e.target.value)} className="min-h-11 w-full min-w-0 border border-black/15 bg-white px-2 text-xs">
+                        <option value="">Selecione a regra de custo</option>{printRules.map(rule => <option key={rule.id} value={rule.id}>{rule.name}</option>)}
+                      </select>
+                    </label>
                     <ManualChoiceWithOther label="Local da estampa (opcional)" value={art.location} onChange={(value) => updateArtwork(art.id, 'location', value)} options={LOCATION_OPTIONS} />
                     {selectedStamp && availableSizes.length > 0 ? (
                       <label className="flex flex-col gap-1 text-[8px] font-black uppercase text-gray-500 sm:col-span-2">
@@ -321,7 +372,24 @@ export function ManualCustomProductForm({ stamps, disabled = false, isGift, onAd
               );
             })}
           </section>
-          <button type="button" disabled={isUploading} onClick={handleAdd} className="flex min-h-12 w-full items-center justify-center gap-2 bg-black px-4 py-3 text-[10px] font-black uppercase tracking-widest text-[#eab308] hover:bg-[#eab308] hover:text-black disabled:opacity-50">
+          <section className="min-w-0 space-y-3 rounded border border-black/15 bg-gray-50 p-3 text-xs">
+            <h4 className="font-black">Custo automático</h4>
+            <p className="text-gray-600">Escolha a referência do fornecedor. Peça, estampas e insumos usam os mesmos cadastros dos orçamentos.</p>
+            {costsLoading && <p role="status">Carregando custos...</p>}
+            {costsError && <p role="alert" className="text-red-700">{costsError} <button type="button" onClick={onReloadCosts} className="min-h-10 underline">Tentar novamente</button></p>}
+            <fieldset className="space-y-2"><legend className="mb-1 font-bold">Insumos e aplicação</legend>
+              {!costExtras.length && <p className="text-amber-800">Ainda não há insumos cadastrados. Cadastre embalagem e aplicação em Orçamentos → Cadastros e ajustes.</p>}
+              {costExtras.map(extra => <label key={extra.id} className="flex min-h-10 items-center gap-2"><input type="checkbox" checked={selectedExtraIds.includes(extra.id)} onChange={e => setExtraIds(e.target.checked ? [...selectedExtraIds, extra.id] : selectedExtraIds.filter(id => id !== extra.id))} />{extra.name}{extra.defaultForOrders && ' · padrão'}</label>)}
+              <label className="flex min-h-10 items-center gap-2"><input type="checkbox" checked={extrasReviewed} onChange={e => setExtrasReviewed(e.target.checked)} />Conferi embalagem, aplicação e demais insumos desta peça.</label>
+            </fieldset>
+            <details><summary className="min-h-10 cursor-pointer py-2 font-bold">Ajustar o custo total manualmente</summary><div className="space-y-2">
+              <label className="flex min-h-10 items-center gap-2"><input type="checkbox" checked={manualCostMode} onChange={e => setManualCostMode(e.target.checked)} />Usar um custo total por peça no lugar do cálculo</label>
+              {manualCostMode && <><label className="flex flex-col gap-1">Custo total por peça (R$)<input aria-label="Custo total por peça (R$)" type="number" min="0" step="0.01" value={unitCost} onChange={e => { setUnitCost(e.target.value); setManualCostConfirmed(false); }} className="min-h-11 border border-black/15 bg-white px-2" /></label><label className="flex flex-col gap-1">Motivo do ajuste<input aria-label="Motivo do ajuste" value={manualCostReason} maxLength={500} onChange={e => setManualCostReason(e.target.value)} className="min-h-11 border border-black/15 bg-white px-2" /></label><label className="flex min-h-10 items-center gap-2"><input type="checkbox" checked={manualCostConfirmed} onChange={e => setManualCostConfirmed(e.target.checked)} />Conferi o custo total e incluí todos os insumos.</label></>}
+            </div></details>
+            <OrderCostSummary items={costPreview} formatAmount={formatAmount} showSources={showAmounts} />
+            <p className="text-gray-500">Prévia deste produto. O resumo do pedido recalcula DTF e insumos compartilhados entre todos os itens.</p>
+          </section>
+          <button type="button" disabled={isUploading || costsLoading || Boolean(costsError)} onClick={handleAdd} className="flex min-h-12 w-full items-center justify-center gap-2 bg-black px-4 py-3 text-[10px] font-black uppercase tracking-widest text-[#eab308] hover:bg-[#eab308] hover:text-black disabled:opacity-50">
             <Plus size={15} /> Adicionar produto e continuar
           </button>
         </>

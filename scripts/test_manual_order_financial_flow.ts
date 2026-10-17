@@ -213,6 +213,9 @@ async function main() {
   const { calculateFinancialDRE: serverDRE } = await import('../server/utils/orderFinancial');
   const { processCustomerLoyaltyList } = await import('../src/constants/loyaltyConfig');
   for (const coverage of ['complete', 'estimated', 'unavailable']) {
+    // Manual catalog orders now resolve costs on the server, from the private record.
+    await db.collection('products').doc('unknown-gift').set({ name: 'Brinde de teste' });
+    await db.collection('product_costs').doc('unknown-gift').set({ costPrice: coverage === 'unavailable' ? null : 25, costCalculation: { coverage: coverage === 'estimated' ? 'partial' : 'complete' } });
     const giftId = `MANUAL-GIFT-${coverage}`;
     const gift = { ...order, id: giftId, isGift: true, orderKind: 'gift', shippingStatus: 'pending',
       items: [{ id: 'unknown-gift', quantity: 2, price: 100, unitCostSnapshot: coverage === 'unavailable' ? 0 : 25, costCoverage: coverage }] };

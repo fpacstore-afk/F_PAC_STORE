@@ -36,6 +36,7 @@ import {
 } from '../../../services/orders/orderService';
 import { FinancialEvent } from '../../../types/financial';
 import { parseCurrencyInput } from '../../../../shared/currencyInput';
+import { OrderCostSummary } from '../OrderCostSummary';
 
 interface OrderFinancialDrawerProps {
   order: any | null;
@@ -50,7 +51,7 @@ export function OrderFinancialDrawer({
   onClose,
   onOrderUpdated
 }: OrderFinancialDrawerProps) {
-  const { formatMoney } = useFinancialPrivacy();
+  const { formatMoney, showFinancialValues } = useFinancialPrivacy();
 
   // Sub-views / active action mode inside drawer
   const [activeAction, setActiveAction] = useState<'overview' | 'pay' | 'refund'>('overview');
@@ -265,6 +266,7 @@ export function OrderFinancialDrawer({
           </div>
 
           {/* Operational Alerts */}
+          <OrderCostSummary items={order.items || []} order={order} formatAmount={formatMoney} showSources={showFinancialValues} />
           {isOverdue && (
             <div className="bg-red-50 border border-red-300 p-3 flex items-start gap-2.5 text-red-900 animate-pulse">
               <AlertTriangle size={16} className="text-red-600 shrink-0 mt-0.5" />

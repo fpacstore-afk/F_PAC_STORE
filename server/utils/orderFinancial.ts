@@ -1,3 +1,4 @@
+import { hasRecordedShippingCost } from '../../shared/orderFinancialCore';
 import { companyMovements, isStructureMovement } from '../../shared/companyMovements';
 import { getOrderItemCost, getOrderCogs } from '../../shared/orderCostCoverage';
 export { getOrderItemCost, getOrderCogs } from '../../shared/orderCostCoverage';
@@ -63,6 +64,8 @@ export function calculateOrderFinancials(order: any, productCatalog?: any[]) {
     costCoveragePercent: cogsInfo.costCoveragePercent,
     gatewayFee: gatewayInfo.fee,
     isGatewayFeeExact: gatewayInfo.isExact,
+    isShippingCostExact: hasRecordedShippingCost(order),
+    isResultProvisional: cogsInfo.isEstimated || !gatewayInfo.isExact || !hasRecordedShippingCost(order),
     shippingCharged: shippingInfo.shippingCharged,
     shippingActualCost: shippingInfo.shippingActualCost,
     shippingSubsidy: shippingInfo.shippingSubsidy,

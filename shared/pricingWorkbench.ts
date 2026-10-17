@@ -9,6 +9,7 @@ export type Entry = {
   minQty?: number; cost?: number | null; width?: number | null; height?: number | null;
   method?: 'dtf' | 'fixed' | 'manual'; basis?: 'unit' | 'order' | 'quote'; color?: string; size?: string;
   restrictions?: { colors: string[]; sizes: string[] }[];
+  defaultForOrders?: boolean;
 };
 export type Rules = {
   sheetWidth: number | null; sheetHeight: number | null; sheetCost: number | null; gap: number | null;
@@ -198,6 +199,7 @@ export function validateCatalog(value: any): asserts value is Catalog {
     if (e.restrictions != null && (!Array.isArray(e.restrictions) || e.restrictions.length > 100 || e.restrictions.some((r: any) => !r || !Array.isArray(r.colors) || !Array.isArray(r.sizes) || !r.colors.length || !r.sizes.length || [...r.colors,...r.sizes].some(s => typeof s !== 'string' || !s.trim())))) throw new Error('Preencha cores e tamanhos da restrição.');
     if (e.method != null && !['dtf','fixed','manual'].includes(e.method)) throw new Error('Regra de estampa inválida.');
     if (e.basis != null && !['unit','order','quote'].includes(e.basis)) throw new Error('Aplicação do custo inválida.');
+    if (e.defaultForOrders != null && typeof e.defaultForOrders !== 'boolean') throw new Error('Padrão de insumo inválido.');
     if (e.kind === 'price' && (!e.product?.trim() || !e.supplier?.trim())) throw new Error('Cotação precisa de produto e fornecedor.');
     for (const key of ['cost','width','height','minQty']) if (e[key] != null && !known(e[key])) throw new Error(`Valor inválido em ${e.name}: ${key}.`);
     if (e.minQty != null && (!Number.isInteger(e.minQty) || e.minQty < 1)) throw new Error('Quantidade mínima inválida.');

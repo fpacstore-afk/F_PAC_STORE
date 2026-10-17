@@ -1,3 +1,4 @@
+import { hasRecordedShippingCost } from '../../shared/orderFinancialCore';
 /**
  * MOTOR CANÔNICO DE RENTABILIDADE & PRECIFICAÇÃO DINÂMICA
  * FASE 9.6.1 - FPAC Store
@@ -313,7 +314,7 @@ export function calculateOrderProfitability(
     ? roundPercent((contributionMargin / netRevenue) * 100)
     : 0;
 
-  const isEstimated = cogsInfo.isEstimated || !gatewayInfo.isExact;
+  const isEstimated = cogsInfo.isEstimated || !gatewayInfo.isExact || !hasRecordedShippingCost(order);
 
   return {
     orderId,

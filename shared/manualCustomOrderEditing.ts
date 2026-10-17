@@ -8,6 +8,7 @@ export interface EditableManualArtwork {
   stockPrintSize?: string;
   image?: string;
   notes?: string;
+  costRuleId?: string;
 }
 
 export interface EditableManualLine {
@@ -16,6 +17,7 @@ export interface EditableManualLine {
   size: string;
   quantity: number;
   artworks: EditableManualArtwork[];
+  confirmManualCost?: boolean;
 }
 
 export function manualEditLineId(item: any, index: number): string {
@@ -23,7 +25,7 @@ export function manualEditLineId(item: any, index: number): string {
 }
 
 export function manualEditProductKey(item: any): string {
-  return JSON.stringify([item.customDetails?.productName || item.name, item.customDetails?.model || '', item.color || '', Number(item.price) || 0]);
+  return JSON.stringify([item.customDetails?.productName || item.name, item.customDetails?.model || '', item.color || '', Number(item.price) || 0, item.customDetails?.costRecipe || null]);
 }
 
 export function manualOrderEditLines(order: any): EditableManualLine[] {
@@ -42,6 +44,7 @@ export function manualOrderEditLines(order: any): EditableManualLine[] {
           color: String(art.color || ''), artSize: String(art.artSize || art.printSize || ''),
           stockPrintSize: String(art.stockPrintSize || (catalog ? art.printSize || '' : '')),
           image: String(art.image || ''), notes: String(art.notes || ''),
+          ...(art.costRuleId ? { costRuleId: String(art.costRuleId) } : {}),
         };
       }),
     };
