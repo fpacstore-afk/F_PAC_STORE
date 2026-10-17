@@ -1,0 +1,25 @@
+import assert from 'node:assert/strict';
+import { compareInventorySizes, hasInventoryCount, inventoryCountKey, selectInventoryRows, type InventoryAuditFilters, type InventoryAuditRow } from '../shared/inventoryAuditView';
+
+const filters: InventoryAuditFilters = { stockType: 'all', search: '', productSlug: '', baseModel: '', color: '', size: '', situation: 'all', sortBy: 'product' };
+const row = (slug: string, size: string, overrides: Partial<InventoryAuditRow> = {}): InventoryAuditRow => ({ productSlug: slug, productName: 'Camiseta F PAC', productCode: slug, baseModel: 'Tradicional Suedine', variantKey: `Preto_${size}`, color: 'Preto', size, systemQuantity: 0, reservedQuantity: 0, countVerified: false, stockType: 'printed', ...overrides });
+const mixed = ['G', 'GG', 'M', 'P'].flatMap(size => [row('ARTE-B', size), row('ARTE-A', size)]);
+const ordered = selectInventoryRows(mixed, filters, {});
+assert.deepEqual(ordered.map(item => `${item.productCode}:${item.size}`), ['ARTE-A:P', 'ARTE-A:M', 'ARTE-A:G', 'ARTE-A:GG', 'ARTE-B:P', 'ARTE-B:M', 'ARTE-B:G', 'ARTE-B:GG'], 'same product names cannot interleave separate SKUs or sort G/GG before P/M');
+assert.deepEqual(selectInventoryRows(mixed, { ...filters, sortBy: 'size' }, {}).map(item => item.size), ['P', 'P', 'M', 'M', 'G', 'G', 'GG', 'GG']);
+assert.deepEqual(['12', '2', '10', '4', '6'].sort(compareInventorySizes), ['2', '4', '6', '10', '12']);
+const plain = row('LISA', 'M', { productName: 'Camiseta Águia', stockType: 'plain', countVerified: true, color: 'Azul Marinho', systemQuantity: 3 });
+const data = [...mixed, plain, row('CROPPED', 'P', { baseModel: 'Cropped Oversized Feminino', color: 'Branco', systemQuantity: 2, reservedQuantity: 1 })];
+assert.deepEqual(selectInventoryRows(data, { ...filters, stockType: 'plain', baseModel: 'Tradicional Suedine', productSlug: 'LISA', color: 'Azul Marinho', size: 'M', search: 'AGUIA azul', situation: 'positive' }, {}), [plain]);
+assert.equal(selectInventoryRows(data, { ...filters, stockType: 'plain', color: 'Branco' }, {}).length, 0);
+assert.equal(selectInventoryRows(data, { ...filters, situation: 'reserved' }, {}).length, 1);
+assert.equal(selectInventoryRows(data, { ...filters, situation: 'unverified' }, {}).some(item => item.stockType === 'plain'), false);
+const counts = { [inventoryCountKey(plain)]: '0', [inventoryCountKey(mixed[0])]: '' };
+assert.equal(hasInventoryCount(plain, counts), true, 'explicit zero is a physical count');
+assert.equal(hasInventoryCount(mixed[0], counts), false, 'clearing an input never manufactures a zero count');
+assert.deepEqual(selectInventoryRows(data, { ...filters, situation: 'difference' }, counts), [plain]);
+assert.deepEqual(selectInventoryRows(data, { ...filters, situation: 'counted' }, counts), [plain]);
+selectInventoryRows(data, { ...filters, stockType: 'printed' }, counts);
+assert.equal(counts[inventoryCountKey(plain)], '0', 'changing filters preserves counts outside the view');
+assert.deepEqual(mixed.map(item => item.size).slice(0, 4), ['G', 'G', 'GG', 'GG'], 'sorting never mutates authoritative input');
+console.log('PASS inventory filters combine model, product, color, size, stock and search; grades follow P/M/G/GG, SKUs stay grouped and hidden/zero counts are preserved.');

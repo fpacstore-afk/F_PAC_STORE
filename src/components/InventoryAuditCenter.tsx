@@ -1,3 +1,4 @@
+import { compareInventorySizes, hasInventoryCount, selectInventoryRows, type InventoryAuditFilters } from '../../shared/inventoryAuditView';
 import { authenticatedFetch, parseApiJson } from '../lib/api';
 import React, { useEffect, useMemo, useState } from 'react';
 import { collection, onSnapshot } from 'firebase/firestore';
@@ -11,6 +12,7 @@ type InventoryRow = {
   productSlug: string;
   productName: string;
   productCode: string;
+  baseModel: string;
   variantKey: string;
   color: string;
   size: string;
@@ -33,7 +35,9 @@ export function InventoryAuditCenter({ operator = 'Administrador' }: { operator?
   const [counts, setCounts] = useState<Record<string, string>>({});
   const [savingKey, setSavingKey] = useState<string | null>(null);
   const [reference, setReference] = useState(() => new Intl.DateTimeFormat('sv-SE', { timeZone: 'America/Sao_Paulo', year: 'numeric', month: '2-digit' }).format(new Date()));
-  const [stockType, setStockType] = useState<'all' | 'plain' | 'printed'>('all');
+  const [filters, setFilters] = useState<InventoryAuditFilters>({ stockType: 'plain', search: '', productSlug: '', baseModel: '', color: '', size: '', situation: 'all', sortBy: 'product' });
+  const { stockType } = filters;
+  const setStockType = (value: InventoryAuditFilters['stockType']) => setFilters(current => ({ ...current, stockType: value, productSlug: '' }));
   const [production, setProduction] = useState<any[]>([]);
   const [overviewError, setOverviewError] = useState('');
   const [latestCount, setLatestCount] = useState<any>(null);
@@ -77,6 +81,7 @@ export function InventoryAuditCenter({ operator = 'Administrador' }: { operator?
         // The name is intentionally human-readable, while this second line
         // exposes the real catalogue identity when many variants share it.
         productCode: String(product?.sku || product?.reference || product?.slug || product?.id || productSlug),
+        baseModel: String(product?.baseModel || product?.category || 'Sem modelo'),
         variantKey,
         color: String(variant?.color || variantKey.split('_')[0] || 'Sem cor'),
         size: String(variant?.size || variantKey.split('_').slice(1).join('_') || 'Único'),
@@ -98,10 +103,22 @@ export function InventoryAuditCenter({ operator = 'Administrador' }: { operator?
     });
 
     // Physical counts use only authoritative inventory, never duplicated catalog capacity.
-    return entries.sort((a, b) => [a.productName, a.color, a.size].join('|').localeCompare([b.productName, b.color, b.size].join('|')));
+    return entries;
   }, [inventory, products]);
 
-  const visibleRows = useMemo(() => rows.filter(row => stockType === 'all' || row.stockType === stockType), [rows, stockType]);
+  const visibleRows = useMemo(() => selectInventoryRows(rows, filters, counts), [rows, filters, counts]);
+  const filterOptions = useMemo(() => {
+    const typedRows = rows.filter(row => stockType === 'all' || row.stockType === stockType);
+    const productRows = typedRows.filter(row => !filters.baseModel || row.baseModel === filters.baseModel);
+    const productsBySlug = new Map(productRows.map(row => [row.productSlug, row]));
+    const alphabetical = (values: string[]) => [...new Set(values)].sort((a, b) => a.localeCompare(b, 'pt-BR', { numeric: true }));
+    return {
+      products: [...productsBySlug.values()].sort((a, b) => `${a.productName} ${a.productCode}`.localeCompare(`${b.productName} ${b.productCode}`, 'pt-BR')),
+      models: alphabetical(typedRows.map(row => row.baseModel)),
+      colors: alphabetical(typedRows.map(row => row.color)),
+      sizes: [...new Set(typedRows.map(row => row.size))].sort(compareInventorySizes),
+    };
+  }, [rows, stockType, filters.baseModel]);
   const periodTotals = useMemo(() => {
     const now = Date.now();
     const periods = [7, 30, 90, 365];
@@ -113,10 +130,9 @@ export function InventoryAuditCenter({ operator = 'Administrador' }: { operator?
       return 0;
     };
     const isOutbound = (movement: StockMovement) => ['sale', 'subtract', 'production_consumption', 'consume', 'shipped', 'reservation_consumption'].includes(String(movement.type || '').toLowerCase());
-    const matching = movements.filter(movement => {
-      const row = rows.find(item => item.productSlug === movement.productSlug && item.variantKey === movement.variantKey);
-      return Boolean(row) && (stockType === 'all' || row?.stockType === stockType) && isOutbound(movement);
-    });
+    const visibleKeys = new Set(visibleRows.map(row => `${row.productSlug}:${row.variantKey}`));
+    const scopedMovements = movements.filter(movement => visibleKeys.has(`${movement.productSlug}:${movement.variantKey}`));
+    const matching = scopedMovements.filter(isOutbound);
     const totals = Object.fromEntries(periods.map(days => [days, matching.filter(movement => timeOf(movement) >= now - days * 86_400_000).reduce((sum, movement) => sum + Math.max(0, Number(movement.quantity) || 0), 0)]));
     const top = matching
       .filter(movement => timeOf(movement) >= now - 30 * 86_400_000)
@@ -126,10 +142,11 @@ export function InventoryAuditCenter({ operator = 'Administrador' }: { operator?
         return acc;
       }, {});
     const topKey = Object.entries(top).sort(([, a], [, b]) => b - a)[0]?.[0];
-    return { totals, topRow: rows.find(row => `${row.productSlug}:${row.variantKey}` === topKey) || null, recent: [...movements].sort((a, b) => timeOf(b) - timeOf(a)).slice(0, 12) };
-  }, [movements, rows, stockType]);
+    return { totals, topRow: visibleRows.find(row => `${row.productSlug}:${row.variantKey}` === topKey) || null, recent: [...scopedMovements].sort((a, b) => timeOf(b) - timeOf(a)).slice(0, 12) };
+  }, [movements, visibleRows]);
 
-  const countedRows = visibleRows.filter(row => counts[row.variantKey ? `${row.productSlug}:${row.variantKey}` : row.productSlug] !== undefined);
+  const allCountedRows = rows.filter(row => hasInventoryCount(row, counts));
+  const countedRows = visibleRows.filter(row => hasInventoryCount(row, counts));
   const differences = countedRows.filter(row => numberOrZero(counts[`${row.productSlug}:${row.variantKey}`]) !== row.systemQuantity);
 
   const resetStockForInitialCount = async () => {
@@ -167,7 +184,7 @@ export function InventoryAuditCenter({ operator = 'Administrador' }: { operator?
   const saveMonthlyCount = async () => {
     setSavingCount(true);
     try {
-      const response = await authenticatedFetch('/api/admin/stock/inventory-counts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reference, counts: countedRows.map(row => ({ productSlug: row.productSlug, variantKey: row.variantKey, counted: numberOrZero(counts[`${row.productSlug}:${row.variantKey}`]) })) }) });
+      const response = await authenticatedFetch('/api/admin/stock/inventory-counts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reference, counts: allCountedRows.map(row => ({ productSlug: row.productSlug, variantKey: row.variantKey, counted: numberOrZero(counts[`${row.productSlug}:${row.variantKey}`]) })) }) });
       const data = await parseApiJson<any>(response);
       if (!response.ok) throw new Error(data.message);
       setLatestCount(data); toast.success('Contagem mensal salva com histórico.');
@@ -176,7 +193,7 @@ export function InventoryAuditCenter({ operator = 'Administrador' }: { operator?
   };
 
   const setSystemAsCount = () => {
-    const next: Record<string, string> = {};
+    const next: Record<string, string> = { ...counts };
     visibleRows.filter(row => row.countVerified).forEach(row => { next[`${row.productSlug}:${row.variantKey}`] = String(row.systemQuantity); });
     setCounts(next);
   };
@@ -219,11 +236,39 @@ export function InventoryAuditCenter({ operator = 'Administrador' }: { operator?
       </header>
 
       <div className="border border-amber-200 bg-amber-50 p-4 text-xs text-amber-950">Conte as lisas uma única vez por modelo, cor e tamanho. A capacidade compartilhada dos desenhos não entra na soma física. Peças enviadas à estamparia aparecem em produção, separadamente. Quantidades antigas de estampadas ficam fora do saldo físico confirmado até a contagem; informe zero quando não existir peça pronta.</div>
-      <div className="border border-black/10 bg-white p-4 space-y-2">
+      <details className="border border-black/10 bg-white p-4 space-y-2">
+        <summary className="cursor-pointer text-xs font-black uppercase">Reinício dos saldos — uso eventual</summary>
         <button type="button" disabled={loading || resettingStock || savingCount || savingKey !== null} onClick={resetStockForInitialCount} className="border border-black px-4 py-3 text-xs font-black uppercase disabled:opacity-40">{resettingStock ? 'Zerando saldos...' : 'Zerar saldos para reinício'}</button>
         <p className="text-xs text-gray-600">Use somente para começar uma nova base de estoque. Zera os produtos cadastrados em lotes por produto, preservando cadastros e histórico. A contagem física será informada depois; não zere novamente nas conferências mensais.</p>
         {resetProgress && <p role="status" className="text-xs font-bold">{resetProgress}</p>}
-      </div>
+      </details>
+      <details className="border border-black/10 bg-white p-4 text-xs leading-relaxed">
+        <summary className="cursor-pointer font-black uppercase">Como contar e o que acontece com o cadastro anterior</summary>
+        <ol className="mt-3 list-decimal pl-5 space-y-2">
+          <li><strong>Conte primeiro as lisas.</strong> Informe a quantidade real uma única vez por modelo, cor e tamanho. As diferentes estampas compartilham essa base.</li>
+          <li><strong>Conte as peças já estampadas separadamente.</strong> “Pronta entrega a conferir” é uma variação ainda sem conferência física confirmada. Informe zero apenas depois de verificar que não existe peça pronta dessa variação. Salvar a contagem confirma os saldos iguais; divergências precisam do ajuste.</li>
+          <li><strong>Preserve os pedidos antigos.</strong> Eles continuam no histórico e mantêm suas movimentações originais; não precisam ser recriados. Separe na conferência as peças destinadas a pedidos. Registros antigos sem produto vinculado permanecem fora do catálogo até regularização.</li>
+          <li><strong>Feche cada mês.</strong> Preencha a contagem real, salve a contagem mensal e aplique os ajustes necessários. Na próxima conferência, compare os saldos sem zerar tudo novamente.</li>
+        </ol>
+      </details>
+      <section aria-label="Filtros do inventário" className="border border-black/10 bg-white p-4 space-y-4">
+        <div className="flex flex-wrap gap-2" role="group" aria-label="Tipo de estoque">
+          <FilterButton active={stockType === 'plain'} onClick={() => setStockType('plain')}>Peças lisas</FilterButton>
+          <FilterButton active={stockType === 'printed'} onClick={() => setStockType('printed')}>Peças estampadas</FilterButton>
+          <FilterButton active={stockType === 'all'} onClick={() => setStockType('all')}>Todos</FilterButton>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <label className="text-xs font-bold">Buscar no inventário<input type="search" value={filters.search} onChange={event => setFilters(current => ({ ...current, search: event.target.value }))} placeholder="Produto, referência ou cor" className="mt-1 block w-full border border-black/20 px-3 py-2 font-normal" /></label>
+          <label className="text-xs font-bold">Modelo<select value={filters.baseModel} onChange={event => setFilters(current => ({ ...current, baseModel: event.target.value, productSlug: '' }))} className="mt-1 block w-full border border-black/20 px-3 py-2 font-normal"><option value="">Todos os modelos</option>{filterOptions.models.map(model => <option key={model} value={model}>{model}</option>)}</select></label>
+          <label className="text-xs font-bold">Produto<select value={filters.productSlug} onChange={event => setFilters(current => ({ ...current, productSlug: event.target.value }))} className="mt-1 block w-full border border-black/20 px-3 py-2 font-normal"><option value="">Todos os produtos</option>{filterOptions.products.map(row => <option key={row.productSlug} value={row.productSlug}>{row.productName} · {row.productCode}</option>)}</select></label>
+          <label className="text-xs font-bold">Cor<select value={filters.color} onChange={event => setFilters(current => ({ ...current, color: event.target.value }))} className="mt-1 block w-full border border-black/20 px-3 py-2 font-normal"><option value="">Todas as cores</option>{filterOptions.colors.map(color => <option key={color} value={color}>{color}</option>)}</select></label>
+          <label className="text-xs font-bold">Tamanho<select value={filters.size} onChange={event => setFilters(current => ({ ...current, size: event.target.value }))} className="mt-1 block w-full border border-black/20 px-3 py-2 font-normal"><option value="">Todos os tamanhos</option>{filterOptions.sizes.map(size => <option key={size} value={size}>{size}</option>)}</select></label>
+          <label className="text-xs font-bold">Situação<select value={filters.situation} onChange={event => setFilters(current => ({ ...current, situation: event.target.value as InventoryAuditFilters['situation'] }))} className="mt-1 block w-full border border-black/20 px-3 py-2 font-normal"><option value="all">Todas as situações</option><option value="positive">Com saldo físico</option><option value="zero">Saldo zero</option><option value="reserved">Com reservas</option><option value="unverified">Pronta entrega a conferir</option><option value="counted">Preenchidas nesta contagem</option><option value="uncounted">Ainda não preenchidas</option><option value="difference">Com divergência</option></select></label>
+          <label className="text-xs font-bold">Ordenação<select value={filters.sortBy} onChange={event => setFilters(current => ({ ...current, sortBy: event.target.value as InventoryAuditFilters['sortBy'] }))} className="mt-1 block w-full border border-black/20 px-3 py-2 font-normal"><option value="product">Produto, cor e tamanho</option><option value="size">Tamanho, produto e cor</option></select></label>
+          <button type="button" onClick={() => setFilters({ stockType: 'plain', search: '', productSlug: '', baseModel: '', color: '', size: '', situation: 'all', sortBy: 'product' })} className="self-end border border-black px-3 py-2 text-xs font-black uppercase">Limpar filtros</button>
+        </div>
+        <p className="text-xs text-gray-600">{visibleRows.length} de {rows.length} variações · tamanhos na ordem P → M → G → GG, mantendo cada produto e cor juntos. Os filtros não apagam as contagens preenchidas.</p>
+      </section>
       {overviewError && <p role="alert" className="text-red-700 text-sm">{overviewError}</p>}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <Metric label="Variações cadastradas" value={visibleRows.length} />
@@ -239,7 +284,6 @@ export function InventoryAuditCenter({ operator = 'Administrador' }: { operator?
       <section className="border border-black/10 bg-white p-4 space-y-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div><p className="text-[10px] font-black uppercase tracking-widest text-[#a17a00]">Consulta operacional</p><h2 className="text-base font-black uppercase">Saldo, reposição e giro</h2></div>
-          <div className="flex gap-2"><FilterButton active={stockType === 'all'} onClick={() => setStockType('all')}>Todos</FilterButton><FilterButton active={stockType === 'plain'} onClick={() => setStockType('plain')}>Peças lisas</FilterButton><FilterButton active={stockType === 'printed'} onClick={() => setStockType('printed')}>Peças estampadas</FilterButton></div>
         </div>
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
           <Metric label="Saldo físico" value={visibleRows.reduce((sum, row) => sum + (row.countVerified ? row.systemQuantity : 0), 0)} />
@@ -253,8 +297,8 @@ export function InventoryAuditCenter({ operator = 'Administrador' }: { operator?
       {visibleRows.length === 0 && !loading ? (
         <div className="border-2 border-dashed border-amber-400 bg-amber-50 p-8 text-center">
           <AlertTriangle className="mx-auto text-amber-700 mb-2" />
-          <p className="font-black uppercase text-sm">Cadastre os produtos e as variações primeiro</p>
-          <p className="text-xs text-amber-900 mt-1">Depois, esta tela vira a rotina mensal de conferência física.</p>
+          <p className="font-black uppercase text-sm">{rows.length ? 'Nenhuma variação encontrada' : 'Cadastre os produtos e as variações primeiro'}</p>
+          <p className="text-xs text-amber-900 mt-1">{rows.length ? 'Ajuste a busca ou limpe os filtros. As contagens já preenchidas continuam guardadas nesta tela.' : 'Depois, esta tela vira a rotina mensal de conferência física.'}</p>
         </div>
       ) : (
         <div className="bg-white border border-black/10 overflow-x-auto">
@@ -266,12 +310,12 @@ export function InventoryAuditCenter({ operator = 'Administrador' }: { operator?
             <tbody className="divide-y divide-black/10 text-sm">
               {visibleRows.map(row => {
                 const key = `${row.productSlug}:${row.variantKey}`;
-                const hasCount = counts[key] !== undefined;
+                const hasCount = hasInventoryCount(row, counts);
                 const counted = hasCount ? numberOrZero(counts[key]) : null;
                 const difference = counted === null ? null : counted - row.systemQuantity;
                 return <tr key={key} className={difference === null || difference === 0 ? '' : 'bg-amber-50'}>
-                  <td className="p-3"><span className="block font-black">{row.productName}</span><span className="mt-0.5 block font-mono text-[10px] text-gray-500">{row.productCode}</span></td><td className="p-3">{row.color}</td><td className="p-3">{row.size}</td><td className="p-3 font-mono">{row.systemQuantity}{!row.countVerified && <span className="block text-[9px] text-amber-700">Cadastro anterior · não conferido</span>}</td><td className="p-3 font-mono">{row.reservedQuantity}</td><td className="p-3 font-mono">{row.availableQuantity}</td>
-                  <td className="p-3"><input aria-label={`Contagem física ${row.productName} ${row.color} ${row.size}`} disabled={resettingStock} inputMode="numeric" min="0" type="number" value={counts[key] ?? ''} onChange={event => setCounts(current => ({ ...current, [key]: event.target.value }))} className="w-24 border border-black/20 px-2 py-1.5 font-mono" /></td>
+                  <td className="p-3"><span className="block font-black">{row.productName}</span><span className="mt-0.5 block font-mono text-[10px] text-gray-500">{row.productCode}</span></td><td className="p-3">{row.color}</td><td className="p-3">{row.size}</td><td className="p-3 font-mono">{row.systemQuantity}{!row.countVerified && <span className="block text-[9px] text-amber-700">Pronta entrega a conferir</span>}</td><td className="p-3 font-mono">{row.reservedQuantity}</td><td className="p-3 font-mono">{row.availableQuantity}</td>
+                  <td className="p-3"><input aria-label={`Contagem física ${row.productName} ${row.productCode} ${row.color} ${row.size}`} disabled={resettingStock} inputMode="numeric" min="0" type="number" value={counts[key] ?? ''} onChange={event => setCounts(current => ({ ...current, [key]: event.target.value }))} className="w-24 border border-black/20 px-2 py-1.5 font-mono" /></td>
                   <td className="p-3 font-mono font-black">{difference === null ? '—' : difference === 0 ? <span className="text-emerald-700">Confere</span> : `${difference > 0 ? '+' : ''}${difference}`}</td>
                   <td className="p-3"><button disabled={resettingStock || !hasCount || difference === 0 || savingKey === key} onClick={() => saveRow(row)} className="inline-flex items-center gap-1 bg-black text-[#eab308] disabled:opacity-40 px-3 py-2 text-[9px] font-black uppercase"><Save size={13} /> {savingKey === key ? 'Salvando' : 'Ajustar'}</button></td>
                 </tr>;
@@ -284,13 +328,13 @@ export function InventoryAuditCenter({ operator = 'Administrador' }: { operator?
         <div className="border-b border-black/10 p-4"><h2 className="text-sm font-black uppercase">Histórico recente de estoque</h2><p className="text-[10px] text-gray-500">Últimos lançamentos oficiais: entradas, reservas, consumo, saídas e ajustes.</p></div>
         <table className="w-full min-w-[650px] text-left text-xs"><thead className="bg-black text-white text-[9px] uppercase"><tr><th className="p-3">Data</th><th className="p-3">Produto / variação</th><th className="p-3">Movimento</th><th className="p-3">Qtd.</th><th className="p-3">Motivo</th></tr></thead><tbody className="divide-y divide-black/10">{periodTotals.recent.map(movement => <tr key={movement.id}><td className="p-3">{formatMovementDate(movement.createdAt || movement.timestamp)}</td><td className="p-3 font-bold">{movement.productSlug || '—'} · {movement.variantKey || '—'}</td><td className="p-3 uppercase">{String(movement.type || 'ajuste').replace(/_/g, ' ')}</td><td className="p-3 font-mono">{Number(movement.quantity || 0)}</td><td className="p-3 text-gray-500">{movement.reason || '—'}</td></tr>)}</tbody></table>
       </section>
-      <div className="border border-black/10 bg-white p-4 space-y-2"><button disabled={resettingStock || savingCount || countedRows.length === 0 || Boolean(overviewError)} onClick={saveMonthlyCount} className="bg-black text-[#eab308] px-4 py-3 text-xs font-black uppercase disabled:opacity-40">{savingCount ? 'Salvando contagem...' : 'Salvar contagem mensal'}</button><p className="text-xs text-gray-500">Salva as variações contadas e as peças em produção. O saldo físico só muda quando você usa “Ajustar”.</p>{latestCount && <p className="text-xs">Última contagem salva: {formatMovementDate(latestCount.capturedAt)} · {latestCount.countedVariants ?? latestCount.lines?.length ?? 0} variações · {latestCount.differenceCount} diferenças.</p>}</div>
+      <div className="border border-black/10 bg-white p-4 space-y-2"><button disabled={resettingStock || savingCount || allCountedRows.length === 0 || Boolean(overviewError)} onClick={saveMonthlyCount} className="bg-black text-[#eab308] px-4 py-3 text-xs font-black uppercase disabled:opacity-40">{savingCount ? 'Salvando contagem...' : 'Salvar contagem mensal'}</button><p className="text-xs text-gray-500">Salva as {allCountedRows.length} variações preenchidas, inclusive as ocultas pelos filtros, e as peças em produção. O saldo físico só muda quando você usa “Ajustar”.</p>{latestCount && <p className="text-xs">Última contagem salva: {formatMovementDate(latestCount.capturedAt)} · {latestCount.countedVariants ?? latestCount.lines?.length ?? 0} variações · {latestCount.differenceCount} diferenças.</p>}</div>
       <p className="text-[10px] text-gray-500">Cada ajuste é registrado como inventário físico de {reference || 'referência não informada'} no histórico de estoque.</p>
     </section>
   );
 }
 
-function FilterButton({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) { return <button type="button" onClick={onClick} className={`px-3 py-2 text-[9px] font-black uppercase ${active ? 'bg-black text-[#eab308]' : 'border border-black/10 text-gray-600'}`}>{children}</button>; }
+function FilterButton({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) { return <button type="button" aria-pressed={active} onClick={onClick} className={`px-3 py-2 text-[9px] font-black uppercase ${active ? 'bg-black text-[#eab308]' : 'border border-black/10 text-gray-600'}`}>{children}</button>; }
 function Insight({ icon, label, text }: { icon: React.ReactNode; label: string; text: string }) { return <div className="flex gap-2 border border-black/10 p-3"><span className="text-[#a17a00]">{icon}</span><div><p className="text-[9px] font-black uppercase">{label}</p><p className="mt-1 text-gray-600">{text}</p></div></div>; }
 function formatMovementDate(value: unknown) { const raw: any = value; const date = typeof raw === 'string' ? new Date(raw) : raw?.toDate ? raw.toDate() : typeof raw?.seconds === 'number' ? new Date(raw.seconds * 1000) : null; return date && !Number.isNaN(date.getTime()) ? date.toLocaleString('pt-BR') : '—'; }
 
