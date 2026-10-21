@@ -8,6 +8,7 @@ import { db } from '../lib/firebase';
 import { products as staticProducts } from '../data/products';
 import { productMatchesStorefrontCategory, buildSellableCatalog, productMatchesCommercialLine, type CommercialLine } from '../lib/catalogProducts';
 import { getProductUrl, getDisplayPrices } from '../lib/utils';
+import { formatBRL } from '../lib/money';
 import { subscribePublicProductSnapshot } from '../services/publicProducts';
 
 const CATEGORY_LABELS: Record<string, { title: string; subtitle: string; eyebrow: string }> = {
@@ -58,13 +59,23 @@ export default function ProductCategoryPage() {
 
   const categoryProducts = useMemo(() => products.filter((product) => productMatchesStorefrontCategory(product, category)), [products, category]);
   const requestedLine = normalize(searchParams.get('line'));
-  const selectedLine: Exclude<CommercialLine, 'todos'> = requestedLine === 'mark' || requestedLine === 'prime' ? requestedLine : 'force';
-  const filtered = useMemo(() => categoryProducts.filter(product => productMatchesCommercialLine(product, selectedLine)), [categoryProducts, selectedLine]);
   const lineCounts = useMemo(() => ({
     force: categoryProducts.filter(product => productMatchesCommercialLine(product, 'force')).length,
     mark: categoryProducts.filter(product => productMatchesCommercialLine(product, 'mark')).length,
     prime: categoryProducts.filter(product => productMatchesCommercialLine(product, 'prime')).length,
   }), [categoryProducts]);
+  const selectedLine: Exclude<CommercialLine, 'todos'> = requestedLine === 'force' || requestedLine === 'mark' || requestedLine === 'prime'
+    ? requestedLine : lineCounts.mark > 0 ? 'mark' : 'force';
+  const filtered = useMemo(() => categoryProducts.filter(product => productMatchesCommercialLine(product, selectedLine)), [categoryProducts, selectedLine]);
+  const linePrices = useMemo(() => {
+    const minPrice = (line: 'mark' | 'force') => {
+      const prices = categoryProducts.filter(product => productMatchesCommercialLine(product, line))
+        .map(product => getDisplayPrices(product).effectivePrice)
+        .filter(price => Number.isFinite(price) && price > 0);
+      return prices.length ? Math.min(...prices) : null;
+    };
+    return { mark: minPrice('mark'), force: minPrice('force') };
+  }, [categoryProducts]);
   const selectLine = (line: 'force' | 'mark' | 'prime') => {
     if (line === 'prime') {
       const product = PRIME_PRODUCT_BY_CATEGORY[category];
@@ -99,9 +110,9 @@ export default function ProductCategoryPage() {
 
       <section className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-3 md:py-8">
         <div className="mb-3 grid grid-cols-3 gap-2 rounded-2xl border border-black/10 bg-white p-2 shadow-sm">
-          {(['force', 'mark', 'prime'] as const).map(line => (
+          {(['prime', 'mark', 'force'] as const).map(line => (
             <button key={line} type="button" onClick={() => selectLine(line)} className={`min-h-12 rounded-xl px-2 text-[9px] md:text-xs font-black uppercase tracking-[0.12em] transition-colors ${selectedLine === line ? 'bg-black text-[#eab308]' : 'bg-[#f5f5f2] text-black'}`}>
-              <span className="block">{line}</span><span className={`mt-0.5 block text-[7px] font-bold ${selectedLine === line ? 'text-white/50' : 'text-black/35'}`}>{line === 'prime' ? 'Personalizar' : catalogError ? 'Indisponível' : `${lineCounts[line]} ${lineCounts[line] === 1 ? 'produto' : 'produtos'}`}</span>
+              <span className="block">{line}</span><span className={`mt-0.5 block text-[7px] font-bold ${selectedLine === line ? 'text-white/50' : 'text-black/35'}`}>{line === 'prime' ? 'Preço no configurador' : catalogError ? 'Indisponível' : linePrices[line] !== null ? `A partir de ${formatBRL(linePrices[line]!)}` : `${lineCounts[line]} ${lineCounts[line] === 1 ? 'produto' : 'produtos'}`}</span>
             </button>
           ))}
         </div>

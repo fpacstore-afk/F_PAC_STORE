@@ -21,7 +21,8 @@ assert.match(categories, /ProductMockupSprite/, 'category cards must use photore
 assert.match(catalog, /productMatchesCommercialLine/, 'collection filtering must use the canonical multi-product resolver');
 assert.match(catalog, /pageCopy/, 'FORCE and MARK must use the refreshed shared storefront');
 assert.doesNotMatch(catalog, /LINE_PRODUCT_TYPES|Consultar/, 'collection pages must show only registered products, never synthetic consultation cards');
-assert.match(categoryPage, /\['force', 'mark', 'prime'\]/, 'each dedicated product-type page must expose the three collections');
+assert.match(categoryPage, /\['prime', 'mark', 'force'\]/, 'each product-type page must show PRIME, MARK, then FORCE');
+assert.match(categoryPage, /lineCounts\.mark > 0 \? 'mark' : 'force'/, 'the first ready-made category view must prefer MARK when published');
 assert.match(categoryPage, /productMatchesCommercialLine\(product, selectedLine\)/, 'dedicated product-type pages must show registered products from the selected collection');
 assert.match(navbar, /to="\/produtos"[\s\S]*TODOS OS PRODUTOS/, 'Todos os produtos must open the product-type catalog');
 assert.match(navbar, /to="\/prime"[\s\S]*LINHA PRIME/, 'the PRIME collection menu must open the dedicated customizer');

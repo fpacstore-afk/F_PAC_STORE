@@ -265,9 +265,9 @@ export default function CatalogStorefront() {
             <div className="flex min-w-0 gap-1.5 overflow-x-auto scrollbar-none">
               {([
                 ['all', 'Todos'],
-                ['force', 'FORCE'],
-                ['mark', 'MARK'],
                 ['prime', 'PRIME'],
+                ['mark', 'MARK'],
+                ['force', 'FORCE'],
               ] as Array<[CollectionFilter, string]>).map(([value, label]) => (
                 <button key={value} type="button" onClick={() => selectCollection(value)} className={`shrink-0 min-h-9 px-3.5 rounded-full border text-[8px] md:text-[9px] font-black uppercase tracking-[0.14em] transition-colors ${collectionFilter === value ? 'bg-black text-[#eab308] border-black' : 'bg-white text-black/55 border-black/10 hover:border-black/30'}`}>{label}</button>
               ))}

@@ -109,7 +109,7 @@ export default function ProductCategories() {
                 )}
               </div>
               <div className="flex items-center justify-between gap-2 p-3 md:p-4 text-black">
-                <div className="min-w-0"><h2 className="text-xs md:text-base leading-tight font-black uppercase">{title}</h2><p className="mt-0.5 text-[7px] md:text-[8px] font-black uppercase tracking-[0.12em] text-[#9a7100]">FORCE · MARK · PRIME</p></div>
+                <div className="min-w-0"><h2 className="text-xs md:text-base leading-tight font-black uppercase">{title}</h2><p className="mt-0.5 text-[7px] md:text-[8px] font-black uppercase tracking-[0.12em] text-[#9a7100]">PRIME · MARK · FORCE</p></div>
                 <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-black text-white"><ArrowRight size={13} /></span>
               </div>
             </Link>
