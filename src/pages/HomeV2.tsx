@@ -207,7 +207,7 @@ export default function HomeV2() {
 
       <HomeHeroCarousel slides={heroSlides} />
  
-      <HomeCollectionStrip />
+      <HomeCollectionStrip products={carouselProducts} />
 
       {bestSellingProducts.length > 0 && (
         <section className="bg-white py-10 md:py-14" data-home-bestsellers>
@@ -315,7 +315,7 @@ export default function HomeV2() {
 
       <section data-home-uniforms className="bg-[#f7f7f5] py-10 md:py-14">
         <div data-motion-reveal className="mx-auto grid max-w-6xl gap-6 px-5 md:grid-cols-[1fr_auto] md:items-center">
-          <div><p className="text-[9px] font-black uppercase tracking-[0.24em] text-[#9a7100]">Para sua equipe</p><h2 className="mt-2 text-2xl font-black uppercase italic md:text-4xl">Uniformes com a identidade da sua empresa</h2><p className="mt-2 max-w-2xl text-sm leading-relaxed text-black/55">Conte para a F PAC como você imagina as peças e receba um orçamento personalizado.</p></div>
+          <div><p className="text-[9px] font-black uppercase tracking-[0.24em] text-[#9a7100]">Para sua equipe</p><h2 className="mt-2 text-2xl font-black uppercase italic md:text-4xl">Uniformes com a identidade da sua empresa</h2><p className="mt-2 max-w-2xl text-sm leading-relaxed text-black/55">Comece pelo uniforme completo, com arte no peito e nas costas. Também podemos orçar uma versão mais simples para sua equipe.</p></div>
           <a href="https://wa.me/5547997465602?text=Ol%C3%A1%2C%20quero%20um%20or%C3%A7amento%20para%20uniformes%20personalizados." target="_blank" rel="noreferrer" className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-black px-6 py-3 text-[10px] font-black uppercase tracking-[0.16em] text-[#eab308] transition-colors hover:bg-[#eab308] hover:text-black"><span>Orçar uniformes</span><ArrowRight size={16} /></a>
         </div>
       </section>
