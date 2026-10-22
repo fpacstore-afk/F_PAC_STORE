@@ -9,7 +9,8 @@ import { calculateFinancialDRE as serverDRE } from '../server/utils/orderFinanci
 import { LegacySalesHistory } from '../src/components/admin/financial/LegacySalesHistory';
 import { validateSheetSyncPayload } from '../server/utils/sheetValidation';
 import { requireIsolatedTestDb } from './requireIsolatedTestDb';
-import { companyMovements, companyMovementExportId } from '../shared/companyMovements';
+import { companyMovements, companyMovementExportId, companyExpenses } from '../shared/companyMovements';
+import { isOwnerWithdrawal } from '../shared/ownerWithdrawals';
 import { saveCompanyMovementFromSheet } from '../server/services/companyMovementSheet.service';
 import { readFileSync } from 'node:fs';
 
@@ -17,6 +18,17 @@ const oldSale = { id: 'old-sale', type: 'in', description: 'Venda Manual - Venda
 const order = { id: 'MANUAL-1', total: 239.80, payment: { paidAmount: 239.80, status: 'approved', gatewayFee: 0 }, items: [{ quantity: 1, unitCostSnapshot: 50 }], createdAt: '2026-08-03' };
 const fuel = { id: 'fuel', type: 'out', category: 'Combustível', description: 'Visitas a clientes', amount: 50 };
 const capital = { id: 'capital', type: 'in', category: 'Ajuste Caixa', description: 'Aporte do proprietário', amount: 100 };
+const personalWithdrawal = { id: 'personal-20261022', type: 'out', category: 'Retirada Pessoal', description: 'Conta pessoal', amount: 200, date: '2026-10-22' };
+assert.equal(isOwnerWithdrawal(personalWithdrawal), true);
+assert.equal(isOwnerWithdrawal({ ...personalWithdrawal, category: 'Retirada', sourceType: '' }), false, 'old pró-labore entries need separate review');
+assert.equal(companyExpenses([personalWithdrawal, fuel]).length, 1, 'personal drawings must stay out of business expenses');
+for (const engine of [clientDRE, serverDRE]) {
+  const original = engine([order], [fuel, capital]);
+  const drawing = engine([order], [fuel, capital, personalWithdrawal]);
+  assert.equal(drawing.operatingProfit, original.operatingProfit, 'withdrawal cannot reduce operating profit');
+  assert.equal(drawing.cashOut - original.cashOut, 200, 'withdrawal must reduce available recorded cash exactly once');
+  assert.equal(drawing.grossRevenue, original.grossRevenue, 'drawings cannot change revenue');
+}
 
 assert.equal(isSalesCashFlowEntry(oldSale), true);
 assert.equal(isSalesCashFlowEntry({ type: 'in', category: '  VENDAS_ONLINE  ' }), true);
@@ -120,6 +132,15 @@ async function main() {
   assert.equal(forecastResponse.statusCode, 200);
   await getCashForecastController({} as any, forecastResponse);
   assert.equal(forecastResponse.body.summary.currentCashBalance, -190, 'voiding through the original record removes exactly one cash expense');
-  console.log('PASS unified finance: sales, structure costs, partial receipts, refunds, forecasts, history, privacy, Sheets round-trip, categories, voids and tab removal');
+  const ownerResult = await call({ ...personalWithdrawal, idempotencyKey: 'owner-2026-10-22' });
+  assert.equal(ownerResult.statusCode, 200, 'owner withdrawal must be accepted');
+  assert.equal(ownerResult.body.entry.category, 'RETIRADA PESSOAL');
+  assert.equal(ownerResult.body.entry.sourceType, 'owner_withdrawal');
+  assert.equal(ownerResult.body.entry.financialNature, 'owner_withdrawal');
+  assert.equal((await call({ ...personalWithdrawal, idempotencyKey: 'owner-2026-10-22' })).body.idempotentReplay, true);
+  const event = (await db.collection('financial_events').doc(ownerResult.body.entry.id).get()).data();
+  assert.equal(event?.type, 'owner_withdrawal_created');
+  assert.equal((await call({ ...personalWithdrawal, type: 'in', idempotencyKey: 'owner-invalid-in' })).statusCode, 400);
+  console.log('PASS unified finance: sales, owner withdrawals, profit, cash, structure costs, partial receipts, refunds, forecasts, history, privacy, Sheets round-trip, categories, voids and tab removal');
 }
 main().catch(error => { console.error(error); process.exit(1); });
