@@ -1,5 +1,6 @@
 import { hasRecordedShippingCost } from '../../shared/orderFinancialCore';
 import { companyMovements, isStructureMovement } from '../../shared/companyMovements';
+import { isOwnerWithdrawal } from '../../shared/ownerWithdrawals';
 import { getOrderItemCost, getOrderCogs } from '../../shared/orderCostCoverage';
 export { getOrderItemCost, getOrderCogs } from '../../shared/orderCostCoverage';
 import { calculateRecordedCashFlow, isActiveFinancialRecord, getRecordedOrderDueDate, financialDateKey } from '../../shared/cashFlow';
@@ -200,7 +201,7 @@ export function calculateFinancialDRE(
 
   // 2. Despesas Operacionais Lançadas (filtrar status != voided)
   const movements = companyMovements(expenses, investments);
-  const activeExpenses = movements.filter(e => isActiveFinancialRecord(e) && !isStructureMovement(e) && String(e.type || 'out').toLowerCase() !== 'in');
+  const activeExpenses = movements.filter(e => isActiveFinancialRecord(e) && !isStructureMovement(e) && !isOwnerWithdrawal(e) && String(e.type || 'out').toLowerCase() !== 'in');
   
   let fixedExpenses = 0;
   let variableExpenses = 0;
