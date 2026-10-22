@@ -1,4 +1,5 @@
 import { companyMovements, companyMovementExportId } from '../../shared/companyMovements';
+import { isOwnerWithdrawal } from '../../shared/ownerWithdrawals';
 import { ProductRow } from './admin/financial/ProductCostRow';
 import { APPS_SCRIPT_PROMPT } from '../data/sheetsIntegrationScript';
 import { summarizeReceipts, receiptPeriodRange } from '../../shared/financialReceipts';
@@ -209,6 +210,7 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
   const [cfForm, setCfForm] = useState({ description: '', amount: '', type: 'in' as 'in' | 'out', category: 'Outros', date: financialDateKey(new Date()) || '' });
   const [cfDescriptionOption, setCfDescriptionOption] = useState('');
   const [savingCashflow, setSavingCashflow] = useState(false);
+  const isCreatingOwnerWithdrawal = cfForm.type === 'out' && cfForm.category === 'Retirada Pessoal';
   const [trafficForm, setTrafficForm] = useState({ campaignName: '', amountSpent: '', clicks: '', conversions: '', date: new Date().toISOString().split('T')[0] });
 
   // Webhook sheet simulator
@@ -483,7 +485,8 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
   // Cashflow entries mapping
   const cashflowStats = useMemo(() => {
     const manualIn = filteredCashflow.filter(c => c.type === 'in' && (c as any).status !== 'voided').reduce((acc, current) => acc + Number(current.amount || 0), 0);
-    const manualOut = filteredCashflow.filter(c => c.type === 'out' && (c as any).status !== 'voided').reduce((acc, current) => acc + Number(current.amount || 0), 0);
+    const manualOut = filteredCashflow.filter(c => c.type === 'out' && (c as any).status !== 'voided' && !isOwnerWithdrawal(c)).reduce((acc, current) => acc + Number(current.amount || 0), 0);
+    const ownerWithdrawals = filteredCashflow.filter(c => c.type === 'out' && isOwnerWithdrawal(c)).reduce((acc, current) => acc + Number(current.amount || 0), 0);
     
     const trafficAdsSpent = dreStats.marketingExpenses;
 
@@ -497,6 +500,7 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
       saldoAtual,
       manualIn,
       manualOut,
+      ownerWithdrawals,
       adsSpent: trafficAdsSpent
     };
   }, [filteredCashflow, filteredTraffic, dreStats]);
@@ -639,6 +643,7 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
           amount: amountVal,
           type: cfForm.type,
           category: cfForm.category,
+          ...(isCreatingOwnerWithdrawal ? { sourceType: 'owner_withdrawal' } : {}),
           date: cfForm.date,
           idempotencyKey
         })
@@ -649,8 +654,8 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
         throw new Error(errData.message || errData.error || 'Erro ao registrar lançamento financeiro.');
       }
 
-      toast.success('Lançamento inserido no Fluxo de Caixa!');
-      setCfForm({ description: '', amount: '', type: 'in', category: 'Outros', date: financialDateKey(new Date()) || '' });
+      toast.success(isCreatingOwnerWithdrawal ? 'Retirada pessoal registrada no caixa!' : 'Lançamento inserido no Fluxo de Caixa!');
+      setCfForm(previous => isCreatingOwnerWithdrawal ? { ...previous, description: 'Retirada pessoal do proprietário', amount: '', date: financialDateKey(new Date()) || '' } : { description: '', amount: '', type: 'in', category: 'Outros', date: financialDateKey(new Date()) || '' });
       setCfDescriptionOption('');
     } catch (err: any) {
       toast.error(err.message || 'Erro ao registrar despesa.');
