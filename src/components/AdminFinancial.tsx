@@ -655,7 +655,7 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
       }
 
       toast.success(isCreatingOwnerWithdrawal ? 'Retirada pessoal registrada no caixa!' : 'Lançamento inserido no Fluxo de Caixa!');
-      setCfForm(previous => isCreatingOwnerWithdrawal ? { ...previous, description: 'Retirada pessoal do proprietário', amount: '', date: financialDateKey(new Date()) || '' } : { description: '', amount: '', type: 'in', category: 'Outros', date: financialDateKey(new Date()) || '' });
+      setCfForm(previous => isCreatingOwnerWithdrawal ? { ...previous, description: 'Retirada pessoal do proprietário', amount: '', date: financialDateKey(new Date()) || '' } : { description: '', amount: '', type: 'in' as const, category: 'Outros', date: financialDateKey(new Date()) || '' });
       setCfDescriptionOption('');
     } catch (err: any) {
       toast.error(err.message || 'Erro ao registrar despesa.');
@@ -2092,10 +2092,10 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
                    <select id="cashflow-kind" value={isCreatingOwnerWithdrawal ? 'personal' : 'company-in'}
                      onChange={e => {
                        if (e.target.value === 'personal') {
-                         setCfForm(previous => ({ ...previous, type: 'out', category: 'Retirada Pessoal', description: 'Retirada pessoal do proprietário' }));
+                         setCfForm(previous => ({ ...previous, type: 'out' as const, category: 'Retirada Pessoal', description: 'Retirada pessoal do proprietário' }));
                          setCfDescriptionOption('');
                        } else {
-                         setCfForm(previous => ({ ...previous, type: 'in', category: 'Outros', description: '' }));
+                         setCfForm(previous => ({ ...previous, type: 'in' as const, category: 'Outros', description: '' }));
                          setCfDescriptionOption('');
                        }
                      }}
