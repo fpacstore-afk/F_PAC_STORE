@@ -112,6 +112,7 @@ export type FinancialEventType =
   | 'payment_cancelled'
   | 'payment_rejected'
   | 'manual_adjustment'
+  | 'owner_withdrawal_created'
   | 'expense_created'
   | 'expense_updated'
   | 'expense_voided'
