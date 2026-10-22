@@ -7,6 +7,7 @@ export const MANUAL_CASH_FLOW_CATEGORIES = [
   { value: 'Refeição', label: 'Refeição' },
   { value: 'Testes', label: 'Testes' },
   { value: 'Retirada', label: 'Retirada Pró-Labore' },
+  { value: 'Retirada Pessoal', label: 'Retirada do proprietário (pessoal)' },
   { value: 'Ajuste Caixa', label: 'Ajuste Caixa' },
   { value: 'Brinde', label: 'Brinde' },
   { value: 'Equipamentos', label: 'Equipamentos' },

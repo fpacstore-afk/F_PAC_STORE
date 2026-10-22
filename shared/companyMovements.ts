@@ -1,4 +1,5 @@
 import { isSalesCashFlowEntry } from './financialMovementScope';
+import { isOwnerWithdrawal } from './ownerWithdrawals';
 
 /** A single view of company movements, preserving each source document's identity.
  * Only explicit source references deduplicate records; equal amounts/names do not.
@@ -36,6 +37,7 @@ export function companyMovements(cashflow: any[] = [], investments: any[] = []):
 export function companyExpenses(cashflow: any[] = [], investments: any[] = [], traffic: any[] = []): any[] {
   const movements = companyMovements(cashflow, investments)
     .filter(entry => String(entry.type || '').toLowerCase() === 'out')
+    .filter(entry => !isOwnerWithdrawal(entry))
     .filter(entry => !['voided', 'cancelled', 'canceled', 'cancelado'].includes(String(entry.status || '').toLowerCase()));
   const representedTraffic = new Set(movements.filter(entry =>
     entry.sourceType === 'traffic' && entry.sourceReferenceId

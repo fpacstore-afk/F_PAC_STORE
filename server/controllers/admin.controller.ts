@@ -2280,6 +2280,10 @@ export async function createFinancialExpenseController(req: Request, res: Respon
     const rawCategory = String(category || 'DESPESA_FIXA').trim().toUpperCase();
     const normalizedCategory = validCategories.includes(rawCategory) ? rawCategory : 'DESPESA_FIXA';
 
+    const isPersonalWithdrawal = normalizedCategory === 'RETIRADA PESSOAL';
+    if (isPersonalWithdrawal && type !== 'out') {
+      return res.status(400).json({ error: 'INVALID_WITHDRAWAL_TYPE', message: 'Retirada pessoal deve ser registrada como saída de caixa.' });
+    }
     const entryType: 'in' | 'out' = type === 'in' || normalizedCategory === 'RECEITA' ? 'in' : 'out';
     const entryDate = date ? financialDateKey(date) : financialDateKey(new Date());
     if (!entryDate || (date && (typeof date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(date)))) {
@@ -2331,7 +2335,7 @@ export async function createFinancialExpenseController(req: Request, res: Respon
         amount: Number(parsedAmount.toFixed(2)),
         date: entryDate,
         paymentMethod: paymentMethod ? String(paymentMethod).trim() : '',
-        ...(sourceType === 'quick_expense' ? { sourceType: 'quick_expense' } : {}),
+        ...(isPersonalWithdrawal ? { sourceType: 'owner_withdrawal', financialNature: 'owner_withdrawal' } : sourceType === 'quick_expense' ? { sourceType: 'quick_expense' } : {}),
         status: 'paid',
         idempotencyKey: effectiveKey,
         actorEmail: user?.email || 'admin@fpacstore.com.br',
@@ -2346,8 +2350,8 @@ export async function createFinancialExpenseController(req: Request, res: Respon
       const eventRef = db.collection('financial_events').doc(docId);
       transaction.set(eventRef, {
         id: docId,
-        orderId: 'CASHFLOW_EXPENSE',
-        type: 'expense_created',
+        orderId: isPersonalWithdrawal ? 'OWNER_WITHDRAWAL' : 'CASHFLOW_EXPENSE',
+        type: isPersonalWithdrawal ? 'owner_withdrawal_created' : 'expense_created',
         amount: Number(parsedAmount.toFixed(2)),
         category: normalizedCategory,
         actorId: user?.uid || 'admin',
@@ -2372,7 +2376,7 @@ export async function createFinancialExpenseController(req: Request, res: Respon
     await recordAuditLog({
       userId: user?.uid,
       userEmail: user?.email,
-      action: 'CREATE_FINANCIAL_EXPENSE',
+      action: isPersonalWithdrawal ? 'CREATE_OWNER_WITHDRAWAL' : 'CREATE_FINANCIAL_EXPENSE',
       resource: 'financial_cashflow',
       resourceId: docId,
       metadata: { amount: parsedAmount, category: normalizedCategory, type: entryType, idempotencyKey: effectiveKey },
