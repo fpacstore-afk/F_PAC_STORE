@@ -2083,13 +2083,36 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
               {/* Insert Form */}
               <div className="bg-white border p-8 space-y-6 h-fit relative">
                  <div className="absolute top-0 left-0 w-1.5 h-full bg-[#eab308]" />
-                 <h4 className="text-xs font-black uppercase tracking-widest italic border-b border-black/5 pb-3">Entrada da empresa</h4>
+                 <h4 className="text-xs font-black uppercase tracking-widest italic border-b border-black/5 pb-3">{isCreatingOwnerWithdrawal ? "Registrar retirada pessoal" : "Entrada da empresa"}</h4>
                  <button type="button" onClick={() => setActiveSubTab('expenses')} className="text-xs font-bold text-amber-700 underline">Para registrar despesas, abra a Central de Despesas.</button>
                  
+                 <p className="text-xs text-gray-600">Retire conforme necessário, sem valor fixo. Registre cada transferência pessoal e confira se ainda há caixa para fornecedores e outras obrigações.</p>
+                 <div className="space-y-1">
+                   <label htmlFor="cashflow-kind" className="text-[9px] font-black uppercase text-gray-500">O que deseja registrar?</label>
+                   <select id="cashflow-kind" value={isCreatingOwnerWithdrawal ? 'personal' : 'company-in'}
+                     onChange={e => {
+                       if (e.target.value === 'personal') {
+                         setCfForm(previous => ({ ...previous, type: 'out', category: 'Retirada Pessoal', description: 'Retirada pessoal do proprietário' }));
+                         setCfDescriptionOption('');
+                       } else {
+                         setCfForm(previous => ({ ...previous, type: 'in', category: 'Outros', description: '' }));
+                         setCfDescriptionOption('');
+                       }
+                     }}
+                     className="w-full bg-[#fcfcfc] border border-black/10 px-4 py-3 text-xs font-bold">
+                     <option value="company-in">Entrada da empresa (não é venda)</option>
+                     <option value="personal">Retirada pessoal do proprietário</option>
+                   </select>
+                 </div>
                  <form onSubmit={handleAddCashFlow} className="space-y-4">
                      <div className="space-y-1">
                         <label htmlFor="cashflow-description" className="text-[9px] font-black uppercase text-gray-400 tracking-wider">Descrição do Lançamento</label>
-                        <select
+                        {isCreatingOwnerWithdrawal ? (
+                          <input id="cashflow-description" required type="text" value={cfForm.description}
+                            onChange={e => setCfForm(previous => ({ ...previous, description: e.target.value }))}
+                            className="w-full bg-[#fcfcfc] border border-black/10 px-4 py-3 text-xs font-bold"
+                            placeholder="Ex.: retirada para despesa pessoal" />
+                        ) : <select
                           id="cashflow-description"
                           required
                           value={cfDescriptionOption}
@@ -2103,8 +2126,8 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
                           <option value="" disabled>Selecione a descrição</option>
                           {CASH_FLOW_DESCRIPTION_OPTIONS.map(description => <option key={description} value={description}>{description}</option>)}
                           <option value="custom">Outra descrição — escrever</option>
-                        </select>
-                        {cfDescriptionOption === 'custom' && (
+                        </select>}
+                        {!isCreatingOwnerWithdrawal && cfDescriptionOption === 'custom' && (
                           <input required type="text" aria-label="Outra descrição do lançamento" value={cfForm.description} onChange={e => setCfForm({...cfForm, description: e.target.value})} className="w-full bg-[#fcfcfc] border border-black/10 px-4 py-3 text-xs font-bold focus:outline-none focus:ring-1 focus:ring-[#eab308]" placeholder="Escreva a descrição" />
                         )}
                      </div>
@@ -2125,20 +2148,20 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
                        <div className="space-y-1">
                           <label className="text-[9px] font-black uppercase text-gray-400 tracking-wider">Tipo Fluxo</label>
                           <select value={cfForm.type} onChange={e => setCfForm({...cfForm, type: e.target.value as any})} className="w-full bg-[#fcfcfc] border border-black/10 px-4 py-3 text-xs uppercase font-extrabold focus:outline-none focus:ring-1 focus:ring-[#eab308] cursor-pointer">
-                             <option value="in">Entrada (Não é venda)</option>
+                             {isCreatingOwnerWithdrawal ? <option value="out">Saída pessoal (-)</option> : <option value="in">Entrada (Não é venda)</option>}
                           </select>
                        </div>
 
                        <div className="space-y-1">
                           <label htmlFor="cashflow-category" className="text-[9px] font-black uppercase text-gray-400 tracking-wider">Categoria</label>
-                          <select id="cashflow-category" value={cfForm.category} onChange={e => setCfForm({...cfForm, category: e.target.value})} className="w-full bg-[#fcfcfc] border border-black/10 px-4 py-3 text-xs uppercase font-extrabold focus:outline-none focus:ring-1 focus:ring-[#eab308] cursor-pointer">
-                             {MANUAL_CASH_FLOW_CATEGORIES.map(category => <option key={category.value} value={category.value}>{category.label}</option>)}
+                          <select id="cashflow-category" value={cfForm.category} disabled={isCreatingOwnerWithdrawal} onChange={e => setCfForm({...cfForm, category: e.target.value})} className="w-full bg-[#fcfcfc] border border-black/10 px-4 py-3 text-xs uppercase font-extrabold focus:outline-none focus:ring-1 focus:ring-[#eab308] cursor-pointer disabled:bg-gray-100">
+                             {(isCreatingOwnerWithdrawal ? MANUAL_CASH_FLOW_CATEGORIES.filter(c => c.value === 'Retirada Pessoal') : MANUAL_CASH_FLOW_CATEGORIES.filter(c => c.value !== 'Retirada Pessoal' && c.value !== 'Retirada')).map(category => <option key={category.value} value={category.value}>{category.label}</option>)}
                           </select>
                        </div>
                      </div>
 
                      <button type="submit" disabled={savingCashflow} className="w-full bg-black text-white hover:bg-[#eab308] hover:text-black py-4 text-[9px] font-black uppercase tracking-[0.2em] transition-all disabled:opacity-50">
-                        {savingCashflow ? 'SALVANDO…' : 'REGISTRAR MOVIMENTAÇÃO'}
+                        {savingCashflow ? 'SALVANDO…' : isCreatingOwnerWithdrawal ? 'REGISTRAR RETIRADA' : 'REGISTRAR MOVIMENTAÇÃO'}
                      </button>
                  </form>
               </div>
