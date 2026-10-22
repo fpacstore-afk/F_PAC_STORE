@@ -1214,6 +1214,26 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
          ---------------------------------------------------- */}
       {activeSubTab === 'dashboard' && (
         <div className="space-y-8 animate-in fade-in duration-300">
+          <section aria-label="Resumo financeiro do período" className="rounded-xl border border-black/10 bg-white p-5 space-y-4">
+            <h3 className="text-sm font-black uppercase">Resumo financeiro: faturamento, lucro e caixa</h3>
+            <p className="text-xs text-gray-600">Selecione o período nos filtros acima. Faturamento e custos seguem os pedidos criados no período, enquanto recebimentos seguem a data do pagamento. Fluxo registrado não é saldo bancário conciliado.</p>
+            <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
+              {[
+                { label: 'Faturamento bruto', value: dreStats.grossRevenue },
+                { label: 'Recebimentos líquidos', value: receiptsByDate.netReceived },
+                { label: 'Custos das mercadorias', value: dreStats.cogs },
+                { label: 'Lucro operacional', value: dreStats.operatingProfit },
+                { label: 'Retiradas pessoais', value: cashflowStats.ownerWithdrawals },
+                { label: 'Fluxo de caixa registrado', value: cashflowStats.saldoAtual }
+              ].map(metric => <div key={metric.label} className="rounded-lg border border-black/10 p-3 min-w-0">
+                <p className="text-[10px] font-bold uppercase text-gray-500">{metric.label}</p>
+                <p className="text-lg font-black font-mono break-words">{formatMoney(metric.value)}</p>
+              </div>)}
+            </div>
+            {dreStats.isCostEstimated && <p role="status" className="text-xs text-amber-800 font-bold">Há custos de pedidos incompletos: o resultado pode ser estimado. Confira os custos antes de decidir quanto retirar.</p>}
+            <p className="text-xs text-gray-500">Retirada pessoal diminui o caixa, não o lucro operacional. Pró-labores antigos não são reclassificados automaticamente.</p>
+            <button type="button" onClick={() => { setActiveSubTab('cashflow'); setCfForm({ description: 'Retirada pessoal do proprietário', amount: '', type: 'out', category: 'Retirada Pessoal', date: financialDateKey(new Date()) || '' }); }} className="text-xs font-black underline underline-offset-4">Registrar retirada pessoal</button>
+          </section>
           <FinancialGoalSummary orders={orders} onOpenGoals={() => setActiveSubTab('goals')} />
           <CashForecastView />
           <div className="rounded-xl border border-black/10 bg-white p-4 text-xs text-gray-600">
@@ -2041,12 +2061,16 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
            <div className="p-6 bg-white border flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
               <div>
                 <h3 className="text-lg font-black uppercase italic">Entradas e saídas da empresa</h3>
-                <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-0.5">Todos os gastos e entradas da empresa em um só lugar, incluindo equipamentos e os registros anteriores de investimentos. Vendas e recebimentos ficam em Vendas e pedidos.</p>
+                <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-0.5">Movimentações da empresa e retiradas pessoais. A retirada reduz o caixa, mas não o resultado operacional. Vendas e recebimentos ficam na aba Vendas e pedidos.</p>
               </div>
-              <div className="flex gap-6 text-right">
+              <div className="flex flex-wrap gap-6 text-right">
                 <div>
-                   <span className="text-[8px] font-extrabold text-gray-400 uppercase tracking-widest font-sans">SAÍDAS DA EMPRESA NO PERÍODO</span>
+                   <span className="text-[8px] font-extrabold text-gray-400 uppercase tracking-widest font-sans">SAÍDAS DA EMPRESA (SEM RETIRADAS)</span>
                    <h4 className="text-xl font-black text-rose-600">{formatMoney(cashflowStats.manualOut)}</h4>
+                </div>
+                <div>
+                   <span className="text-[8px] font-extrabold text-gray-400 uppercase tracking-widest font-sans">RETIRADAS PESSOAIS NO PERÍODO</span>
+                   <h4 className="text-xl font-black text-black">{formatMoney(cashflowStats.ownerWithdrawals)}</h4>
                 </div>
                 <div>
                    <span className="text-[8px] font-extrabold text-gray-400 uppercase tracking-widest font-sans">ENTRADAS SEM VENDAS NO PERÍODO</span>
