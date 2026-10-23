@@ -13,7 +13,8 @@ export interface Design {
   name: string; // e.g. "Anarchy & Order"
   category: StampCategory | string; // Categorias temáticas atuais e categorias legadas preservadas
   collection: string; // Campo legado de linha editorial; não limita os produtos compatíveis
-  compatibleProducts?: string[]; // Tipos de produto em que a estampa pode ser aplicada; "Todos os produtos" libera para todo o catálogo
+  compatibleProducts?: string[]; // Modelos autorizados; bermudas e bonés exigem seleção explícita no PRIME
+  allowedLocations?: string[]; // Posições explicitamente liberadas (vazio = sem restrição por posição)
   theme?: string; // e.g. "Streetwear", "Cyber", "Underground"
   tags: string[]; // e.g. ["typography", "anarchy", "black"]
   description?: string;
