@@ -16,6 +16,9 @@ export function normalizeDesignDocument(id: string, data: any): Design {
     compatibleProducts: Array.isArray(data?.compatibleProducts)
       ? data.compatibleProducts.map((product: unknown) => String(product).trim()).filter(Boolean)
       : [],
+    allowedLocations: Array.isArray(data?.allowedLocations)
+      ? data.allowedLocations.map((location: unknown) => String(location).trim()).filter(Boolean)
+      : [],
     theme: data?.theme || 'Streetwear',
     tags: Array.isArray(data?.tags) ? data.tags : [],
     description: data?.description || '',
