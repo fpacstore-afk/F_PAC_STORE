@@ -8,6 +8,7 @@ export type PublicStamp = {
   category: string;
   collection: string;
   compatibleProducts: string[];
+  allowedLocations: string[];
   theme: string;
   tags: string[];
   description: string;
@@ -47,6 +48,9 @@ export function toPublicStamp(id: string, data: any): PublicStamp | null {
     collection: String(data?.collection || 'MARK'),
     compatibleProducts: Array.isArray(data?.compatibleProducts)
       ? data.compatibleProducts.map((value: unknown) => String(value).trim()).filter(Boolean)
+      : [],
+    allowedLocations: Array.isArray(data?.allowedLocations)
+      ? data.allowedLocations.map((value: unknown) => String(value).trim()).filter(Boolean)
       : [],
     theme: String(data?.theme || 'Streetwear'),
     tags: getStampSearchAliases({ id, name: data?.name, tags: data?.tags }),
