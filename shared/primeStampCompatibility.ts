@@ -10,7 +10,7 @@ const PRIME_PRODUCT_LABEL: Readonly<Record<CustomizationProfileId, string>> = {
   cap: 'Bonés',
 };
 
-const normalize = (value: unknown) => String(value || '').trim().toLocaleLowerCase('pt-BR').replace(/[\\s_-]+/g, ' ');
+const normalize = (value: unknown) => String(value || '').trim().toLocaleLowerCase('pt-BR').replace(/[\s_-]+/g, ' ');
 
 /** Match catalog position restrictions before displaying or applying artwork. */
 export function isPrimeStampAllowedAtLocation(allowedLocations: unknown, location: string, positionId: string): boolean {
