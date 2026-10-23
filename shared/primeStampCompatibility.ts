@@ -10,7 +10,18 @@ const PRIME_PRODUCT_LABEL: Readonly<Record<CustomizationProfileId, string>> = {
   cap: 'Bonés',
 };
 
-const normalize = (value: unknown) => String(value || '').trim().toLocaleLowerCase('pt-BR');
+const normalize = (value: unknown) => String(value || '').trim().toLocaleLowerCase('pt-BR').replace(/[\\s_-]+/g, ' ');
+
+/** Match catalog position restrictions before displaying or applying artwork. */
+export function isPrimeStampAllowedAtLocation(allowedLocations: unknown, location: string, positionId: string): boolean {
+  if (!Array.isArray(allowedLocations) || allowedLocations.length === 0) return true;
+  const label = normalize(location);
+  const id = normalize(positionId);
+  return allowedLocations.some(value => {
+    const allowed = normalize(value);
+    return Boolean(allowed) && (allowed === label || allowed === id || label.includes(allowed) || allowed.includes(label) || id.includes(allowed) || allowed.includes(id));
+  });
+}
 
 /**
  * Bermuda and cap have small, specialised print areas. They require an explicit
@@ -28,9 +39,11 @@ export function getPrimeCompatiblePrintSizes(
   sizes: unknown,
   products: unknown,
   model: CustomizationProfileId,
-  area: { id: string; maxWidthCm: number; maxHeightCm: number },
+  area: { id: string; maxWidthCm: number; maxHeightCm: number; location?: string; positionId?: string },
+  allowedLocations?: unknown,
 ): string[] {
   if (!isPrimeStampCompatible(products, model)) return [];
+  if (area.location && !isPrimeStampAllowedAtLocation(allowedLocations, area.location, area.positionId || area.id)) return [];
   if (area.id === 'sleeve' || area.id === 'left-sleeve') return getCatalogSleeveSizes(sizes);
   return normalizeRegisteredPrimePrintSizes(sizes)
     .filter(size => isPrimePrintSizeWithin(size, area.maxWidthCm, area.maxHeightCm));
