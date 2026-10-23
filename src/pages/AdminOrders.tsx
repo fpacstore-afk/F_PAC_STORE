@@ -1048,9 +1048,10 @@ function AdminOrdersInner() {
     const normalizePdfText = (value: unknown) => String(value ?? '—')
       .normalize('NFD')
       .replace(/[\u0300-\u036f]/g, '')
-      .replace(/\\/g, '\\\\')
-      .replace(/[()]/g, '\\$&')
       .replace(/[^\x20-\x7E]/g, ' ');
+    const escapePdfText = (value: unknown) => normalizePdfText(value)
+      .replace(/\\/g, '\\\\')
+      .replace(/[()]/g, '\\$&');
     const splitLine = (value: unknown, limit = 43) => {
       const words = normalizePdfText(value).split(/\s+/);
       const lines: string[] = [];
@@ -1070,7 +1071,7 @@ function AdminOrdersInner() {
     const items = Array.isArray(order.items) ? order.items : [];
     const commands: string[] = [];
     const text = (x: number, y: number, size: number, value: unknown, bold = false) => {
-      commands.push(`BT /F${bold ? 2 : 1} ${size} Tf ${x} ${y} Td (${normalizePdfText(value)}) Tj ET`);
+      commands.push(`BT /F${bold ? 2 : 1} ${size} Tf ${x} ${y} Td (${escapePdfText(value)}) Tj ET`);
     };
     const section = (y: number, label: string) => {
       commands.push(`0 0 0 rg 14 ${y - 11} 255 13 re f 1 1 1 rg`);
@@ -1159,8 +1160,12 @@ function AdminOrdersInner() {
       return;
     }
 
+    const escapeHtml = (value: unknown) => String(value ?? '').replace(/[&<>"']/g, (character) => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    }[character] || character));
+
     const itemsHtml = (order.items || []).map((it: any) => 
-      `<li>[${it.quantity}x] ${it.name} - ${it.color} / ${it.size}</li>`
+      `<li>[${escapeHtml(it.quantity || 1)}x] ${escapeHtml(it.name || it.title || 'Produto')} - ${escapeHtml(it.color || '—')} / ${escapeHtml(it.size || '—')}</li>`
     ).join('');
 
     const addressInfo = typeof order.address === 'object' ? {
@@ -1182,9 +1187,11 @@ function AdminOrdersInner() {
     };
 
     printWindow.document.write(`
-      <html>
+      <html lang="pt-BR">
         <head>
-          <title>Etiqueta Local - #${order.id}</title>
+          <meta charset="utf-8" />
+          <meta name="viewport" content="width=device-width, initial-scale=1" />
+          <title>Etiqueta Local - #${escapeHtml(order.id)}</title>
           <style>
             @page {
               size: 100mm 150mm;
@@ -1192,8 +1199,7 @@ function AdminOrdersInner() {
             }
             html, body {
               width: 100mm;
-              height: 150mm;
-              overflow: hidden;
+              min-height: 150mm;
             }
             body {
               font-family: Arial, sans-serif;
@@ -1203,12 +1209,27 @@ function AdminOrdersInner() {
               background: white;
               color: black;
               width: 100mm;
-              height: 150mm;
+            }
+            .print-actions {
+              display: flex;
+              align-items: center;
+              gap: 8px;
+              margin-bottom: 6mm;
+              font-size: 12px;
+            }
+            .print-actions button {
+              padding: 10px 14px;
+              color: black;
+              background: #facc15;
+              border: 1px solid black;
+              border-radius: 4px;
+              font-weight: bold;
+              cursor: pointer;
             }
             .container {
               border: 3px solid black;
               padding: 6px;
-              height: 100%;
+              height: 138mm;
               box-sizing: border-box;
               display: flex;
               flex-direction: column;
@@ -1290,12 +1311,18 @@ function AdminOrdersInner() {
               background: #f0f0f0;
             }
             @media print {
-              html, body { width: 100mm !important; height: 150mm !important; overflow: hidden !important; }
-              .container { break-inside: avoid; page-break-inside: avoid; page-break-after: avoid; }
+              html, body { width: 100mm !important; height: 150mm !important; min-height: 0 !important; overflow: hidden !important; }
+              .print-actions { display: none !important; }
+              .container { height: 100% !important; break-inside: avoid; page-break-inside: avoid; page-break-after: avoid; }
+              .section-title { background: white !important; color: black !important; border: 1px solid black; }
             }
           </style>
         </head>
         <body>
+          <div class="print-actions">
+            <button type="button" onclick="window.print()">Imprimir etiqueta 10×15</button>
+            <span>Confira os dados abaixo antes de imprimir.</span>
+          </div>
           <div class="container">
             <div>
               <div class="header">
@@ -1310,13 +1337,13 @@ function AdminOrdersInner() {
 
               <div class="section-title">Destinatário</div>
               <div class="address-box">
-                <div class="recipient-name">${String(order.customerName || 'Cliente').toUpperCase()}</div>
-                <div><b>Endereço:</b> ${String(addressInfo.street).toUpperCase()}, ${String(addressInfo.number).toUpperCase()}</div>
-                ${addressInfo.complement ? '<div><b>Comp:</b> ' + String(addressInfo.complement).toUpperCase() + '</div>' : ''}
-                <div><b>Bairro:</b> ${String(addressInfo.neighborhood).toUpperCase()}</div>
-                <div><b>Cidade/UF:</b> ${String(addressInfo.city).toUpperCase()} / ${String(addressInfo.state).toUpperCase()}</div>
-                <div><b>CEP:</b> ${addressInfo.cep}</div>
-                <div><b>Fone:</b> ${order.customerPhone || ''} ${order.customerPhone2 ? '/ ' + order.customerPhone2 : ''}</div>
+                <div class="recipient-name">${escapeHtml(String(order.customerName || 'Cliente').toUpperCase())}</div>
+                <div><b>Endereço:</b> ${escapeHtml(String(addressInfo.street).toUpperCase())}, ${escapeHtml(String(addressInfo.number).toUpperCase())}</div>
+                ${addressInfo.complement ? '<div><b>Comp:</b> ' + escapeHtml(String(addressInfo.complement).toUpperCase()) + '</div>' : ''}
+                <div><b>Bairro:</b> ${escapeHtml(String(addressInfo.neighborhood).toUpperCase())}</div>
+                <div><b>Cidade/UF:</b> ${escapeHtml(String(addressInfo.city).toUpperCase())} / ${escapeHtml(String(addressInfo.state).toUpperCase())}</div>
+                <div><b>CEP:</b> ${escapeHtml(addressInfo.cep)}</div>
+                <div><b>Fone:</b> ${escapeHtml(order.customerPhone || '')} ${order.customerPhone2 ? '/ ' + escapeHtml(order.customerPhone2) : ''}</div>
               </div>
 
               <div class="section-title">Itens do Pedido</div>
@@ -1327,7 +1354,7 @@ function AdminOrdersInner() {
               ${order.observations ? `
                 <div class="section-title">Observações de Entrega</div>
                 <div style="font-size: 8px; font-style: italic; max-height: 38px; overflow: hidden; font-weight: bold; padding: 2px;">
-                  ${order.observations}
+                  ${escapeHtml(order.observations)}
                 </div>
               ` : ''}
             </div>
@@ -1355,15 +1382,9 @@ function AdminOrdersInner() {
                 <div style="width: 1px; margin-right: 1px;"></div>
                 <div style="width: 3px; margin-right: 1px;"></div>
               </div>
-              <div class="order-id">PEDIDO #${order.id}</div>
+              <div class="order-id">PEDIDO #${escapeHtml(order.id)}</div>
             </div>
           </div>
-          <script>
-            window.onload = function() {
-              window.print();
-              setTimeout(function() { window.close(); }, 800);
-            };
-          </script>
         </body>
       </html>
     `);
@@ -2713,6 +2734,7 @@ Total: R$ ${totalSum.toFixed(2)}`;
                         } as any : o));
                       }}
                       onPrintLocalLabel={handlePrintLocalLabel}
+                      onDownloadLocalLabelPdf={handleDownloadLocalLabelPdf}
                       onPrintProductionTicket={handlePrintProductionTicket}
                       onDeleteOrder={handleDeleteOrder}
                       onSaveCustomerDetails={async (id, details) => {
@@ -3006,7 +3028,7 @@ Total: R$ ${totalSum.toFixed(2)}`;
                                   onClick={() => handlePrintLocalLabel(order)} 
                                   className="hidden sm:flex w-full bg-black text-[#eab308] py-2.5 text-[10px] font-black uppercase tracking-widest hover:text-white hover:bg-black/90 transition-all shadow items-center justify-center gap-2"
                                 >
-                                  🖨️ Imprimir Etiqueta A (Local)
+                                  🖨️ Abrir Etiqueta A para imprimir
                                 </button>
                                 <button
                                   onClick={() => handleDownloadLocalLabelPdf(order)}

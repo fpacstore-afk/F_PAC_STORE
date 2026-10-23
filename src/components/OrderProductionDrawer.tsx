@@ -28,6 +28,7 @@ interface OrderProductionDrawerProps {
   order: any;
   onStatusUpdate: (orderId: string, newStatus: string) => Promise<void>;
   onPrintLocalLabel: (order: any) => void;
+  onDownloadLocalLabelPdf: (order: any) => void;
   onPrintProductionTicket: (order: any) => void;
   onDeleteOrder: (orderId: string) => Promise<void>;
   onRevertStock?: (order: any) => Promise<void>;
@@ -45,6 +46,7 @@ export const OrderProductionDrawer: React.FC<OrderProductionDrawerProps> = ({
   order,
   onStatusUpdate,
   onPrintLocalLabel,
+  onDownloadLocalLabelPdf,
   onPrintProductionTicket,
   onDeleteOrder,
   onRevertStock,
@@ -956,7 +958,13 @@ export const OrderProductionDrawer: React.FC<OrderProductionDrawerProps> = ({
                   onClick={() => onPrintLocalLabel(order)}
                   className="w-full bg-black text-[#eab308] hover:bg-[#eab308] hover:text-black py-3 text-[10px] font-black uppercase tracking-wider flex items-center justify-center gap-2 transition-all shadow"
                 >
-                  <Printer size={14} /> Imprimir Etiqueta A (Local)
+                  <Printer size={14} /> Abrir etiqueta A para imprimir
+                </button>
+                <button
+                  onClick={() => onDownloadLocalLabelPdf(order)}
+                  className="w-full border border-black bg-white text-black hover:bg-neutral-100 py-3 text-[10px] font-black uppercase tracking-wider transition-all"
+                >
+                  Baixar PDF 10×15
                 </button>
               </div>
 
@@ -1110,7 +1118,13 @@ export const OrderProductionDrawer: React.FC<OrderProductionDrawerProps> = ({
                   onClick={() => onPrintLocalLabel(order)}
                   className="w-full bg-black text-white text-[9px] font-black uppercase py-2 hover:bg-[#eab308] hover:text-black transition-all"
                 >
-                  Imprimir Etiqueta
+                  Abrir etiqueta para imprimir
+                </button>
+                <button
+                  onClick={() => onDownloadLocalLabelPdf(order)}
+                  className="w-full border border-black text-black text-[9px] font-black uppercase py-2 hover:bg-white transition-all"
+                >
+                  Baixar PDF 10×15
                 </button>
               </div>
 

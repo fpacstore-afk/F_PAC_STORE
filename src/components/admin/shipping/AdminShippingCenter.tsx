@@ -748,7 +748,16 @@ export const AdminShippingCenter: React.FC<AdminShippingCenterProps> = ({
                 border: 0 !important;
                 border-radius: 0 !important;
                 box-shadow: none !important;
+                opacity: 1 !important;
+                transform: none !important;
+                visibility: visible !important;
               }
+              .shipping-label-10x15 .bg-black,
+              .shipping-label-10x15 .bg-black * {
+                background: white !important;
+                color: black !important;
+              }
+              .shipping-label-10x15 .bg-black { border: 1px solid black !important; }
             `}</style>
             <motion.div
               initial={{ opacity: 0, y: 10 }}
