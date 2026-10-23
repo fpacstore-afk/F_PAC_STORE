@@ -25,10 +25,10 @@ ${icon} *${title}*
 ${body}
 
 Pedido: *#{{numero_pedido}}*
-Itens: {{produto}}
+Itens do pedido:
+{{produto}}
 
-👉 Acompanhe em:
-https://www.fpacstore.com.br/#/order/{{numero_pedido}}
+👉 Acompanhe o pedido: {{link_acompanhamento}}
 
 ${footer}`;
 
@@ -58,6 +58,7 @@ Seu pedido *#{{numero_pedido}}* está a caminho.
 Código: *{{codigo_rastreio}}*
 Transportadora: *{{transportadora}}*
 Rastreamento: {{link_rastreio}}
+Status do pedido: {{link_acompanhamento}}
 
 ${footer}`,
   delivered: template('🎉', 'PEDIDO ENTREGUE', 'A entrega foi confirmada. Esperamos que seu novo produto represente sua identidade. Marque @f_pac_store no seu look!'),
@@ -70,7 +71,6 @@ ${footer}`,
 };
 
 const revisedTemplate = (icon: string, title: string, body: string) => template(icon, title, body)
-  .replace('https://www.fpacstore.com.br/#/order/{{numero_pedido}}', 'https://fpacstore.com.br/tracking')
   .replace('🛡️ Mensagem automática de acompanhamento do pedido.', 'Acompanhamento do pedido • F PAC STORE');
 
 export const DEFAULT_STAGE_TEMPLATES: Record<string, string> = {

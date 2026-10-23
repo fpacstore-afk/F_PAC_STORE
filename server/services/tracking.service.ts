@@ -45,7 +45,7 @@ export interface TrackingAccessResult {
  * Validates order tracking access based on:
  * Condition A: Firebase Auth Ownership (UID matching with priority over email, or verified email for guest orders)
  * OR
- * Condition B: Valid trackingAccessToken matching order.trackingAccessTokenHash
+ * Condition B: Valid trackingAccessToken matching a stored order token hash
  */
 export async function verifyOrderTrackingAccess(
   order: any,
@@ -105,10 +105,9 @@ export async function verifyOrderTrackingAccess(
 
   // 2. Condition B: Tracking Access Token Check
   const token = (queryToken || headerToken || '').trim();
-  if (token && order.trackingAccessTokenHash) {
-    if (verifyTrackingToken(token, order.trackingAccessTokenHash)) {
+  const tokenHashes = [order.trackingAccessTokenHash, ...(Array.isArray(order.trackingAccessTokenHashes) ? order.trackingAccessTokenHashes : [])].filter(Boolean);
+  if (token && tokenHashes.some((hash: string) => verifyTrackingToken(token, hash))) {
       return { authorized: true, method: 'tracking_token' };
-    }
   }
 
   return { authorized: false, reason: 'FORBIDDEN' };

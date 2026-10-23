@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { sanitizeTrackingResponse } from '../server/services/tracking.service.ts';
+import { generateTrackingToken, sanitizeTrackingResponse, verifyOrderTrackingAccess } from '../server/services/tracking.service.ts';
 
 const productionOrder = sanitizeTrackingResponse('FP-123', {
   status: 'received',
@@ -10,6 +10,7 @@ const productionOrder = sanitizeTrackingResponse('FP-123', {
   customerName: 'Cliente',
   total: 199.9,
   trackingAccessTokenHash: 'must-not-leak',
+  trackingAccessTokenHashes: ['also-must-not-leak'],
   trackingCode: 'BR123',
 });
 
@@ -21,6 +22,14 @@ assert.equal('customerEmail' in productionOrder, false);
 assert.equal('customerName' in productionOrder, false);
 assert.equal('total' in productionOrder, false);
 assert.equal('trackingAccessTokenHash' in productionOrder, false);
+assert.equal('trackingAccessTokenHashes' in productionOrder, false);
+
+const issuedToken = generateTrackingToken();
+assert.deepEqual(await verifyOrderTrackingAccess({ trackingAccessTokenHashes: [issuedToken.hash] }, undefined, issuedToken.token), {
+  authorized: true,
+  method: 'tracking_token',
+});
+assert.equal((await verifyOrderTrackingAccess({ trackingAccessTokenHashes: [issuedToken.hash] }, undefined, 'wrong-token')).authorized, false);
 
 const pendingOrder = sanitizeTrackingResponse('FP-124', {
   status: 'pending',
@@ -53,4 +62,4 @@ assert.ok(
 assert.ok(customerTrackingPage.includes('Etapa atual da produção'), 'customer tracking must show the current production stage');
 assert.ok(customerTrackingPage.includes('aria-valuenow={productionStage.progress}'), 'production progress must expose an accessible progress value');
 
-console.log('18 public-order tracking assertions passed: accurate status, safe production stage and PII exclusion.');
+console.log('21 public-order tracking assertions passed: secure token links, accurate status, safe production stage and PII exclusion.');

@@ -12,7 +12,10 @@ export function renderStageTemplate(templateStr: string, orderData: any): string
   const totalVal = Number(orderData?.total || orderData?.amount || 0);
   const formattedTotal = `R$ ${(Number.isFinite(totalVal) ? totalVal : 0).toFixed(2).replace('.', ',')}`;
   const items = Array.isArray(orderData?.items) ? orderData.items : [];
-  const itemsSummary = items.map((item: any) => `${Number(item.quantity) || 1}x ${item.name || item.title || 'Produto F PAC'}`).join(', ') || 'Produto F PAC';
+  const itemsSummary = items.map((item: any) => {
+    const details = [item.color && `Cor: ${item.color}`, item.size && `Tam.: ${item.size}`, item.stampName && `Estampa: ${item.stampName}`].filter(Boolean);
+    return `• ${Number(item.quantity) || 1}x ${item.name || item.title || 'Produto F PAC'}${details.length ? ` (${details.join(' · ')})` : ''}`;
+  }).join('\n') || '• Produto F PAC';
   const totalQty = items.reduce((sum: number, item: any) => sum + (Number(item.quantity) || 1), 0) || 1;
   const rawDate = orderData?.createdAt?.seconds ? new Date(orderData.createdAt.seconds * 1000) : new Date(orderData?.createdAt || Date.now());
   const dateStr = Number.isNaN(rawDate.getTime()) ? new Date().toLocaleDateString('pt-BR') : rawDate.toLocaleDateString('pt-BR');
@@ -33,5 +36,6 @@ export function renderStageTemplate(templateStr: string, orderData: any): string
     .replace(/\{\{forma_pagamento\}\}/g, paymentMethod)
     .replace(/\{\{codigo_rastreio\}\}/g, trackingCode)
     .replace(/\{\{transportadora\}\}/g, carrier)
-    .replace(/\{\{link_rastreio\}\}/g, trackingLink);
+    .replace(/\{\{link_rastreio\}\}/g, trackingLink)
+    .replace(/\{\{link_acompanhamento\}\}/g, 'https://fpacstore.com.br/tracking');
 }

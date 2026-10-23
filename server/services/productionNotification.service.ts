@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { FieldValue } from 'firebase-admin/firestore';
 import { getDb } from "../firebase.js";
 import { logger } from "../utils/logger.js";
 import { sendWhatsAppMessage, logAutomationEvent } from "./automation.service.js";
@@ -12,6 +13,7 @@ import {
 
 export type { ProductionNotificationConfig } from '../../shared/productionNotificationDefaults.js';
 import { normalizeNotificationEmail, normalizeNotificationPhone, manualWhatsAppUrl } from '../../shared/notificationContacts.js';
+import { generateTrackingToken } from './tracking.service.js';
 
 const LEGACY_STAGE_TEMPLATES: Record<string, string> = {
   received: `👕 F PAC STORE • NÃO É SÓ ROUPA. É IDENTIDADE! 👕
@@ -299,7 +301,10 @@ export function renderStageTemplate(templateStr: string, orderData: any): string
   
   const items = orderData?.items || [];
   const firstItemName = items[0]?.name || items[0]?.title || 'Camiseta F PAC';
-  const itemsSummary = items.map((i: any) => `${i.quantity || 1}x ${i.name || i.title || 'Camiseta'}`).join(', ') || firstItemName;
+  const itemsSummary = items.map((i: any) => {
+    const details = [i.color && `Cor: ${i.color}`, i.size && `Tam.: ${i.size}`, i.stampName && `Estampa: ${i.stampName}`].filter(Boolean);
+    return `• ${i.quantity || 1}x ${i.name || i.title || 'Camiseta'}${details.length ? ` (${details.join(' · ')})` : ''}`;
+  }).join('\n') || `• ${firstItemName}`;
   const totalQty = items.reduce((acc: number, item: any) => acc + (Number(item.quantity) || 1), 0) || 1;
 
   const dateStr = orderData?.createdAt
@@ -312,6 +317,7 @@ export function renderStageTemplate(templateStr: string, orderData: any): string
   const trackingCode = orderData?.trackingCode || orderData?.shipping?.trackingCode || orderData?.codigoRastreio || orderData?.trackingUrl || 'Em processamento';
   const carrier = orderData?.shippingCompany || orderData?.carrier || orderData?.shipping?.carrier || orderData?.transportadora || (orderData?.cep && String(orderData.cep).startsWith('892') ? 'Entrega Local Joinville' : 'Correios / Transportadora');
   const trackingLink = orderData?.trackingUrl || orderData?.shipping?.trackingUrl || 'https://fpacstore.com.br/tracking';
+  const publicTrackingUrl = orderData?.publicTrackingUrl || 'https://fpacstore.com.br/tracking';
 
   return templateStr
     .replace(/\{\{nome_cliente\}\}/g, firstName)
@@ -324,7 +330,10 @@ export function renderStageTemplate(templateStr: string, orderData: any): string
     .replace(/\{\{forma_pagamento\}\}/g, paymentMethod)
     .replace(/\{\{codigo_rastreio\}\}/g, trackingCode)
     .replace(/\{\{transportadora\}\}/g, carrier)
-    .replace(/\{\{link_rastreio\}\}/g, trackingLink);
+    .replace(/\{\{link_rastreio\}\}/g, trackingLink)
+    .replace(/\{\{link_acompanhamento\}\}/g, publicTrackingUrl)
+    .replace(/https?:\/\/(?:www\.)?fpacstore\.com\.br\/#\/order\/\{\{numero_pedido\}\}/g, publicTrackingUrl)
+    .replace(/https?:\/\/(?:www\.)?fpacstore\.com\.br\/tracking/g, publicTrackingUrl);
 }
 
 export async function getProductionNotificationSettings(options: { strict?: boolean } = {}): Promise<ProductionNotificationConfig> {
@@ -434,6 +443,8 @@ export async function dispatchStageNotification(params: {
   });
   if (claim.busy) return { success: true, skipped: true, reason: 'Envio já em andamento.' };
   const { order, prior } = claim;
+  const trackingAccess = generateTrackingToken();
+  await orderRef.update({ trackingAccessTokenHashes: FieldValue.arrayUnion(trackingAccess.hash) });
   let whatsappSent = Boolean(prior.whatsappSent), emailSent = Boolean(prior.emailSent);
   let whatsappStatus = whatsappSent ? 'Já enviado' : 'Desativado';
   let emailStatus = emailSent ? 'Já enviado' : 'Desativado';
@@ -441,7 +452,9 @@ export async function dispatchStageNotification(params: {
   const phone = order.customerPhone || order.phone || order.customer?.phone || order.customer?.phone2 || '';
   const email = order.customerEmail || order.email || order.customer?.email || '';
   const raw = settings.templates[newStageId] || DEFAULT_STAGE_TEMPLATES[newStageId];
-  const message = renderStageTemplate(raw, { ...order, id: orderId });
+  const publicTrackingUrl = `https://fpacstore.com.br/order/${encodeURIComponent(orderId)}?token=${encodeURIComponent(trackingAccess.token)}`;
+  const message = renderStageTemplate(raw, { ...order, id: orderId, publicTrackingUrl });
+  const auditMessage = message.replace(/([?&]token=)[^&\s]+/g, '$1[oculto]');
   const persistChannel = async (channel: string) => {
     await orderRef.update({ ['sentStageNotifications.' + newStageId + '.' + channel + 'Sent']: true });
   };
@@ -483,7 +496,7 @@ export async function dispatchStageNotification(params: {
       changedBy, previousStage: previousStageId || '', newStage: newStageId,
       channels: { whatsapp: settings.whatsappEnabled, email: settings.emailEnabled },
       whatsappStatus, emailStatus, whatsappSent, emailSent, customerPhone: phone, customerEmail: email,
-      message, errorDetails: errors.join(' | ')
+      message: auditMessage, errorDetails: errors.join(' | ')
     };
     await db.runTransaction(async (tx: any) => {
       const snap = await tx.get(orderRef);
@@ -491,7 +504,7 @@ export async function dispatchStageNotification(params: {
       if (latest.sentStageNotifications?.[newStageId]?.leaseToken !== token) return;
       tx.update(orderRef, {
         ['sentStageNotifications.' + newStageId]: {
-          whatsappSent, emailSent, whatsappStatus, emailStatus, timestamp, lastMessage: message,
+          whatsappSent, emailSent, whatsappStatus, emailStatus, timestamp, lastMessage: auditMessage,
           emailAttemptKey: prior.emailAttemptKey || token, leaseUntil: 0
         },
         notificationLogs: [logEntry, ...(latest.notificationLogs || [])].slice(0, 50),
@@ -519,7 +532,10 @@ export async function prepareManualOrderWhatsApp(orderId: string) {
   if (!snap.exists) throw Object.assign(new Error('Pedido não encontrado.'), { status: 404 });
   const order = snap.data();
   const settings = await getProductionNotificationSettings();
-  const message = renderStageTemplate(settings.templates.received || DEFAULT_STAGE_TEMPLATES.received, { ...order, id: orderId });
+  const trackingAccess = generateTrackingToken();
+  await snap.ref.update({ trackingAccessTokenHashes: FieldValue.arrayUnion(trackingAccess.hash) });
+  const publicTrackingUrl = `https://fpacstore.com.br/order/${encodeURIComponent(orderId)}?token=${encodeURIComponent(trackingAccess.token)}`;
+  const message = renderStageTemplate(settings.templates.received || DEFAULT_STAGE_TEMPLATES.received, { ...order, id: orderId, publicTrackingUrl });
   const phone = order.customerPhone || order.phone || order.customer?.phone || order.customer?.phone2 || '';
   return { success: true, manualOnly: true, whatsappSent: false, whatsappUrl: manualWhatsAppUrl(String(phone), message) };
 }
