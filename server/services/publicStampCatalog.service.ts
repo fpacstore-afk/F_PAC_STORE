@@ -45,9 +45,9 @@ export function toPublicStamp(id: string, data: any): PublicStamp | null {
     name: getStampDisplayName({ id, name: data?.name }) || 'Estampa Sem Nome',
     category: String(data?.category || 'Frases'),
     collection: String(data?.collection || 'MARK'),
-    compatibleProducts: Array.isArray(data?.compatibleProducts) && data.compatibleProducts.length
+    compatibleProducts: Array.isArray(data?.compatibleProducts)
       ? data.compatibleProducts.map((value: unknown) => String(value).trim()).filter(Boolean)
-      : ['Todos os produtos'],
+      : [],
     theme: String(data?.theme || 'Streetwear'),
     tags: getStampSearchAliases({ id, name: data?.name, tags: data?.tags }),
     description: String(data?.description || ''),
