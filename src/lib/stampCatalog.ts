@@ -13,9 +13,12 @@ export function normalizeDesignDocument(id: string, data: any): Design {
     name,
     category: normalizeStampCategory(data?.category, name, data?.description || '', data?.tags || []),
     collection: data?.collection || 'MARK',
-    compatibleProducts: Array.isArray(data?.compatibleProducts) && data.compatibleProducts.length > 0
+    compatibleProducts: Array.isArray(data?.compatibleProducts)
       ? data.compatibleProducts.map((product: unknown) => String(product).trim()).filter(Boolean)
-      : ['Todos os produtos'],
+      : [],
+    allowedLocations: Array.isArray(data?.allowedLocations)
+      ? data.allowedLocations.map((location: unknown) => String(location).trim()).filter(Boolean)
+      : [],
     theme: data?.theme || 'Streetwear',
     tags: Array.isArray(data?.tags) ? data.tags : [],
     description: data?.description || '',

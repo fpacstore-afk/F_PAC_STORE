@@ -18,6 +18,7 @@ import { getPrimeFabricColor } from '../lib/primeMockupColors';
 import { SizeChart } from '../components/SizeChart';
 import { PRIME_CUSTOM_FIXED_PRICE, getCustomizationProfileById } from '../../shared/customizationProfiles';
 import { isDesignPublic, normalizeDesignDocument, sortDesignCatalog } from '../lib/stampCatalog';
+import { getPrimeCompatiblePrintSizes } from '../../shared/primeStampCompatibility';
 import { ProductMockupSprite } from '../components/ProductMockupSprite';
 import { PRODUCT_VISUALS, getProductVisualKind, type ProductVisualKind } from '../lib/productPresentation';
 import { subscribePublicCatalog } from '../services/publicProducts';
@@ -36,6 +37,8 @@ type Artwork = {
   source: 'catalog';
   code?: string;
   availableSizes?: string[];
+  compatibleProducts: string[];
+  allowedLocations: string[];
 };
 type MockupSide = 'front' | 'back';
 type Placement = {
@@ -129,6 +132,8 @@ export default function PrimeCustomApproved() {
           image: item.pngUrl,
           source: 'catalog' as const,
           availableSizes: normalizeRegisteredPrimePrintSizes(item.availableSizes),
+          compatibleProducts: item.compatibleProducts || [],
+          allowedLocations: item.allowedLocations || [],
         })));
       })
       .catch(() => { if (active) setCatalog([]); })
@@ -174,12 +179,12 @@ export default function PrimeCustomApproved() {
   const activePlacement = placements.find(item => item.id === placementId) || placements[0];
   const candidateApplied = applied[activePlacement?.id];
   const activeApplied = candidateApplied?.productKey === productId ? candidateApplied : undefined;
-  const registeredCatalogSizes = useMemo(() => {
-    if (selectedArtwork?.source !== 'catalog') return [];
-    if (activePlacement.id === 'sleeve') return getCatalogSleeveSizes(selectedArtwork.availableSizes);
-    return normalizeRegisteredPrimePrintSizes(selectedArtwork.availableSizes)
-      .filter(value => isPrimePrintSizeWithin(value, activePlacement.maxWidth, activePlacement.maxHeight));
-  }, [activePlacement.id, activePlacement.maxHeight, activePlacement.maxWidth, selectedArtwork]);
+  const registeredCatalogSizes = useMemo(() => selectedArtwork
+    ? getPrimeCompatiblePrintSizes(selectedArtwork.availableSizes, selectedArtwork.compatibleProducts, profile.id, {
+        id: activePlacement.id, maxWidthCm: activePlacement.maxWidth, maxHeightCm: activePlacement.maxHeight,
+        location: activePlacement.location, positionId: activePlacement.positionId,
+      }, selectedArtwork.allowedLocations)
+    : [], [activePlacement.id, activePlacement.maxHeight, activePlacement.maxWidth, profile.id, selectedArtwork]);
   const draftPrintSize = draftPrintSizes[activePlacement?.id] || '';
   const selectedPrintSize = draftPrintSize && registeredCatalogSizes.includes(draftPrintSize) ? draftPrintSize : registeredCatalogSizes[0] || '';
   const previewPrintSize = activeApplied?.printSize || selectedPrintSize || activePlacement?.defaultSize || '10x10';
@@ -213,7 +218,13 @@ export default function PrimeCustomApproved() {
     if (!availableSizes.includes(size)) setSize(availableSizes[0] || '');
   }, [baseOptions, color, size]);
 
-  const sleeveCatalog = catalog.filter(art => getCatalogSleeveSizes(art.availableSizes).length > 0);
+  const sleeveArea = placements.find(placement => placement.id === 'sleeve');
+  const sleeveCatalog = sleeveArea
+    ? catalog.filter(art => getPrimeCompatiblePrintSizes(art.availableSizes, art.compatibleProducts, profile.id, {
+        id: sleeveArea.id, maxWidthCm: sleeveArea.maxWidth, maxHeightCm: sleeveArea.maxHeight,
+        location: sleeveArea.location, positionId: sleeveArea.positionId,
+      }, art.allowedLocations).length > 0)
+    : [];
   const defaultSleeveArt = sleeveCatalog.find(art => /^1[.\s-]*logo$/i.test(art.name.trim())) || sleeveCatalog[0];
   const restoreSleeve = async () => {
     if (!defaultSleeveArt) return;
@@ -241,18 +252,28 @@ export default function PrimeCustomApproved() {
   useEffect(() => {
     const requestedDesign = searchParams.get('design');
     if (!requestedDesign || selectedArtwork) return;
-    const design = catalog.find(item => item.id === requestedDesign);
+    const design = catalog.find(item => item.id === requestedDesign
+      && getPrimeCompatiblePrintSizes(item.availableSizes, item.compatibleProducts, profile.id, {
+        id: activePlacement.id, maxWidthCm: activePlacement.maxWidth, maxHeightCm: activePlacement.maxHeight,
+        location: activePlacement.location, positionId: activePlacement.positionId,
+      }, item.allowedLocations).length > 0);
     if (design) setSelectedArtwork(design);
-  }, [catalog, searchParams, selectedArtwork]);
+  }, [catalog, searchParams, selectedArtwork, profile.id, activePlacement]);
 
   const filteredArt = useMemo(() => catalog
-    .filter(item => activePlacement.id !== 'sleeve' || getCatalogSleeveSizes(item.availableSizes).length > 0)
+    .filter(item => getPrimeCompatiblePrintSizes(item.availableSizes, item.compatibleProducts, profile.id, {
+      id: activePlacement.id, maxWidthCm: activePlacement.maxWidth, maxHeightCm: activePlacement.maxHeight,
+      location: activePlacement.location, positionId: activePlacement.positionId,
+    }, item.allowedLocations).length > 0)
     .filter(item => !search.trim() || `${item.name} ${item.code || ''}`.toLowerCase().includes(search.toLowerCase()))
-    , [catalog, search, activePlacement.id]);
+    , [catalog, search, activePlacement, profile.id]);
 
   useEffect(() => {
-    if (activePlacement.id === 'sleeve' && selectedArtwork?.source === 'catalog' && !getCatalogSleeveSizes(selectedArtwork.availableSizes).length) setSelectedArtwork(null);
-  }, [activePlacement.id, selectedArtwork]);
+    if (selectedArtwork && !getPrimeCompatiblePrintSizes(selectedArtwork.availableSizes, selectedArtwork.compatibleProducts, profile.id, {
+      id: activePlacement.id, maxWidthCm: activePlacement.maxWidth, maxHeightCm: activePlacement.maxHeight,
+      location: activePlacement.location, positionId: activePlacement.positionId,
+    }, selectedArtwork.allowedLocations).length) setSelectedArtwork(null);
+  }, [activePlacement, profile.id, selectedArtwork]);
 
   const applyArtwork = async () => {
     if (!selectedArtwork) return toast.error('Escolha uma arte primeiro.');
@@ -285,6 +306,15 @@ export default function PrimeCustomApproved() {
     if (!selectedBase || !canPurchase) return toast.error('Esta combinação ainda não está disponível para compra. Você pode continuar visualizando sua arte.');
     if (appliedCount < 1 && visualKind !== 'oversized') return toast.error('Adicione pelo menos uma arte.');
     if (appliedCount > profile.maxPrints) return toast.error(`Este produto aceita até ${profile.maxPrints} aplicações.`);
+    if (placements.some(placement => {
+      const art = applied[placement.id];
+      if (!art || art.productKey !== productId) return false;
+      const current = catalog.find(item => item.id === art.id);
+      return !current || !getPrimeCompatiblePrintSizes(current.availableSizes, current.compatibleProducts, profile.id, {
+        id: placement.id, maxWidthCm: placement.maxWidth, maxHeightCm: placement.maxHeight,
+        location: placement.location, positionId: placement.positionId,
+      }, current.allowedLocations).includes(art.printSize);
+    })) return toast.error('Uma estampa aplicada não está mais disponível para este modelo. Revise a configuração.');
 
     const printConfigs = placements.flatMap(placement => {
       const item = applied[placement.id];
@@ -431,7 +461,7 @@ export default function PrimeCustomApproved() {
 
             <section className="rounded-2xl border border-black/10 bg-white p-4 md:p-5 shadow-sm">
               <div className="flex items-center justify-between gap-3"><h2 className="text-[10px] font-black uppercase tracking-[0.18em]"><span className="text-[#b88700]">4.</span> Escolha uma estampa do catálogo</h2><span className="text-[9px] font-bold text-black/45">{activePlacement.label}</span></div>
-              <label className="relative mt-3 block"><Search className="absolute left-3 top-3" size={15} /><input value={search} onChange={event => setSearch(event.target.value)} placeholder="Buscar estampa..." className="h-10 w-full rounded-lg border border-black/10 pl-9 pr-3 text-xs" /></label><div className="mt-2.5 grid max-h-52 overflow-y-auto grid-cols-4 sm:grid-cols-6 gap-1.5">{filteredArt.map(item => <button key={item.id} type="button" onClick={() => { setSelectedArtwork(item); setDraftPrintSizes(current => ({ ...current, [activePlacement.id]: '' })); }} className={`aspect-square overflow-hidden rounded-lg bg-black border ${selectedArtwork?.id === item.id ? 'border-[3px] border-[#f5bd19]' : 'border-black'}`}><img src={item.image} alt={item.name} className="h-full w-full object-contain p-1" /></button>)}</div>{filteredArt.length === 0 && <p className="mt-3 rounded-lg bg-black/5 p-4 text-center text-xs text-black/45">Nenhuma estampa encontrada.</p>}
+              <label className="relative mt-3 block"><Search className="absolute left-3 top-3" size={15} /><input value={search} onChange={event => setSearch(event.target.value)} placeholder="Buscar estampa..." className="h-10 w-full rounded-lg border border-black/10 pl-9 pr-3 text-xs" /></label><div className="mt-2.5 grid max-h-52 overflow-y-auto grid-cols-4 sm:grid-cols-6 gap-1.5">{filteredArt.map(item => <button key={item.id} type="button" aria-label={`Selecionar estampa ${item.name}`} title={item.name} onClick={() => { setSelectedArtwork(item); setDraftPrintSizes(current => ({ ...current, [activePlacement.id]: '' })); }} className={`aspect-square overflow-hidden rounded-lg bg-black border ${selectedArtwork?.id === item.id ? 'border-[3px] border-[#f5bd19]' : 'border-black'}`}><img src={item.image} alt={item.name} className="h-full w-full object-contain p-1" /></button>)}</div>{filteredArt.length === 0 && <p className="mt-3 rounded-lg bg-black/5 p-4 text-center text-xs text-black/45">{search.trim() ? 'Nenhuma estampa encontrada.' : 'Nenhuma estampa cadastrada para esta peça e posição. Confira os produtos e medidas no catálogo.'}</p>}
 
               {selectedArtwork && <div className="mt-3 rounded-xl border border-black/10 bg-[#f8f8f6] p-2.5">
                 <div className="flex items-center gap-2.5"><img src={selectedArtwork.image} alt={selectedArtwork.name} className="h-12 w-12 rounded-lg bg-black object-contain p-1" /><div className="min-w-0 flex-1"><b className="block truncate text-xs">{selectedArtwork.name}</b><span className="text-[9px] text-black/45">Estampa disponível no catálogo · aplicar em {activePlacement.label.toLowerCase()}</span></div></div>

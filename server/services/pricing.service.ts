@@ -1,4 +1,5 @@
 import { isCatalogSleeveSize } from '../../shared/primeArtworkSizing.js';
+import { isPrimeStampCompatible } from '../../shared/primeStampCompatibility.js';
 import { calculateStorefrontTotals, selectActivePromotion } from '../../shared/storefrontTotals.js';
 import { shippingParcel } from '../../shared/shippingParcel.js';
 import type { CartItem } from '../../src/types/cart.js';
@@ -137,6 +138,9 @@ export async function calculateOrderPricing(input: PricingInput, context: Partia
         const catalogStatus = String(catalogData?.status || 'active');
         if (!catalogData || ['draft', 'archived', 'unavailable'].includes(catalogStatus) || catalogData.available === false || catalogData.availableForCustomization === false) {
           throw new Error(`Estampa inválida ou indisponível no PRIME CUSTOM (posição ${index + 1}).`);
+        }
+        if (!isPrimeStampCompatible(catalogData.compatibleProducts, customizationProfile.id)) {
+          throw new Error(`A estampa ${String(catalogData.name || stamp).slice(0, 80)} não está liberada para este modelo PRIME.`);
         }
         if (!isCatalogLocationAllowed(catalogData.allowedLocations, location)) {
           throw new Error(`A estampa ${String(catalogData.name || stamp).slice(0, 80)} não é permitida em ${location}.`);
