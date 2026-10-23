@@ -24,6 +24,7 @@ import {
   getCustomizationProfileById,
 } from '../shared/customizationProfiles';
 import { getCanvasStampBox } from '../src/lib/primeMockupGeometry';
+import { getPrimeCompatiblePrintSizes, isPrimeStampCompatible } from '../shared/primeStampCompatibility';
 import {
   getCompatiblePrintSizes,
   getSafePrintSize,
@@ -120,6 +121,29 @@ assert.equal(isCatalogPrimeSizeRegistered(['Peito 10 × 12 cm', '20x30'], '15x20
 assert.equal(isPrimeCatalogArtworkId('own_art_upload123'), false);
 assert.equal(isPrimeCatalogArtworkId('design-catalog-123'), true);
 assert.equal(isPrimeCatalogArtworkId(''), false);
+
+
+// Catalog permissions must be checked for every PRIME model and print area.
+// A missing setting never grants permission; specialty pieces require an explicit selection.
+for (const [model, label] of [
+  ['oversized', 'Camisetas'], ['traditional', 'Camisetas'],
+  ['cropped', 'Cropped Oversized'], ['hoodie', 'Moletons'],
+  ['shorts', 'Bermudas'], ['cap', 'Bonés'],
+] as const) {
+  assert.equal(isPrimeStampCompatible([label], model), true, `${model} accepts its explicit catalog selection`);
+  assert.equal(isPrimeStampCompatible(['Calças'], model), false, `${model} rejects a different product`);
+  assert.equal(isPrimeStampCompatible(undefined, model), false, `${model} rejects missing product permissions`);
+}
+assert.equal(isPrimeStampCompatible(['Todos os produtos'], 'oversized'), true);
+assert.equal(isPrimeStampCompatible(['Todos os produtos'], 'cropped'), true);
+assert.equal(isPrimeStampCompatible(['Todos os produtos'], 'hoodie'), true);
+assert.equal(isPrimeStampCompatible(['Todos os produtos'], 'shorts'), false, 'a blanket legacy option must not enable bermudas');
+assert.equal(isPrimeStampCompatible(['Todos os produtos'], 'cap'), false, 'a blanket legacy option must not enable caps');
+assert.deepEqual(getPrimeCompatiblePrintSizes(['2x3', '8x8'], ['Camisetas'], 'shorts', { id: 'front', maxWidthCm: 3, maxHeightCm: 3 }), []);
+assert.deepEqual(getPrimeCompatiblePrintSizes(['2x3', '8x8', '15x7'], ['Bermudas'], 'shorts', { id: 'front', maxWidthCm: 3, maxHeightCm: 3 }), ['2x3']);
+assert.deepEqual(getPrimeCompatiblePrintSizes(['2x3', '8x8', '15x7'], ['Bermudas'], 'shorts', { id: 'back', maxWidthCm: 10, maxHeightCm: 10 }), ['2x3', '8x8']);
+assert.deepEqual(getPrimeCompatiblePrintSizes(['11x8', '15x11'], ['Bonés'], 'cap', { id: 'front', maxWidthCm: 12, maxHeightCm: 8 }), ['11x8']);
+assert.deepEqual(getPrimeCompatiblePrintSizes(['2x3', '8x8'], ['Camisetas'], 'traditional', { id: 'sleeve', maxWidthCm: 10, maxHeightCm: 12 }), ['2x3']);
 
 // Current labels used by the storefront.
 assert.equal(isPrimeSizeAllowedAtLocation('30x40', 'Frente'), true);
