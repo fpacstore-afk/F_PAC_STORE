@@ -1,27 +1,14 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { collection, onSnapshot } from 'firebase/firestore';
-import {
-  BarChart3,
-  AlertTriangle,
-  Boxes,
-  CircleDollarSign,
-  CreditCard,
-  Factory,
-  PackageSearch,
-  RefreshCw,
-  ShoppingCart,
-  TrendingUp,
-  Truck,
-  Users,
-  WalletCards,
-} from 'lucide-react';
 import { db } from '../../lib/firebase';
 import { catalogIntegrity } from '../../../shared/catalogIntegrity';
-import { getOrderPaymentStatus, getOrderPaidAmount, getOrderNetReceived, getOrderPendingAmount, getOrderTotal } from '../../../shared/orderFinancialCore';
+import { getOrderPaidAmount, getOrderNetReceived, getOrderPendingAmount } from '../../../shared/orderFinancialCore';
 import { summarizeReceipts } from '../../../shared/financialReceipts';
-import { dashboardPeriodRange, dateMatchesRange } from '../../../shared/financialDashboard';
+import { dashboardPeriodRange, dateMatchesRange, summarizePayables } from '../../../shared/financialDashboard';
+import { isConfirmedReceivable, periodChange, previousDashboardRange, receiptTrend } from '../../../shared/managementOverview';
 import { calculateFinancialDRE } from '../../utils/orderFinancial';
 import { useFinancialPrivacy } from '../../context/FinancialPrivacyContext';
+import { ManagementDashboardView } from './ManagementDashboardView';
 
 const PERIODS = [
   { key: '7d', label: '7 dias', days: 7 },
@@ -33,8 +20,6 @@ const PERIODS = [
 type PeriodKey = typeof PERIODS[number]['key'];
 
 type AnyDoc = Record<string, any> & { id?: string };
-
-const number = new Intl.NumberFormat('pt-BR');
 
 function toDate(value: any): Date | null {
   if (!value) return null;
@@ -50,17 +35,6 @@ function toDate(value: any): Date | null {
 
 function isPaid(order: AnyDoc) {
   return getOrderPaidAmount(order) > 0;
-}
-
-function isReturned(order: AnyDoc) {
-  const payment = String(order.paymentStatus || '').toLowerCase();
-  const shipping = String(order.shippingStatus || '').toLowerCase();
-  const production = String(order.productionStatus || '').toLowerCase();
-  return payment.includes('refund') || shipping === 'returned' || production === 'returned' || order.exchangeRequested === true || order.returnRequested === true;
-}
-
-function orderGross(order: AnyDoc) {
-  return getOrderTotal(order);
 }
 
 function orderNet(order: AnyDoc) {
@@ -82,33 +56,11 @@ function sessionOrigin(session: AnyDoc) {
 }
 
 function customerKey(order: AnyDoc) {
-  return String(order.customerEmail || order.customerPhone || order.userId || order.customerName || order.id || '').trim().toLowerCase();
-}
-
-function MetricCard({ label, value, helper, accent = false }: { label: string; value: string; helper?: string; accent?: boolean }) {
-  return (
-    <div className={`border p-4 min-h-[126px] flex flex-col justify-between ${accent ? 'bg-black text-white border-black' : 'bg-white border-black/10'}`}>
-      <div className={`text-[9px] font-black uppercase tracking-[0.18em] ${accent ? 'text-white/50' : 'text-black/45'}`}>{label}</div>
-      <div className={`text-2xl md:text-3xl font-black tracking-tight ${accent ? 'text-[#eab308]' : 'text-black'}`}>{value}</div>
-      {helper && <div className={`text-[10px] leading-relaxed ${accent ? 'text-white/45' : 'text-black/45'}`}>{helper}</div>}
-    </div>
-  );
-}
-
-function SectionTitle({ icon: Icon, eyebrow, title }: { icon: React.ElementType; eyebrow: string; title: string }) {
-  return (
-    <div className="flex items-center gap-3 mb-4">
-      <div className="w-9 h-9 bg-black text-[#eab308] flex items-center justify-center"><Icon size={18} /></div>
-      <div>
-        <div className="text-[9px] font-black uppercase tracking-[0.2em] text-black/40">{eyebrow}</div>
-        <h3 className="text-lg md:text-xl font-black uppercase tracking-tight">{title}</h3>
-      </div>
-    </div>
-  );
+  return String(order.customerEmail || order.customerPhone || order.userId || '').trim().toLowerCase();
 }
 
 export default function ManagementDashboard() {
-  const { formatMoney } = useFinancialPrivacy();
+  const { formatMoney, formatPercent, showFinancialValues } = useFinancialPrivacy();
   const [period, setPeriod] = useState<PeriodKey>('30d');
   const [orders, setOrders] = useState<AnyDoc[]>([]);
   const [sessions, setSessions] = useState<AnyDoc[]>([]);
@@ -117,6 +69,7 @@ export default function ManagementDashboard() {
   const [cashflow, setCashflow] = useState<AnyDoc[]>([]);
   const [investments, setInvestments] = useState<AnyDoc[]>([]);
   const [trafficRecords, setTrafficRecords] = useState<AnyDoc[]>([]);
+  const [payables, setPayables] = useState<AnyDoc[]>([]);
   const [loading, setLoading] = useState(true);
   const [syncState, setSyncState] = useState('Sincronizando dados...');
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -132,13 +85,14 @@ export default function ManagementDashboard() {
     let readyCashflow = false;
     let readyInvestments = false;
     let readyTraffic = false;
+    let readyPayables = false;
     let loadFailed = false;
     const reportError = () => {
       loadFailed = true;
       setLoadError('Não foi possível carregar todos os dados da gestão. Os indicadores estão indisponíveis até a consulta ser concluída.');
     };
     const updateReady = () => {
-      if (readyOrders && readySessions && readyInventory && readyProducts && readyCashflow && readyInvestments && readyTraffic) {
+      if (readyOrders && readySessions && readyInventory && readyProducts && readyCashflow && readyInvestments && readyTraffic && readyPayables) {
         setLoading(false);
         setSyncState(loadFailed ? 'Parte dos dados não pôde ser carregada' : 'Dados atualizados em tempo real');
       }
@@ -182,18 +136,25 @@ export default function ManagementDashboard() {
       readyTraffic = true; updateReady();
     }, () => { reportError(); readyTraffic = true; updateReady(); });
 
-    return () => { unOrders(); unSessions(); unInventory(); unProducts(); unCashflow(); unInvestments(); unTraffic(); };
+    const unPayables = onSnapshot(collection(db, 'financial_payables'), snap => {
+      setPayables(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      readyPayables = true; updateReady();
+    }, () => { reportError(); readyPayables = true; updateReady(); });
+
+    return () => { unOrders(); unSessions(); unInventory(); unProducts(); unCashflow(); unInvestments(); unTraffic(); unPayables(); };
   }, [reloadKey]);
 
   const data = useMemo(() => {
     const selected = PERIODS.find(item => item.key === period) || PERIODS[1];
     const range = dashboardPeriodRange(selected.days);
+    const priorRange = previousDashboardRange(range);
     const inPeriod = (value: any) => dateMatchesRange(value, range);
 
     const paidAll = orders.filter(isPaid);
-    const paid = paidAll.filter(order => inPeriod(order.createdAt));
-    const grossRevenue = paid.reduce((sum, order) => sum + orderGross(order), 0);
+    const paid = paidAll.filter(order => inPeriod(order.createdAt || order.createdAtDate || order.created_at || order.date));
     const receipts = summarizeReceipts(orders, range);
+    const previousReceipts = priorRange ? summarizeReceipts(orders, priorRange) : null;
+    const trend = receiptTrend(orders, range, selected.days);
     const averageReceipt = receipts.receivedOrders ? receipts.netReceived / receipts.receivedOrders : 0;
     const periodOrders = orders.filter(order => inPeriod(order.createdAt || order.createdAtDate || order.created_at || order.date));
     const periodRecords = (records: AnyDoc[]) => records.filter(record => inPeriod(record.date || record.createdAt || record.created_at));
@@ -204,6 +165,8 @@ export default function ManagementDashboard() {
       periodRecords(trafficRecords),
       products,
     );
+    const operatingExpenses = dre.fixedExpenses + dre.variableExpenses + dre.otherExpenses + dre.marketingExpenses;
+    const payableSummary = summarizePayables(payables);
 
     const filteredSessions = sessions.filter(session => session.validationVersion === 1 && inPeriod(session.createdAt || session.updatedAt || session.lastActive));
     const purchases = filteredSessions.filter(session => session.purchaseCompleted === true).length;
@@ -226,26 +189,20 @@ export default function ManagementDashboard() {
       }
     });
 
-    const bestMap = new Map<string, { name: string; color: string; size: string; quantity: number; revenue: number }>();
-    let soldUnits = 0;
+    const bestMap = new Map<string, { name: string; color: string; size: string; quantity: number }>();
     paid.forEach(order => {
       (order.items || []).forEach((item: AnyDoc) => {
         const quantity = Math.max(1, Number(item.quantity || item.qty || 1));
-        soldUnits += quantity;
         const name = String(item.name || item.title || item.slug || 'Produto');
         const color = String(item.color || '—');
         const size = String(item.size || '—');
         const key = `${name}|${color}|${size}`;
-        const previous = bestMap.get(key) || { name, color, size, quantity: 0, revenue: 0 };
+        const previous = bestMap.get(key) || { name, color, size, quantity: 0 };
         previous.quantity += quantity;
-        previous.revenue += Number(item.price || 0) * quantity;
         bestMap.set(key, previous);
       });
     });
     const bestSellers = [...bestMap.values()].sort((a, b) => b.quantity - a.quantity).slice(0, 5);
-    const turnover = physicalStock > 0 ? soldUnits / physicalStock : 0;
-    const returned = paid.filter(isReturned).length;
-    const returnRate = paid.length ? (returned / paid.length) * 100 : 0;
 
     const cartSessions = filteredSessions.filter(session => session.cartStarted === true);
     const abandoned = cartSessions.filter(session => session.purchaseCompleted !== true).length;
@@ -286,17 +243,16 @@ export default function ManagementDashboard() {
       .map(([name, value]) => ({ name, value }))
       .sort((a, b) => b.value - a.value)
       .slice(0, 6);
-    const trafficTotal = traffic.reduce((sum, item) => sum + item.value, 0) || 1;
+    const trafficTotal = filteredSessions.length;
 
     const activeOrders = orders.filter(order => {
       const statuses = [order.status, order.paymentStatus, order.productionStatus, order.shippingStatus]
         .map(value => String(value || '').toLowerCase());
       return !statuses.some(status => ['cancelled', 'canceled', 'rejected', 'refunded'].includes(status));
     });
-    const pendingPayments = activeOrders.filter(order => {
-      return !['cancelled', 'rejected', 'refunded'].includes(getOrderPaymentStatus(order)) && getOrderPendingAmount(order) > 0;
-    }).length;
-    const pendingAmount = activeOrders.reduce((sum, order) => sum + getOrderPendingAmount(order), 0);
+    const receivables = activeOrders.filter(isConfirmedReceivable);
+    const pendingPayments = receivables.length;
+    const pendingAmount = receivables.reduce((sum, order) => sum + getOrderPendingAmount(order), 0);
     const inProduction = activeOrders.filter(order => {
       const status = String(order.production?.status || order.productionStatus || '').toLowerCase();
       return ['waiting', 'pending', 'separacao_corte', 'estamparia', 'costura', 'embalagem', 'processing', 'in_production'].includes(status);
@@ -311,17 +267,22 @@ export default function ManagementDashboard() {
     return {
       integrity,
       unresolvedPayments: orders.filter(order => order.paymentCreationUncertain).length,
-      grossRevenue,
       receipts,
+      previousReceipts,
+      trend,
       dre,
+      operatingExpenses,
+      payableSummary,
       averageReceipt,
       paidOrders: paid.length,
+      paidOrdersChange: priorRange ? periodChange(paid.length, paidAll.filter(order => dateMatchesRange(order.createdAt || order.createdAtDate || order.created_at || order.date, priorRange)).length) : null,
+      receiptsChange: previousReceipts ? periodChange(receipts.netReceived, previousReceipts.netReceived) : null,
       conversion,
-      soldUnits,
+      sessionsCount: filteredSessions.length,
+      cartSessionsCount: cartSessions.length,
+      purchasesCount: purchases,
       physicalStock,
-      turnover,
       bestSellers,
-      returnRate,
       stale30,
       stale60,
       abandonment,
@@ -335,154 +296,22 @@ export default function ManagementDashboard() {
       inProduction,
       readyToShip,
       lowStockVariants,
+      range,
+      periodLabel: selected.label,
     };
-  }, [orders, sessions, inventory, products, cashflow, investments, trafficRecords, period]);
+  }, [orders, sessions, inventory, products, cashflow, investments, trafficRecords, payables, period]);
 
-  if (loadError) return <div role="alert" className="border border-red-200 bg-red-50 p-4 text-sm text-red-900"><p>{loadError}</p><button type="button" onClick={() => setReloadKey(key => key + 1)} className="mt-3 bg-black px-4 py-2 text-white">Tentar novamente</button></div>;
-  if (loading) return <p role="status" className="p-4 text-sm">Carregando os dados para calcular os indicadores...</p>;
+  if (loadError) return <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-5 text-sm text-red-900"><p>{loadError}</p><button type="button" onClick={() => setReloadKey(key => key + 1)} className="mt-3 rounded-lg bg-black px-4 py-2 text-white">Tentar novamente</button></div>;
+  if (loading) return <p role="status" className="p-5 text-sm">Carregando os dados para calcular os indicadores...</p>;
 
-  return (
-    <section className="space-y-8">
-      {!loading && (products.length === 0 || data.integrity.unlinked.length > 0) && <div role="status" className="border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950">
-        <p className="font-bold">{products.length === 0 ? 'Nenhum produto cadastrado foi encontrado.' : 'Há estoque sem vínculo com o catálogo.'}</p>
-        <p className="mt-1">{data.integrity.unlinked.length} registros de estoque sem produto correspondente, com {number.format(data.integrity.unlinkedPhysical)} peças registradas. Esses dados foram preservados e não entram nos alertas de reposição do catálogo.</p>
-      </div>}
-      {data.unresolvedPayments > 0 && <p role="status" className="border border-amber-300 bg-amber-50 p-4 text-sm">{data.unresolvedPayments} tentativa(s) aguardando confirmação do provedor. Confira o pagamento antes de cancelar pedidos ou liberar reservas.</p>}
-      <div className="bg-white border border-black/10 p-4 md:p-5 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-        <div>
-          <div className="text-[9px] uppercase tracking-[0.22em] font-black text-black/40">Dashboard estratégico</div>
-          <h2 className="text-2xl md:text-3xl font-black uppercase tracking-tight">Visão geral do negócio</h2>
-          <div className="mt-2 flex items-center gap-2 text-[10px] text-black/45"><RefreshCw size={12} className={loading ? 'animate-spin' : ''} /> {syncState}</div>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          {PERIODS.map(item => (
-            <button
-              key={item.key}
-              onClick={() => setPeriod(item.key)}
-              className={`px-3 py-2 text-[9px] font-black uppercase tracking-widest border transition-colors ${period === item.key ? 'bg-black text-[#eab308] border-black' : 'bg-white text-black border-black/10 hover:border-black/30'}`}
-            >
-              {item.label}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <div>
-        <SectionTitle icon={CircleDollarSign} eyebrow="Resumo financeiro" title="Números principais" />
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-          <MetricCard label="Recebido líquido" value={formatMoney(data.receipts.netReceived)} helper="Pagamentos menos estornos, pela data em que ocorreram" accent />
-          <MetricCard label="Despesas operacionais" value={formatMoney(data.dre.fixedExpenses + data.dre.variableExpenses + data.dre.otherExpenses + data.dre.marketingExpenses)} helper="Despesas registradas no período; não inclui retiradas ou investimentos estruturais" />
-          <MetricCard label="Lucro operacional" value={data.dre.costCoveragePercent === 100 && data.receipts.ordersNeedingReview === 0 ? formatMoney(data.dre.operatingProfit) : 'Conferir dados'} helper={data.dre.costCoveragePercent < 100 ? `Custos completos em ${data.dre.costCoveragePercent}% dos pedidos do período` : data.receipts.ordersNeedingReview > 0 ? `${data.receipts.ordersNeedingReview} pedido(s) com datas ou histórico financeiro para revisar` : 'Após custos e despesas registrados no período'} />
-        </div>
-        <p className="mt-2 text-[10px] text-black/45">O recebimento segue a data do pagamento. Custos e despesas seguem a data registrada no pedido ou lançamento.</p>
-      </div>
-
-      <div>
-        <SectionTitle icon={AlertTriangle} eyebrow="Agora" title="Prioridades da operação" />
-        <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
-          <MetricCard label="Pagamentos pendentes" value={number.format(data.pendingPayments)} helper={`${formatMoney(data.pendingAmount)} em aberto nos pedidos ativos`} accent />
-          <MetricCard label="Em produção" value={number.format(data.inProduction)} helper="Pedidos em etapas produtivas abertas" />
-          <MetricCard label="Prontos para envio" value={number.format(data.readyToShip)} helper="Produção concluída sem despacho registrado" />
-          <MetricCard label="Alertas de estoque" value={number.format(data.lowStockVariants)} helper="Rupturas ou variações abaixo do mínimo cadastrado" />
-        </div>
-        <div className="mt-3 grid grid-cols-2 xl:grid-cols-4 gap-3 text-[9px] font-black uppercase tracking-wider text-black/45">
-          <div className="flex items-center gap-2"><CreditCard size={13} className="text-[#eab308]" /> Cobrança</div>
-          <div className="flex items-center gap-2"><Factory size={13} className="text-[#eab308]" /> Produção</div>
-          <div className="flex items-center gap-2"><Truck size={13} className="text-[#eab308]" /> Expedição</div>
-          <div className="flex items-center gap-2"><Boxes size={13} className="text-[#eab308]" /> Reposição</div>
-        </div>
-      </div>
-
-      <div>
-        <SectionTitle icon={BarChart3} eyebrow="Desempenho" title="Comercial & Vendas" />
-        <p className="mb-3 text-xs text-gray-400">A conversão considera apenas quem autorizou estatísticas e teve a compra confirmada nesta sessão. O total financeiro vem dos pedidos.</p>
-        <p className="mb-3 text-xs text-gray-500">Recebido no período: {formatMoney(data.receipts.received)}. Estornado no período: {formatMoney(data.receipts.refunded)}. Os recebimentos seguem as datas dos pagamentos e estornos.</p>
-        {data.receipts.ordersNeedingReview > 0 && <p role="status" className="mb-3 border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">{data.receipts.ordersNeedingReview} pedido(s) precisam de conferência de datas ou histórico. Recebimentos sem data: {formatMoney(data.receipts.undatedReceived)}; estornos sem data: {formatMoney(data.receipts.undatedRefunded)}. Esses valores ficam fora dos períodos por data.</p>}
-        <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
-          <MetricCard label="Valor total dos pedidos pagos" value={formatMoney(data.grossRevenue)} helper="Valor integral dos pedidos criados no período que tiveram algum pagamento" accent />
-          <MetricCard label="Recebimento líquido no período" value={formatMoney(data.receipts.netReceived)} helper="Pagamentos menos estornos nas suas datas reais" />
-          <MetricCard label="Recebimento médio por pedido" value={formatMoney(data.averageReceipt)} helper="Média líquida dos pedidos que receberam pagamento no período" />
-          <MetricCard label="Pedidos / Conversão" value={`${number.format(data.paidOrders)} · ${data.conversion.toFixed(1)}%`} helper="Pedidos criados no período com algum recebimento · conversão das sessões validadas" />
-        </div>
-      </div>
-
-      <div>
-        <SectionTitle icon={Boxes} eyebrow="Operação" title="Gestão de Estoque & Produto" />
-        <div className="grid grid-cols-1 xl:grid-cols-[1fr_1.35fr] gap-3">
-          <div className="grid grid-cols-2 gap-3">
-          <MetricCard label="Vendas / estoque atual" value={data.physicalStock > 0 ? `${data.turnover.toFixed(2)}x` : '—'} helper={`${number.format(data.soldUnits)} unidades nos pedidos com recebimento / ${number.format(data.physicalStock)} peças físicas atuais`} accent />
-            <MetricCard label="Devolução / troca" value={`${data.returnRate.toFixed(1)}%`} helper="Pedidos com devolução, reembolso ou troca" />
-            <MetricCard label="Encalhe 30+ dias" value={number.format(data.stale30)} helper="Peças com estoque e sem atualização recente" />
-            <MetricCard label="Encalhe 60+ dias" value={number.format(data.stale60)} helper="Prioridade para ação promocional" />
-          </div>
-          <div className="bg-white border border-black/10 p-5">
-            <div className="flex items-center justify-between mb-4">
-              <div>
-                <div className="text-[9px] font-black uppercase tracking-[0.2em] text-black/40">Best Sellers</div>
-                <h4 className="text-base font-black uppercase">Produtos, tamanhos e cores</h4>
-              </div>
-              <PackageSearch size={20} className="text-[#eab308]" />
-            </div>
-            <div className="space-y-2">
-              {data.bestSellers.length === 0 ? (
-                <div className="text-[11px] text-black/45 py-8 text-center border border-dashed border-black/10">Sem vendas concluídas no período.</div>
-              ) : data.bestSellers.map((item, index) => (
-                <div key={`${item.name}-${item.color}-${item.size}`} className="grid grid-cols-[28px_1fr_auto] gap-3 items-center border-b border-black/5 pb-2 last:border-0">
-                  <div className="w-7 h-7 bg-black text-[#eab308] text-[10px] font-black flex items-center justify-center">{index + 1}</div>
-                  <div className="min-w-0">
-                    <div className="text-[11px] font-black uppercase truncate">{item.name}</div>
-                    <div className="text-[9px] uppercase text-black/45">{item.color} · {item.size}</div>
-                  </div>
-                  <div className="text-right"><div className="text-sm font-black">{item.quantity} un.</div><div className="text-[9px] text-black/40">{formatMoney(item.revenue)}</div></div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div>
-        <SectionTitle icon={Users} eyebrow="Relacionamento" title="Comportamento do Cliente" />
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-          <MetricCard label="Abandono de carrinho" value={`${data.abandonment.toFixed(1)}%`} helper="Sessões que iniciaram carrinho e não compraram" accent />
-          <MetricCard label="Novos vs. recorrentes" value={`${data.newCustomers} / ${data.returningCustomers}`} helper="Clientes no período selecionado" />
-          <MetricCard label="LTV médio" value={formatMoney(data.ltv)} helper="Recebimento líquido acumulado por cliente" />
-        </div>
-      </div>
-
-      <div>
-        <SectionTitle icon={TrendingUp} eyebrow="Aquisição" title="Marketing & Tráfego" />
-        <div className="grid grid-cols-1 xl:grid-cols-[1.35fr_1fr] gap-3">
-          <div className="bg-black text-white border border-black p-5">
-            <div className="flex items-center justify-between mb-5">
-              <div><div className="text-[9px] uppercase tracking-[0.2em] font-black text-white/40">Origem do tráfego</div><h4 className="text-base font-black uppercase">De onde chegam os visitantes</h4></div>
-              <ShoppingCart size={20} className="text-[#eab308]" />
-            </div>
-            <div className="space-y-3">
-              {data.traffic.length === 0 ? <div className="text-[11px] text-white/40 py-8 text-center">Sem dados de tráfego no período.</div> : data.traffic.map(item => {
-                const pct = Math.round((item.value / data.trafficTotal) * 100);
-                return (
-                  <div key={item.name}>
-                    <div className="flex items-center justify-between text-[10px] mb-1.5"><span className="font-black uppercase">{item.name}</span><span className="text-white/45">{item.value} · {pct}%</span></div>
-                    <div className="h-1.5 bg-white/10 overflow-hidden"><div className="h-full bg-[#eab308]" style={{ width: `${pct}%` }} /></div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-3 xl:grid-cols-1 gap-3">
-            <MetricCard label="CAC" value="—" helper="Será calculado quando o investimento de marketing estiver configurado" />
-            <MetricCard label="ROI" value="—" helper="Depende do investimento total informado" />
-            <MetricCard label="ROAS" value="—" helper="Depende do gasto e receita atribuída aos anúncios" />
-          </div>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-        <div className="bg-[#ecece8] border border-black/10 p-4 flex items-center gap-3"><CircleDollarSign className="text-[#eab308]" size={20} /><div><div className="text-[9px] font-black uppercase tracking-widest text-black/40">Financeiro</div><div className="text-[11px] font-bold">Receita, ticket e devoluções conectados aos pedidos.</div></div></div>
-        <div className="bg-[#ecece8] border border-black/10 p-4 flex items-center gap-3"><WalletCards className="text-[#eab308]" size={20} /><div><div className="text-[9px] font-black uppercase tracking-widest text-black/40">Marketing</div><div className="text-[11px] font-bold">CAC, ROI e ROAS ficam prontos assim que o custo de mídia for registrado.</div></div></div>
-        <div className="bg-[#ecece8] border border-black/10 p-4 flex items-center gap-3"><Users className="text-[#eab308]" size={20} /><div><div className="text-[9px] font-black uppercase tracking-widest text-black/40">Clientes</div><div className="text-[11px] font-bold">LTV e recorrência usam o histórico de pedidos concluídos.</div></div></div>
-      </div>
-    </section>
-  );
+  return <ManagementDashboardView
+    data={data}
+    period={period}
+    onPeriodChange={setPeriod}
+    syncState={syncState}
+    showFinancialValues={showFinancialValues}
+    formatMoney={formatMoney}
+    formatPercent={formatPercent}
+    productsCount={products.length}
+  />;
 }
