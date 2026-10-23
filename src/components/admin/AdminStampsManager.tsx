@@ -21,6 +21,8 @@ import { isDesignPublic, normalizeDesignDocument, reorderDesignCatalog, sortDesi
 import { StampMedia } from '../StampMedia';
 import { uploadAdminArtwork, uploadAdminVideo } from '../../services/cloudinary';
 import { normalizeRegisteredPrimePrintSizes } from '../../../shared/primeArtworkSizing';
+import { getPrimeCompatiblePrintSizes } from '../../../shared/primeStampCompatibility';
+import { getCustomizationProfileById } from '../../../shared/customizationProfiles';
 import { authenticatedFetch, parseApiJson } from '../../lib/api';
 import {
   closestCenter,
@@ -1183,6 +1185,16 @@ export function AdminStampsManager() {
                           );
                         })}
                       </div>
+                      {(['shorts', 'cap'] as const).map(model => {
+                        const label = model === 'shorts' ? 'Bermudas' : 'Bonés';
+                        if (!formData.availableForCustomization || !formData.compatibleProducts.includes(label)) return null;
+                        const profile = getCustomizationProfileById(model);
+                        const hasFittingSize = profile?.printAreas.some(area =>
+                          getPrimeCompatiblePrintSizes(formData.availableSizes, formData.compatibleProducts, model, area).length > 0);
+                        return hasFittingSize ? null : <p key={model} className="mt-3 text-[10px] font-bold text-amber-400" role="status">
+                          {label}: nenhuma medida cadastrada cabe na área PRIME. A arte não aparecerá nesse modelo até incluir uma medida compatível.
+                        </p>;
+                      })}
                     </div>
                   </div>
 
