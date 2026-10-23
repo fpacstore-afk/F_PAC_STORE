@@ -139,7 +139,7 @@ export function ManagementDashboardView({ data, period, onPeriodChange, syncStat
     </header>
 
     <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
-      <Kpi featured icon={CircleDollarSign} label="Recebido líquido" value={formatMoney(data.receipts.netReceived)} delta={changeLabel(data.receiptsChange)} deltaNegative={data.receiptsChange !== null && data.receiptsChange < 0} helper="Pagamentos menos estornos na data registrada. Inclui recebimentos de pedidos antigos." />
+      <Kpi featured icon={CircleDollarSign} label="Recebido líquido" value={formatMoney(data.receipts.netReceived)} delta={changeLabel(data.receiptsChange)} deltaNegative={data.receiptsChange !== null && data.receiptsChange < 0} helper={period === 'all' ? 'Total dos pagamentos menos estornos, inclusive registros sem data. O gráfico cobre os últimos 12 meses datados.' : 'Pagamentos menos estornos na data registrada. Inclui recebimentos de pedidos antigos.'} />
       <Kpi icon={TrendingUp} label="Resultado operacional estimado" value={resultReady ? formatMoney(data.dre.operatingProfit) : 'Conferir custos'} helper={resultReady ? 'Pedidos criados no período após custos e despesas registrados; não é saldo bancário.' : `Custos completos em ${data.dre.costCoveragePercent}% dos pedidos e brindes do período.`} />
       <Kpi icon={WalletCards} label="Despesas operacionais" value={formatMoney(data.operatingExpenses)} helper="Lançamentos do período, incluindo marketing; sem retiradas pessoais ou investimentos de estrutura." />
     </div>
