@@ -38,6 +38,7 @@ type Artwork = {
   code?: string;
   availableSizes?: string[];
   compatibleProducts: string[];
+  allowedLocations: string[];
 };
 type MockupSide = 'front' | 'back';
 type Placement = {
@@ -131,7 +132,8 @@ export default function PrimeCustomApproved() {
           image: item.pngUrl,
           source: 'catalog' as const,
           availableSizes: normalizeRegisteredPrimePrintSizes(item.availableSizes),
-          compatibleProducts: item.compatibleProducts,
+          compatibleProducts: item.compatibleProducts || [],
+          allowedLocations: item.allowedLocations || [],
         })));
       })
       .catch(() => { if (active) setCatalog([]); })
@@ -180,7 +182,8 @@ export default function PrimeCustomApproved() {
   const registeredCatalogSizes = useMemo(() => selectedArtwork
     ? getPrimeCompatiblePrintSizes(selectedArtwork.availableSizes, selectedArtwork.compatibleProducts, profile.id, {
         id: activePlacement.id, maxWidthCm: activePlacement.maxWidth, maxHeightCm: activePlacement.maxHeight,
-      })
+        location: activePlacement.location, positionId: activePlacement.positionId,
+      }, selectedArtwork.allowedLocations)
     : [], [activePlacement.id, activePlacement.maxHeight, activePlacement.maxWidth, profile.id, selectedArtwork]);
   const draftPrintSize = draftPrintSizes[activePlacement?.id] || '';
   const selectedPrintSize = draftPrintSize && registeredCatalogSizes.includes(draftPrintSize) ? draftPrintSize : registeredCatalogSizes[0] || '';
@@ -219,7 +222,8 @@ export default function PrimeCustomApproved() {
   const sleeveCatalog = sleeveArea
     ? catalog.filter(art => getPrimeCompatiblePrintSizes(art.availableSizes, art.compatibleProducts, profile.id, {
         id: sleeveArea.id, maxWidthCm: sleeveArea.maxWidth, maxHeightCm: sleeveArea.maxHeight,
-      }).length > 0)
+        location: sleeveArea.location, positionId: sleeveArea.positionId,
+      }, art.allowedLocations).length > 0)
     : [];
   const defaultSleeveArt = sleeveCatalog.find(art => /^1[.\s-]*logo$/i.test(art.name.trim())) || sleeveCatalog[0];
   const restoreSleeve = async () => {
@@ -251,21 +255,24 @@ export default function PrimeCustomApproved() {
     const design = catalog.find(item => item.id === requestedDesign
       && getPrimeCompatiblePrintSizes(item.availableSizes, item.compatibleProducts, profile.id, {
         id: activePlacement.id, maxWidthCm: activePlacement.maxWidth, maxHeightCm: activePlacement.maxHeight,
-      }).length > 0);
+        location: activePlacement.location, positionId: activePlacement.positionId,
+      }, item.allowedLocations).length > 0);
     if (design) setSelectedArtwork(design);
   }, [catalog, searchParams, selectedArtwork, profile.id, activePlacement]);
 
   const filteredArt = useMemo(() => catalog
     .filter(item => getPrimeCompatiblePrintSizes(item.availableSizes, item.compatibleProducts, profile.id, {
       id: activePlacement.id, maxWidthCm: activePlacement.maxWidth, maxHeightCm: activePlacement.maxHeight,
-    }).length > 0)
+      location: activePlacement.location, positionId: activePlacement.positionId,
+    }, item.allowedLocations).length > 0)
     .filter(item => !search.trim() || `${item.name} ${item.code || ''}`.toLowerCase().includes(search.toLowerCase()))
     , [catalog, search, activePlacement, profile.id]);
 
   useEffect(() => {
     if (selectedArtwork && !getPrimeCompatiblePrintSizes(selectedArtwork.availableSizes, selectedArtwork.compatibleProducts, profile.id, {
       id: activePlacement.id, maxWidthCm: activePlacement.maxWidth, maxHeightCm: activePlacement.maxHeight,
-    }).length) setSelectedArtwork(null);
+      location: activePlacement.location, positionId: activePlacement.positionId,
+    }, selectedArtwork.allowedLocations).length) setSelectedArtwork(null);
   }, [activePlacement, profile.id, selectedArtwork]);
 
   const applyArtwork = async () => {
@@ -305,7 +312,8 @@ export default function PrimeCustomApproved() {
       const current = catalog.find(item => item.id === art.id);
       return !current || !getPrimeCompatiblePrintSizes(current.availableSizes, current.compatibleProducts, profile.id, {
         id: placement.id, maxWidthCm: placement.maxWidth, maxHeightCm: placement.maxHeight,
-      }).includes(art.printSize);
+        location: placement.location, positionId: placement.positionId,
+      }, current.allowedLocations).includes(art.printSize);
     })) return toast.error('Uma estampa aplicada não está mais disponível para este modelo. Revise a configuração.');
 
     const printConfigs = placements.flatMap(placement => {
