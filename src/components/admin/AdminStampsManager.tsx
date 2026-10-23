@@ -202,7 +202,7 @@ export function AdminStampsManager() {
     code: '',
     name: '',
     category: STAMP_CATEGORIES[0],
-    compatibleProducts: [ALL_PRODUCTS_OPTION],
+    compatibleProducts: [],
     availableSizes: [],
     sizeQuantities: [],
     pngUrl: '',
@@ -371,7 +371,7 @@ export function AdminStampsManager() {
       code: formattedCode,
       name: '',
       category: STAMP_CATEGORIES[0],
-      compatibleProducts: [ALL_PRODUCTS_OPTION],
+      compatibleProducts: [],
       availableSizes: [],
       sizeQuantities: [],
       pngUrl: '',
@@ -398,7 +398,7 @@ export function AdminStampsManager() {
       code: design.code,
       name: design.name,
       category: design.category,
-      compatibleProducts: design.compatibleProducts?.length ? design.compatibleProducts : [ALL_PRODUCTS_OPTION],
+      compatibleProducts: design.compatibleProducts || [],
       availableSizes: design.availableSizes || [],
       sizeQuantities: (design.availableSizes || []).map(size => readStampSizeBalance(design.stockBySize, size) === undefined ? '' : String(readStampSizeBalance(design.stockBySize, size))),
       pngUrl: design.pngUrl,
@@ -429,6 +429,11 @@ export function AdminStampsManager() {
     }
     if (formData.availableForCustomization && !formData.pngUrl.trim()) {
       toast.error('A personalização PRIME precisa de uma imagem PNG da estampa.');
+      return;
+    }
+
+    if (formData.availableForCustomization && formData.compatibleProducts.length === 0) {
+      toast.error('Selecione pelo menos um produto compatível para liberar a estampa no PRIME.');
       return;
     }
 
@@ -934,7 +939,7 @@ export function AdminStampsManager() {
               <div className="p-3 space-y-2">
                 <div>
                   <span className="text-[9px] text-[#eab308] font-mono uppercase tracking-widest block">
-                    {design.category} • {(design.compatibleProducts || [ALL_PRODUCTS_OPTION]).join(', ')}
+                    {design.category} • {(design.compatibleProducts || []).join(', ')}
                   </span>
                   <h4 className="font-black text-xs uppercase text-white line-clamp-1 font-mono">
                     SKU: {design.code}
@@ -1025,7 +1030,7 @@ export function AdminStampsManager() {
                 <div>
                   <div className="flex items-center gap-2">
                     <span className="text-[9px] font-mono font-bold text-[#eab308]">SKU: {design.code}</span>
-                    <span className="text-[9px] text-neutral-400 uppercase">• {design.category} • {(design.compatibleProducts || [ALL_PRODUCTS_OPTION]).join(', ')}</span>
+                    <span className="text-[9px] text-neutral-400 uppercase">• {design.category} • {(design.compatibleProducts || []).join(', ')}</span>
                   </div>
                   <h4 className="font-black text-xs text-white uppercase font-mono">{design.code}</h4>
                   <span className={cn('text-[10px] font-black', Number(design.stockBalance || 0) < 0 ? 'text-rose-400' : 'text-emerald-400')}>Físicas (opcional): {design.stockBalance || 0}</span>
@@ -1152,7 +1157,7 @@ export function AdminStampsManager() {
                   <div className="sm:col-span-2">
                     <label className="block text-[10px] font-mono text-neutral-400 uppercase mb-2">Produtos compatíveis</label>
                     <div className="rounded border border-neutral-800 bg-neutral-950 p-3">
-                      <p className="mb-3 text-[9px] leading-relaxed text-neutral-500">Defina em quais tipos de produto esta arte pode ser aplicada. A opção <span className="text-neutral-300">Todos os produtos</span> deixa a estampa disponível para todo o catálogo atual e futuro.</p>
+                      <p className="mb-3 text-[9px] leading-relaxed text-neutral-500">Selecione os modelos que podem receber esta estampa. No PRIME, bermudas e bonés precisam ser marcados especificamente e também ter uma medida que caiba na área de impressão. A opção <span className="text-neutral-300">Todos os produtos</span> vale para camisetas, cropped e moletons.</p>
                       <div className="flex flex-wrap gap-2">
                         {[ALL_PRODUCTS_OPTION, ...STAMP_PRODUCT_OPTIONS].map((product) => {
                           const selected = formData.compatibleProducts.includes(product);
