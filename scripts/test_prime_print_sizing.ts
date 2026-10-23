@@ -24,7 +24,7 @@ import {
   getCustomizationProfileById,
 } from '../shared/customizationProfiles';
 import { getCanvasStampBox } from '../src/lib/primeMockupGeometry';
-import { getPrimeCompatiblePrintSizes, isPrimeStampCompatible } from '../shared/primeStampCompatibility';
+import { getPrimeCompatiblePrintSizes, isPrimeStampCompatible, isPrimeStampAllowedAtLocation } from '../shared/primeStampCompatibility';
 import {
   getCompatiblePrintSizes,
   getSafePrintSize,
@@ -144,6 +144,12 @@ assert.deepEqual(getPrimeCompatiblePrintSizes(['2x3', '8x8', '15x7'], ['Bermudas
 assert.deepEqual(getPrimeCompatiblePrintSizes(['2x3', '8x8', '15x7'], ['Bermudas'], 'shorts', { id: 'back', maxWidthCm: 10, maxHeightCm: 10 }), ['2x3', '8x8']);
 assert.deepEqual(getPrimeCompatiblePrintSizes(['11x8', '15x11'], ['Bonés'], 'cap', { id: 'front', maxWidthCm: 12, maxHeightCm: 8 }), ['11x8']);
 assert.deepEqual(getPrimeCompatiblePrintSizes(['2x3', '8x8'], ['Camisetas'], 'traditional', { id: 'sleeve', maxWidthCm: 10, maxHeightCm: 12 }), ['2x3']);
+assert.equal(isPrimeStampAllowedAtLocation(['Bermuda Frente'], 'Bermuda Frente', 'bermuda_frente'), true);
+assert.equal(isPrimeStampAllowedAtLocation(['Bermuda Costas'], 'Bermuda Frente', 'bermuda_frente'), false);
+assert.deepEqual(getPrimeCompatiblePrintSizes(['10x10'], ['Camisetas'], 'oversized',
+  { id: 'back', maxWidthCm: 30, maxHeightCm: 40, location: 'Costas', positionId: 'costas' }, ['Frente']), []);
+assert.deepEqual(getPrimeCompatiblePrintSizes(['10x10'], ['Camisetas'], 'oversized',
+  { id: 'front', maxWidthCm: 30, maxHeightCm: 40, location: 'Frente', positionId: 'peito_central' }, ['Frente']), ['10x10']);
 
 // Current labels used by the storefront.
 assert.equal(isPrimeSizeAllowedAtLocation('30x40', 'Frente'), true);
