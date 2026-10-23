@@ -108,7 +108,7 @@ await check('remote imports enforce redirect, byte and abort limits', async () =
   await assert.rejects(fetchRemoteArtwork('https://fixture.example/a', 0, AbortSignal.abort(), transport('8.8.8.8', { body: input })));
 });
 await check('PRIME pricing requires the correct plain base and recalculates graduated prices', async () => {
-  await db.collection('designs').doc('fixture-design').set({ name: 'Fixture', availableSizes: ['10x10'], pngUrl: 'https://example.invalid/fixture.png' });
+  await db.collection('designs').doc('fixture-design').set({ name: 'Fixture', availableSizes: ['10x10'], compatibleProducts: ['Camisetas'], pngUrl: 'https://example.invalid/fixture.png' });
   const input: any = { customerInfo: { cep: '89234100' }, items: [{ slug: 'prime-custom', baseProductSlug: 'fixture-base', color: 'Preto', size: 'M', quantity: 1, printConfigs: [{ stampId: 'fixture-design', stamp: 'Fixture', location: 'Frente', printSize: '10x10' }] }] };
   await assert.rejects(calculateOrderPricing(input), /peça lisa disponível/);
   await db.collection('products').doc('fixture-base').set({ name: 'Fixture base', slug: 'fixture-base', price: 100, productFinish: 'plain', baseModel: 'Oversized', status: 'inactive', colors: ['Preto'], sizes: ['M'] });
@@ -116,6 +116,9 @@ await check('PRIME pricing requires the correct plain base and recalculates grad
   await db.collection('products').doc('fixture-base').update({ status: 'active' });
   const result = await calculateOrderPricing(input);
   assert.equal(result.verifiedItems[0].price, 87.90);
+  await db.collection('designs').doc('fixture-design').update({ compatibleProducts: ['Bermudas'] });
+  await assert.rejects(calculateOrderPricing(input), /não está liberada para este modelo PRIME/);
+  await db.collection('designs').doc('fixture-design').update({ compatibleProducts: ['Camisetas'] });
   assert.equal(result.verifiedItems[0].parentSlug, 'fixture-base');
   const placement = placePrimeArtwork('oversized', 'M', 'front', '10x10', { sourceWidth: 100, sourceHeight: 100, crop: { left: 0, top: 0, width: 1, height: 1 } }, { xCm: 3, yCm: 7 });
   input.items[0].printConfigs[0].placement = placement;
