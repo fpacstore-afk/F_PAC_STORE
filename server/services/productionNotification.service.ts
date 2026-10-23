@@ -332,7 +332,7 @@ export function renderStageTemplate(templateStr: string, orderData: any): string
     .replace(/\{\{transportadora\}\}/g, carrier)
     .replace(/\{\{link_rastreio\}\}/g, trackingLink)
     .replace(/\{\{link_acompanhamento\}\}/g, publicTrackingUrl)
-    .replace(/https?:\/\/(?:www\.)?fpacstore\.com\.br\/#\/order\/\{\{numero_pedido\}\}/g, publicTrackingUrl)
+    .replace(/https?:\/\/(?:www\.)?fpacstore\.com\.br\/#\/order\/[^\s]+/g, publicTrackingUrl)
     .replace(/https?:\/\/(?:www\.)?fpacstore\.com\.br\/tracking/g, publicTrackingUrl);
 }
 

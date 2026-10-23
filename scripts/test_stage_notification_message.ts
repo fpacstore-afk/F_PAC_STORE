@@ -25,6 +25,11 @@ const sentMessage = renderServerStageTemplate(DEFAULT_STAGE_TEMPLATES.received, 
 });
 assert.match(sentMessage, /15x Camisa polo \(Cor: Azul · Tam\.: XG · Estampa: Logo da empresa\)/);
 assert.ok(sentMessage.includes(secureUrl), 'sent notifications must include a one-click secure tracking link');
+const legacyLinkMessage = renderServerStageTemplate(
+  'Acompanhe: https://www.fpacstore.com.br/#/order/{{numero_pedido}}',
+  { ...order, publicTrackingUrl: secureUrl },
+);
+assert.equal(legacyLinkMessage, `Acompanhe: ${secureUrl}`, 'legacy order-number links must be upgraded to secure direct links');
 
 const configured = resolveProductionStageMessage('estamparia', order, undefined, {
   ...DEFAULT_STAGE_TEMPLATES,
