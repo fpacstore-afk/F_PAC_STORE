@@ -45,8 +45,8 @@ export function GiftReportView({ orders, products = [], loading = false, error =
     {invalidRange ? <p role="alert" className="rounded-lg bg-amber-50 p-4 text-sm text-amber-900">Informe a data inicial e final, nessa ordem, para consultar o período.</p> : <>
     <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
       {metric('Brindes entregues', `${count.format(summary.delivered.units)} un.`, `${summary.delivered.orders} pedido(s) com entrega confirmada.`)}
-      {metric('Custo registrado dos entregues', formatMoney(summary.delivered.knownCost), 'Produtos com custo histórico e fretes efetivamente registrados.')}
-      {metric('Custo estimado, separado', formatMoney(summary.delivered.estimatedCost), 'Valores a conferir; não são somados ao custo registrado.')}
+      {metric('Custo registrado dos brindes', formatMoney(summary.active.knownCost), `Entregues e em aberto, com custo histórico e frete registrado. Dos entregues: ${formatMoney(summary.delivered.knownCost)}.`)}
+      {metric('Custo estimado, separado', formatMoney(summary.active.estimatedCost), 'Entregues e em aberto. Valores a conferir; não são somados ao custo registrado.')}
       {metric('Em aberto', `${count.format(summary.open.units)} un.`, `${summary.open.orders} pedido(s) sem entrega confirmada · ${formatMoney(summary.open.knownCost)} registrados.`)}
     </div>
     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

@@ -16,6 +16,7 @@ export function normalizeCustomerPhone(value: unknown): string {
   let digits = text(value).replace(/\D/g, '');
   if (digits.startsWith('0055')) digits = digits.slice(2);
   if ((digits.length === 12 || digits.length === 13) && digits.startsWith('55')) digits = digits.slice(2);
+  if (/^(\d)\1+$/.test(digits.slice(2))) return '';
   // Brazilian legacy mobile numbers omitted the ninth digit. Landlines keep 8 digits.
   if (digits.length === 10 && /^[6-9]/.test(digits.slice(2))) digits = digits.slice(0, 2) + '9' + digits.slice(2);
   if (!/^[1-9]\d(?:[2-5]\d{7}|9\d{8})$/.test(digits) || /^(\d)\1+$/.test(digits.slice(2))) return '';

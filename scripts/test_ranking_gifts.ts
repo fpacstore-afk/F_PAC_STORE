@@ -50,6 +50,7 @@ assert.equal(normalizeCustomerPhone('0055 47 98765 4321'), '47987654321');
 assert.equal(normalizeCustomerPhone('47 8765 4321'), '47987654321');
 assert.equal(normalizeCustomerPhone('47 3456 7890'), '4734567890', 'landlines do not acquire a ninth digit');
 assert.equal(normalizeCustomerPhone('47999999999'), '', 'placeholder phone cannot join unrelated people');
+assert.equal(normalizeCustomerPhone('4788888888'), '', 'legacy placeholder must be rejected before inserting a ninth digit');
 assert.equal(normalizeCustomerPhone('88888888'), '');
 assert.equal(readCustomerAliases({ userId: 'manual', customerPhone: '88888888', customerEmail: 'invalid', customerCpf: '00000000000' }).length, 0);
 assert.equal(buildCustomerIdentities([{ customerName: 'Same' }, { customerName: 'Same' }]).length, 2);
