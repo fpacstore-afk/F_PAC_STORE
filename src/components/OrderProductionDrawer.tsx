@@ -19,7 +19,7 @@ import { manualWhatsAppUrl } from '../../shared/notificationContacts';
 import { isJoinvilleCEP } from '../lib/shipping';
 import { getApiUrl, getBaseUrl, authenticatedFetch, parseApiJson } from '../lib/api';
 import { registerPartialPayment } from '../services/orders/orderService';
-import { getOrderPaidAmount as getOrderAmountPaid, getOrderPendingAmount as getOrderBalanceDue } from '../utils/orderFinancial';
+import { getOrderPaidAmount as getOrderAmountPaid, getOrderPendingAmount as getOrderBalanceDue, getOrderShippingFinances } from '../utils/orderFinancial';
 import toast from 'react-hot-toast';
 import { cn } from '../lib/utils';
 import { parseCurrencyInput } from '../../shared/currencyInput';
@@ -570,7 +570,7 @@ export const OrderProductionDrawer: React.FC<OrderProductionDrawerProps> = ({
                     </div>
                     <div className="flex justify-between text-gray-500 font-bold">
                       <span>Frete:</span>
-                      <span>R$ {(order.shipping || 0).toFixed(2)}</span>
+                      <span>R$ {getOrderShippingFinances(order).shippingCharged.toFixed(2)}</span>
                     </div>
                     {Number(order.couponDiscount || 0) > 0 && (
                       <div className="flex justify-between text-red-600 font-bold">

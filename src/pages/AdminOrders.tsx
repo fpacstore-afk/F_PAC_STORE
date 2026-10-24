@@ -1,6 +1,6 @@
 import { collection, deleteDoc, doc, getDoc, onSnapshot, orderBy, query, serverTimestamp, setDoc, updateDoc, writeBatch } from 'firebase/firestore';
 import { AnimatePresence, motion } from 'framer-motion';
-import { BadgePercent, BarChart3, BellRing, Boxes, CheckCircle, ChevronDown, ChevronUp, ClipboardCheck, ClipboardList, Eye, EyeOff, Factory, FileSpreadsheet, Images, Layers, LayoutDashboard, Loader2, Mail, MessageCircle, Package, Plus, Radio, RefreshCw, Search, Sparkles, Trash2, Truck, Users, WalletCards, Warehouse, XCircle } from 'lucide-react';
+import { BadgePercent, BarChart3, BellRing, Boxes, CheckCircle, ChevronDown, ChevronUp, ClipboardCheck, ClipboardList, Eye, EyeOff, Factory, FileSpreadsheet, Gift, Images, Layers, LayoutDashboard, Loader2, Mail, MessageCircle, Package, Plus, Radio, RefreshCw, Search, Sparkles, Trash2, Truck, Users, WalletCards, Warehouse, XCircle } from 'lucide-react';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import QRCode from 'qrcode';
 import toast from 'react-hot-toast';
@@ -20,6 +20,7 @@ import { roundMoney, roundPercent } from '../config/financialDefaults';
 import { getStageFromStatus, PRODUCTION_STAGES } from '../constants/productionStages';
 import { useAuth } from '../context/AuthContext';
 import { FinancialPrivacyProvider, FinancialPrivacyToggle, useFinancialPrivacy } from '../context/FinancialPrivacyContext';
+import { orderDate } from '../../shared/customerPurchases';
 import { products as staticProducts } from '../data/products';
 import { useInventory } from '../hooks/useInventory';
 import { mergeProductsWithPrivateCosts, usePrivateProductCosts } from '../hooks/usePrivateProductCosts';
@@ -92,6 +93,7 @@ const AdminPromotions = lazyWithRetry(() => import('../components/AdminPromotion
 const AdminStockCenter = lazyWithRetry(() => import('../components/AdminStockCenter').then(m => ({ default: m.AdminStockCenter })));
 const InventoryAuditCenter = lazyWithRetry(() => import('../components/InventoryAuditCenter').then(m => ({ default: m.InventoryAuditCenter })));
 const AdminStampsManager = lazyWithRetry(() => import('../components/admin/AdminStampsManager').then(m => ({ default: m.AdminStampsManager })));
+const AdminGifts = lazyWithRetry(() => import('../components/management/AdminGifts'));
 const AdminLoyaltyManager = lazyWithRetry(() => import('../components/AdminLoyaltyManager'));
 const AdminMusic = lazyWithRetry(() => import('../components/AdminMusic').then(m => ({ default: m.AdminMusic })));
 const AdminCustomerIdentity = lazyWithRetry(() => import('../components/AdminCustomerIdentity').then(m => ({ default: m.AdminCustomerIdentity })));
@@ -119,6 +121,7 @@ type ManagementTab =
   | 'notifications'
   | 'promotions'
   | 'financial'
+  | 'gifts'
   | 'loyalty'
   | 'music';
 
@@ -132,6 +135,7 @@ const MANAGEMENT_TABS: Array<{ id: ManagementTab; label: string; icon: React.Ele
   { id: 'stock_center', label: 'Estoque', icon: Warehouse },
   { id: 'inventory_audit', label: 'Inventário', icon: ClipboardCheck },
   { id: 'financial', label: 'Financeiro', icon: WalletCards },
+  { id: 'gifts', label: 'Brindes', icon: Gift },
   { id: 'customer_identity', label: 'Clientes', icon: Users },
   { id: 'promotions', label: 'Promoções', icon: BadgePercent },
   { id: 'loyalty', label: 'Fidelidade', icon: Sparkles },
@@ -563,7 +567,7 @@ function AdminOrdersInner() {
     void fetchMelhorEnvioConfig();
   }, [activeTab, authLoading, user, isAdmin, fetchMelhorEnvioConfig]);
 
-  const needsOrderSubscription = ['orders', 'production', 'shipping', 'loyalty'].includes(activeTab);
+  const needsOrderSubscription = ['orders', 'production', 'shipping', 'loyalty', 'gifts'].includes(activeTab);
   useEffect(() => {
     const requestedOrder = searchParams.get('orderId');
     if (activeTab !== 'orders' || !ordersLoaded || !requestedOrder || !orders.some(order => order.id === requestedOrder)) return;
@@ -577,12 +581,13 @@ function AdminOrdersInner() {
     setOrdersError(false);
 
     // Listen to orders
-    const q = query(collection(db, 'orders'), orderBy('createdAt', 'desc'));
+    const q = collection(db, 'orders');
     const unsubscribeOrders = onSnapshot(q, (snapshot) => {
       const ordersData = snapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data()
       })) as Order[];
+      ordersData.sort((a,b) => (orderDate(b)?.getTime() ?? 0) - (orderDate(a)?.getTime() ?? 0));
       setOrders(ordersData);
       setOrdersError(false);
       setOrdersLoaded(true);
@@ -596,7 +601,7 @@ function AdminOrdersInner() {
   }, [isAdmin, needsOrderSubscription]);
 
   useEffect(() => {
-    if (!isAdmin || activeTab !== 'orders') return;
+    if (!isAdmin || !['orders', 'gifts'].includes(activeTab)) return;
     // Product and stamp data support manual orders and historical corrections.
     const qProducts = collection(db, 'products');
     const unsubscribeProducts = onSnapshot(qProducts, (snapshot) => {
@@ -3574,9 +3579,13 @@ Total: R$ ${totalSum.toFixed(2)}`;
         <React.Suspense fallback={<div className="p-12 text-center text-sm font-bold uppercase tracking-widest text-black/50 animate-pulse">Carregando Promoções...</div>}>
           <AdminPromotions />
         </React.Suspense>
+      ) : activeTab === 'gifts' ? (
+        <React.Suspense fallback={<p role="status" className="p-8 text-center">Carregando controle de brindes...</p>}>
+          <AdminGifts orders={orders} products={dynamicProducts} loading={!ordersLoaded} error={ordersError} onNewGift={() => { setManualOrderKind('gift'); setManualOrderDiscount(''); setManualOrderShipping(''); setManualOrderPaid(false); setManualOrderPaidAmount(0); setIsManualModalOpen(true); }} />
+        </React.Suspense>
       ) : activeTab === 'loyalty' ? (
         <React.Suspense fallback={<div className="p-12 text-center text-sm font-bold uppercase tracking-widest text-black/50 animate-pulse">Carregando Programa de Fidelidade...</div>}>
-          <AdminLoyaltyManager orders={orders} />
+          {ordersError ? <p role="alert" className="p-6 text-red-800">Não foi possível consultar os pedidos para calcular o ranking. Recarregue para tentar novamente.</p> : !ordersLoaded ? <p role="status" className="p-6">Carregando pedidos para o ranking...</p> : <AdminLoyaltyManager orders={orders} />}
         </React.Suspense>
       ) : activeTab === 'music' ? (
         <React.Suspense fallback={<div className="p-12 text-center text-sm font-bold uppercase tracking-widest text-black/50 animate-pulse">Carregando Rádio F PAC...</div>}>

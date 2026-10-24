@@ -1,3 +1,5 @@
+import { buildCustomerIdentities, loyaltyPaidValue } from '../../../shared/customerPurchases';
+import { giftReportRows, summarizeGiftRows } from '../../../shared/giftReporting';
 import { useEffect, useMemo, useState } from 'react';
 import { collection, onSnapshot } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
@@ -34,7 +36,7 @@ function toDate(value: any): Date | null {
 }
 
 function isPaid(order: AnyDoc) {
-  return getOrderPaidAmount(order) > 0;
+  return loyaltyPaidValue(order) > 0;
 }
 
 function orderNet(order: AnyDoc) {
@@ -55,9 +57,6 @@ function sessionOrigin(session: AnyDoc) {
   return 'Outros';
 }
 
-function customerKey(order: AnyDoc) {
-  return String(order.customerEmail || order.customerPhone || order.userId || '').trim().toLowerCase();
-}
 
 export default function ManagementDashboard() {
   const { formatMoney, formatPercent, showFinancialValues } = useFinancialPrivacy();
@@ -150,6 +149,9 @@ export default function ManagementDashboard() {
     const priorRange = previousDashboardRange(range);
     const inPeriod = (value: any) => dateMatchesRange(value, range);
 
+    const customerKeys = new Map<any,string>();
+    buildCustomerIdentities(orders).filter(group => group.aliases.size > 0).forEach(group => group.allOrders.forEach(order => customerKeys.set(order, group.key)));
+    const customerKey = (order: AnyDoc) => customerKeys.get(order) || '';
     const paidAll = orders.filter(isPaid);
     const paid = paidAll.filter(order => inPeriod(order.createdAt || order.createdAtDate || order.created_at || order.date));
     const receipts = summarizeReceipts(orders, range);
@@ -266,6 +268,7 @@ export default function ManagementDashboard() {
 
     return {
       integrity,
+      gifts: summarizeGiftRows(giftReportRows(periodOrders, products)),
       unresolvedPayments: orders.filter(order => order.paymentCreationUncertain).length,
       receipts,
       previousReceipts,
