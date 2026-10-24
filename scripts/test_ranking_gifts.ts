@@ -128,6 +128,8 @@ assert.deepEqual(giftsInRange(rows, october).map(row => row.id).sort(), ['cancel
 assert.equal(giftsInRange(rows, null).length, 6);
 assert.equal(giftSalesRatio([{ id: 'sale', paidAmount: 100, createdAt: '2026-10-02T12:00:00Z' }, { id: 'free', isGift: true, paidAmount: 10000, createdAt: '2026-10-02T12:00:00Z' }], 35, october), 35);
 assert.equal(giftSalesRatio([], 35, null), null, 'empty revenue is not zero percent or infinity');
+assert.equal(giftSalesRatio([{ paidAmount: 100, createdAt: '2026-10-01' }], 35, october), 35, 'a calendar-only date stays in its original month');
+assert.equal(giftReportRows([{ id: 'date-only', isGift: true, createdAt: '2026-10-01' }])[0].date, '2026-10-01');
 const trend = giftMonthlyTrend(rows, new Date('2026-10-24T12:00:00Z'));
 assert.equal(trend.length, 12);
 assert.deepEqual(trend.at(-1), { month: '2026-10', units: 2, cost: 35 });

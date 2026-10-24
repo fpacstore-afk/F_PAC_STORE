@@ -7,6 +7,11 @@ import type { ReceiptRange } from './financialReceipts';
 const money = (value: number) => Math.round(value * 100) / 100;
 const finiteCost = (value: unknown) => value !== null && value !== undefined && value !== '' && Number.isFinite(Number(value)) && Number(value) >= 0;
 const normalized = (value: unknown) => String(value ?? '').trim().toLowerCase();
+const orderDay = (order: any) => {
+  const raw = order?.createdAt ?? order?.createdAtDate ?? order?.created_at ?? order?.date;
+  // A calendar-only legacy date has no timezone conversion to apply.
+  return typeof raw === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(raw) ? financialDateKey(raw) : financialDateKey(orderDate(order));
+};
 export type GiftState = 'delivered' | 'open' | 'cancelled';
 export const GIFT_STATE_LABELS: Record<GiftState, string> = { delivered: 'Entregue', open: 'Em aberto', cancelled: 'Cancelado' };
 
@@ -71,8 +76,7 @@ export function giftReportRows(orders: any[], catalog: any[] = []): GiftReportRo
     const shippingMissing = !hasRecordedShippingCost(order);
     const actualShipping = shippingMissing ? 0 : getOrderShippingFinances(order).shippingActualCost;
     const shippingCost = finiteCost(actualShipping) ? actualShipping : 0;
-    const date = orderDate(order);
-    return { id: String(order.id || `sem-identificador-${index}`), name: readCustomerName(order), date: date ? financialDateKey(date) : null, state: giftState(order), units,
+    return { id: String(order.id || `sem-identificador-${index}`), name: readCustomerName(order), date: orderDay(order), state: giftState(order), units,
       merchandiseCost: money(merchandiseCost), shippingCost: money(shippingCost), knownCost: money(merchandiseCost + shippingCost), estimatedCost: money(estimatedCost), pendingUnits,
       shippingMissing, costConflict, missingItems: !items.length || units === 0, reason: String(order.giftReason || order.observations || order.notes || ''), items };
   }).sort((a, b) => (b.date || '').localeCompare(a.date || '') || a.id.localeCompare(b.id));
@@ -91,7 +95,7 @@ export function giftsInRange(rows: GiftReportRow[], range: ReceiptRange) {
 
 export function giftSalesRatio(orders: any[], giftCost: number, range: ReceiptRange) {
   const received = uniqueOrders(orders).reduce((sum, order) => {
-    const date = orderDate(order), key = date ? financialDateKey(date) : null;
+    const key = orderDay(order);
     return sum + (!range || key && key >= range.start && key <= range.end ? loyaltyPaidValue(order) : 0);
   }, 0);
   return received > 0 ? giftCost / received * 100 : null;
