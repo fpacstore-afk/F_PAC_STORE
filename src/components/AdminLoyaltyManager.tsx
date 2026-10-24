@@ -1,3 +1,4 @@
+import { normalizeCustomerPhone } from '../../shared/customerPurchases';
 import React, { useState, useEffect } from 'react';
 import { 
   Trophy, Award, Crown, Shield, Star, Zap, ShoppingBag, 
@@ -57,7 +58,10 @@ export default function AdminLoyaltyManager({ orders }: AdminLoyaltyManagerProps
   const filteredCustomers = customers.filter(c => {
     const query = searchTerm.toLowerCase().trim();
     const matchesSearch = !query || 
-      c.customerName.toLowerCase().includes(query) || 
+      c.customerName.toLowerCase().includes(query) ||
+      c.nameVariants?.some(name => name.toLowerCase().includes(query)) ||
+      c.identityAliases?.some(alias => alias.toLowerCase().includes(query)) ||
+      (!!normalizeCustomerPhone(query) && c.phone.endsWith(normalizeCustomerPhone(query))) ||
       c.email.toLowerCase().includes(query) || 
       c.phone.includes(query) ||
       c.city.toLowerCase().includes(query);
@@ -189,6 +193,7 @@ export default function AdminLoyaltyManager({ orders }: AdminLoyaltyManagerProps
         </div>
       </div>
 
+      <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-950">Compras agrupadas por telefone, e-mail, conta ou CPF em comum, incluindo telefones antigos sem o nono dígito. Nomes iguais sozinhos não juntam clientes. Brindes, cancelamentos e valores estornados não geram valor, pedidos ou unidades no ranking.</p>
       {/* SUBTAB 1: DASHBOARD OVERVIEW */}
       {activeSubTab === 'dashboard' && (
         <div className="space-y-6">

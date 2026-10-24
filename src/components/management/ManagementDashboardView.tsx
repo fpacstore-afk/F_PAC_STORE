@@ -2,9 +2,10 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 import {
   AlertTriangle, ArrowDownRight, ArrowRight, ArrowUpRight, Boxes, CircleDollarSign,
-  CreditCard, Factory, PackageSearch, RefreshCw, ShoppingCart, TrendingUp,
+  CreditCard, Factory, Gift, PackageSearch, RefreshCw, ShoppingCart, TrendingUp,
   Truck, Users, WalletCards,
 } from 'lucide-react';
+import type { summarizeGiftRows } from '../../../shared/giftReporting';
 import type { ReceiptBucket } from '../../../shared/managementOverview';
 import type { ReceiptRange } from '../../../shared/financialReceipts';
 import type { calculateFinancialDRE } from '../../utils/orderFinancial';
@@ -12,6 +13,7 @@ import type { summarizePayables } from '../../../shared/financialDashboard';
 
 type PeriodKey = '7d' | '30d' | '90d' | 'all';
 type DashboardData = {
+  gifts?: ReturnType<typeof summarizeGiftRows>;
   receipts: { received: number; refunded: number; netReceived: number; ordersNeedingReview: number; undatedReceived: number; undatedRefunded: number };
   previousReceipts: { netReceived: number } | null;
   receiptsChange: number | null;
@@ -149,6 +151,8 @@ export function ManagementDashboardView({ data, period, onPeriodChange, syncStat
       <Kpi icon={CircleDollarSign} label="A receber" value={formatMoney(data.pendingAmount)} helper={`${count.format(data.pendingPayments)} pedido(s) confirmado(s) com saldo. Tentativas de checkout não entram.`} />
       <Kpi icon={WalletCards} label="Contas a pagar" value={formatMoney(data.payableSummary.totalOpen)} helper={`${count.format(data.payableSummary.overdueCount)} vencida(s) · ${formatMoney(data.payableSummary.overdueAmount)} em atraso.`} />
     </div>
+
+    {data.gifts && <div className="rounded-2xl border border-black/10 bg-white p-5 md:p-6"><Heading icon={Gift} title="Brindes" subtitle="Cadastros do período; entregas confirmadas e custos históricos separados das estimativas." href="/gestao?tab=gifts" action="Ver controle de brindes" /><div className="grid grid-cols-2 lg:grid-cols-4 gap-4"><div><div className="text-xs text-black/50">Unidades entregues</div><strong className="text-2xl">{data.gifts.delivered.units}</strong></div><div><div className="text-xs text-black/50">Custo registrado dos entregues</div><strong className="text-2xl">{formatMoney(data.gifts.delivered.knownCost)}</strong></div><div><div className="text-xs text-black/50">Unidades em aberto</div><strong className="text-2xl">{data.gifts.open.units}</strong></div><div><div className="text-xs text-black/50">Unidades com custo a conferir</div><strong className="text-2xl">{data.gifts.active.pendingUnits}</strong></div></div></div>}
 
     <div className="grid grid-cols-1 xl:grid-cols-12 gap-4">
       <div className="xl:col-span-8 bg-white border border-black/10 rounded-2xl p-5 md:p-6">

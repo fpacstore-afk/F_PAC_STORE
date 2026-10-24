@@ -84,7 +84,8 @@
     "test:financial-goal-settings": "node --import tsx scripts/test_financial_goal_settings.ts",
     "test:production-notification-status": "NODE_ENV=test node --import tsx scripts/test_production_notification_status.ts",
     "test:inventory-audit-view": "node --import tsx scripts/test_inventory_audit_view.ts",
-    "test:catalog-product-costs": "NODE_ENV=test node --import tsx scripts/test_catalog_product_costs.ts"
+    "test:catalog-product-costs": "NODE_ENV=test node --import tsx scripts/test_catalog_product_costs.ts",
+    "test:ranking-gifts": "NODE_ENV=test node --import tsx scripts/test_ranking_gifts.ts"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

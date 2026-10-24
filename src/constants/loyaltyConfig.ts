@@ -1,3 +1,5 @@
+import { aggregateCustomerPurchases, comparePurchaseTotals, orderDate, purchasedQuantity } from '../../shared/customerPurchases';
+
 export interface LoyaltyTierConfig {
   id: 'bronze' | 'prata' | 'ouro' | 'diamante';
   name: string;
@@ -84,48 +86,37 @@ export function getTierByAmount(totalSpent:number, customTiers:LoyaltyTierConfig
  return [...tiers].reverse().find(t=>totalSpent>=t.minAmount)||tiers[0]||DEFAULT_TIERS[0];
 }
 
-export interface CustomerLoyaltyData { key:string; memberNumber:string; customerName:string; email:string; phone:string; city:string; orders:any[]; orderCount:number; totalSpent:number; averageTicket:number; lastPurchaseDate:Date|null; firstPurchaseDate:Date|null; daysSinceLastPurchase:number; tier:LoyaltyTierConfig; nextTier:LoyaltyTierConfig|null; amountNeededForNextTier:number; progressPercent:number; xp:number; xpLevel:number; xpForNextLevel:number; xpProgressPercent:number; achievements:{id:string;title:string;icon:string;desc:string;unlocked:boolean}[]; completedMissions:string[]; isInactive:boolean; isPrestesASubir:boolean; isVip:boolean; itemsBoughtCount:number; purchasedProducts:{name:string;qty:number;image?:string}[]; rankPositions:{spent:number;xp:number;items:number;achievements:number}; }
+export interface CustomerLoyaltyData { identityAliases?:string[]; nameVariants?:string[]; key:string; memberNumber:string; customerName:string; email:string; phone:string; city:string; orders:any[]; orderCount:number; totalSpent:number; averageTicket:number; lastPurchaseDate:Date|null; firstPurchaseDate:Date|null; daysSinceLastPurchase:number; tier:LoyaltyTierConfig; nextTier:LoyaltyTierConfig|null; amountNeededForNextTier:number; progressPercent:number; xp:number; xpLevel:number; xpForNextLevel:number; xpProgressPercent:number; achievements:{id:string;title:string;icon:string;desc:string;unlocked:boolean}[]; completedMissions:string[]; isInactive:boolean; isPrestesASubir:boolean; isVip:boolean; itemsBoughtCount:number; purchasedProducts:{name:string;qty:number;image?:string}[]; rankPositions:{spent:number;xp:number;items:number;achievements:number}; }
 
 export function processCustomerLoyaltyList(allOrders:any[],customTiers:LoyaltyTierConfig[]=DEFAULT_TIERS,customAchievements:AchievementDef[]=DEFAULT_ACHIEVEMENTS,customMissions:MissionDef[]=DEFAULT_MISSIONS):CustomerLoyaltyData[]{
  const tiers=normalizeLoyaltyTiers(customTiers);
- // Fidelidade considera somente receita realmente recebida e não estornada.
- // Pedido entregue ainda em aberto não dá pontos; pagamento parcial soma só o
- // valor pago. Isso mantém ranking justo quando o financeiro é atualizado.
- const paidValue=(o:any)=>{
-   if(['cancelled','refused','refunded','partially_refunded'].includes(String(o.paymentStatus||o.status||'').toLowerCase())) return 0;
-   const paid=Number(o.amountPaid);
-   if(Number.isFinite(paid) && paid>0) return paid;
-   return ['approved','paid','pago','payment_approved'].includes(String(o.paymentStatus||'').toLowerCase()) ? Math.max(0,Number(o.total)||0) : 0;
- };
- type Aggregate = { key:string; name:string; email:string; phone:string; city:string; aliases:Set<string>; orders:any[] };
- const phone = (value:any) => { let digits=String(value||'').replace(/\D/g,''); if(digits.startsWith('55')&&(digits.length===12||digits.length===13)) digits=digits.slice(2); return digits.length>=10&&digits.length<=11?digits:''; };
- const aliasesFor = (order:any) => {
-   const customer=order.customer||{}; const info=order.customerInfo||{}; const aliases=new Set<string>();
-   [order.userId,customer.id,info.userId].filter(Boolean).forEach(value=>aliases.add(`user:${String(value).trim()}`));
-   [order.customerEmail,customer.email,info.email,order.email].filter(Boolean).forEach(value=>aliases.add(`email:${String(value).trim().toLowerCase()}`));
-   [order.customerPhone,order.customerPhone2,customer.phone,customer.phone2,info.phone,order.phone,order.phone2].map(phone).filter(Boolean).forEach(value=>aliases.add(`phone:${value}`));
-   [order.customerCpf,customer.cpf,info.cpf,order.cpf,customer.document].map(value=>String(value||'').replace(/\D/g,'')).filter(value=>value.length===11).forEach(value=>aliases.add(`cpf:${value}`));
-   return aliases;
- };
- const aggregates=new Set<Aggregate>(); const byAlias=new Map<string,Aggregate>();
- allOrders.filter(o=>paidValue(o)>0).forEach(order=>{
-   const aliases=aliasesFor(order); if(!aliases.size) aliases.add(`order:${order.id}`);
-   const matches=[...new Set([...aliases].map(alias=>byAlias.get(alias)).filter((item):item is Aggregate=>Boolean(item)))];
-   const city=order.address?.city?`${order.address.city}/${order.address.state||'SC'}`:(order.city?`${order.city}/${order.state||'SC'}`:'Joinville/SC');
-   const current=matches[0]||{key:[...aliases][0],name:order.customerName||order.customer?.name||'Cliente F PAC',email:order.customerEmail||order.customer?.email||'',phone:order.customerPhone||order.customer?.phone||'',city,aliases:new Set<string>(),orders:[]};
-   if(!matches.length) aggregates.add(current);
-   matches.slice(1).forEach(duplicate=>{ duplicate.orders.forEach(item=>current.orders.push(item)); duplicate.aliases.forEach(alias=>{current.aliases.add(alias);byAlias.set(alias,current);}); aggregates.delete(duplicate); });
-   current.orders.push(order); current.name=current.name==='Cliente F PAC'?(order.customerName||order.customer?.name||current.name):current.name; current.email=current.email||order.customerEmail||order.customer?.email||''; current.phone=current.phone||order.customerPhone||order.customer?.phone||'';
-   aliases.forEach(alias=>{current.aliases.add(alias);byAlias.set(alias,current);});
+ const list:CustomerLoyaltyData[]=aggregateCustomerPurchases(allOrders).map((customer,index)=>{
+   const {orders,firstPurchaseDate,lastPurchaseDate}=customer,totalSpent=customer.netPaid;
+   const tier=getTierByAmount(totalSpent,tiers),ti=tiers.findIndex(t=>t.id===tier.id),nextTier=ti>=0&&ti<tiers.length-1?tiers[ti+1]:null;
+   const amountNeededForNextTier=nextTier?Math.max(0,nextTier.minAmount-totalSpent):0;
+   const range=nextTier?nextTier.minAmount-tier.minAmount:1;
+   const progressPercent=nextTier?Math.min(100,Math.round(((totalSpent-tier.minAmount)/range)*100)):100;
+   const itemsBoughtCount=orders.reduce((sum,o)=>sum+(Array.isArray(o.items)?o.items:[]).reduce((qty:number,item:any)=>qty+purchasedQuantity(item),0),0);
+   const xp=Math.round(totalSpent)+orders.length*100,xl=calculateXpLevel(xp);
+   const completedMissions:string[]=[];
+   if(orders.length>=1)completedMissions.push('m_first_buy');
+   if(orders.length>=2)completedMissions.push('m_second_buy');
+   const dates=orders.map(o=>orderDate(o)).filter((d):d is Date=>Boolean(d)).sort((a,b)=>a.getTime()-b.getTime());
+   if(dates.some((date,i)=>i>0&&date.getTime()-dates[i-1].getTime()<=30*86400000))completedMissions.push('m_repeat_30d');
+   const achievements=customAchievements.map(a=>({...a,unlocked:a.id==='first_buy'?orders.length>=1:a.id==='buy_5'?orders.length>=5:a.id==='buy_10'?orders.length>=10:a.id==='became_diamond'?tier.id==='diamante':false}));
+   const daysSinceLastPurchase=lastPurchaseDate?Math.max(0,Math.floor((Date.now()-lastPurchaseDate.getTime())/86400000)):0;
+   return {key:customer.key,identityAliases:[...customer.aliases],nameVariants:[...customer.names],memberNumber:generateMemberNumber(tier.id,index),customerName:customer.name,email:customer.email,phone:customer.phone,city:customer.city||'Não informada',orders,orderCount:orders.length,totalSpent,averageTicket:orders.length?totalSpent/orders.length:0,lastPurchaseDate,firstPurchaseDate,daysSinceLastPurchase,tier,nextTier,amountNeededForNextTier,progressPercent,xp,xpLevel:xl.level,xpForNextLevel:xl.xpForNextLevel,xpProgressPercent:xl.progressPercent,achievements,completedMissions,isInactive:!!lastPurchaseDate&&daysSinceLastPurchase>=DEFAULT_LOYALTY_RULES.inactivityDaysThreshold,isPrestesASubir:!!nextTier&&amountNeededForNextTier<=100,isVip:tier.id==='ouro'||tier.id==='diamante',itemsBoughtCount,purchasedProducts:[],rankPositions:{spent:0,xp:0,items:0,achievements:0}};
  });
- const list:Array<CustomerLoyaltyData>=Array.from(aggregates).map((c:any,index)=>{const key=c.key;const orders=c.orders;const totalSpent=orders.reduce((s:number,o:any)=>s+paidValue(o),0);const dates=orders.map((o:any)=>o.createdAt?.toDate?.()||new Date(o.createdAt||Date.now())).sort((a:Date,b:Date)=>a.getTime()-b.getTime());const tier=getTierByAmount(totalSpent,tiers);const ti=tiers.findIndex(t=>t.id===tier.id);const nextTier=ti>=0&&ti<tiers.length-1?tiers[ti+1]:null;const amountNeededForNextTier=nextTier?Math.max(0,nextTier.minAmount-totalSpent):0;const range=nextTier?nextTier.minAmount-tier.minAmount:1;const progressPercent=nextTier?Math.min(100,Math.round(((totalSpent-tier.minAmount)/range)*100)):100;const itemsBoughtCount=orders.reduce((s:number,o:any)=>s+(o.items||[]).reduce((q:number,i:any)=>q+(Number(i.quantity)||1),0),0);const xp=Math.round(totalSpent)+orders.length*100;const xl=calculateXpLevel(xp);const completedMissions:string[]=[];if(orders.length>=1)completedMissions.push('m_first_buy');if(orders.length>=2)completedMissions.push('m_second_buy');if(dates.length>=2&&dates.some((d:Date,i:number)=>i>0&&(d.getTime()-dates[i-1].getTime())<=30*86400000))completedMissions.push('m_repeat_30d');const achievements=customAchievements.map(a=>({...a,unlocked:a.id==='first_buy'?orders.length>=1:a.id==='buy_5'?orders.length>=5:a.id==='buy_10'?orders.length>=10:a.id==='became_diamond'?tier.id==='diamante':false}));return {key,memberNumber:generateMemberNumber(tier.id,index),customerName:c.name,email:c.email,phone:c.phone,city:c.city,orders,orderCount:orders.length,totalSpent,averageTicket:orders.length?totalSpent/orders.length:0,lastPurchaseDate:dates.at(-1)||null,firstPurchaseDate:dates[0]||null,daysSinceLastPurchase:dates.length?Math.floor((Date.now()-dates.at(-1)!.getTime())/86400000):0,tier,nextTier,amountNeededForNextTier,progressPercent,xp,xpLevel:xl.level,xpForNextLevel:xl.xpForNextLevel,xpProgressPercent:xl.progressPercent,achievements,completedMissions,isInactive:false,isPrestesASubir:!!nextTier&&amountNeededForNextTier<=100,isVip:tier.id==='ouro'||tier.id==='diamante',itemsBoughtCount,purchasedProducts:[],rankPositions:{spent:0,xp:0,items:0,achievements:0}};});
- const bySpent=[...list].sort((a,b)=>b.totalSpent-a.totalSpent);list.forEach(c=>{c.rankPositions.spent=bySpent.findIndex(x=>x.key===c.key)+1;c.rankPositions.xp=c.rankPositions.spent;c.rankPositions.items=c.rankPositions.spent;c.rankPositions.achievements=c.rankPositions.spent;});return list;
+ const ranking=(value:(c:CustomerLoyaltyData)=>number)=>[...list].sort((a,b)=>value(b)-value(a)||a.key.localeCompare(b.key));
+ const bySpent=[...list].sort((a,b)=>comparePurchaseTotals({...a,netPaid:a.totalSpent},{...b,netPaid:b.totalSpent})),byXp=ranking(c=>c.xp),byItems=ranking(c=>c.itemsBoughtCount),byAchievements=ranking(c=>c.achievements.filter(a=>a.unlocked).length);
+ list.forEach(c=>{c.rankPositions={spent:bySpent.indexOf(c)+1,xp:byXp.indexOf(c)+1,items:byItems.indexOf(c)+1,achievements:byAchievements.indexOf(c)+1};});
+ return list;
 }
 
 export function getMultiRankings(allOrders:any[],customTiers:LoyaltyTierConfig[]=DEFAULT_TIERS,limit=10){
  const list=processCustomerLoyaltyList(allOrders,customTiers);
- const compradores=[...list].sort((a,b)=>b.totalSpent-a.totalSpent).slice(0,limit);
- const xp=[...list].sort((a,b)=>b.totalSpent-a.totalSpent).slice(0,limit);
+ const compradores=[...list].sort((a,b)=>a.rankPositions.spent-b.rankPositions.spent).slice(0,limit);
+ const xp=[...list].sort((a,b)=>b.xp-a.xp).slice(0,limit);
  const produtos=[...list].sort((a,b)=>b.itemsBoughtCount-a.itemsBoughtCount).slice(0,limit);
  const historicos=[...list].sort((a,b)=>(a.firstPurchaseDate?.getTime()||Infinity)-(b.firstPurchaseDate?.getTime()||Infinity)).slice(0,limit);
  const conquistas=[...list].sort((a,b)=>b.achievements.filter(x=>x.unlocked).length-a.achievements.filter(x=>x.unlocked).length).slice(0,limit);
