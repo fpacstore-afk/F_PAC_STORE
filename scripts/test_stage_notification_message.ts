@@ -11,20 +11,22 @@ const order = {
 };
 
 const productionMessage = resolveProductionStageMessage('estamparia', order, undefined);
-assert.match(productionMessage, /ESTAMPARIA E IMPRESSÃO/);
+assert.match(productionMessage, /Em estamparia/);
 assert.doesNotMatch(productionMessage, /AGUARDANDO PAGAMENTO/);
 
 const orderReceived = resolveProductionStageMessage('received', order, undefined);
-assert.match(orderReceived, /15x Camisa polo \(Cor: Azul · Tam\.: XG · Estampa: Logo da empresa\)/);
-assert.match(orderReceived, /Acompanhe o pedido: https:\/\/fpacstore\.com\.br\/tracking/);
+assert.match(orderReceived, /Item: 15x Camisa polo/);
+assert.doesNotMatch(orderReceived, /\{\{resumo_itens\}\}|Estampa: Logo da empresa/);
+assert.match(orderReceived, /Acompanhe: https:\/\/fpacstore\.com\.br\/tracking/);
 
 const secureUrl = 'https://fpacstore.com.br/order/MANUAL-123?token=private-access-key';
 const sentMessage = renderServerStageTemplate(DEFAULT_STAGE_TEMPLATES.received, {
   ...order,
   publicTrackingUrl: secureUrl,
 });
-assert.match(sentMessage, /15x Camisa polo \(Cor: Azul · Tam\.: XG · Estampa: Logo da empresa\)/);
+assert.match(sentMessage, /Item: 15x Camisa polo/);
 assert.ok(sentMessage.includes(secureUrl), 'sent notifications must include a one-click secure tracking link');
+assert.match(renderServerStageTemplate('Itens: {{produto}}', order), /Cor: Azul · Tam\.: XG · Estampa: Logo da empresa/, 'custom detailed templates remain supported');
 const legacyLinkMessage = renderServerStageTemplate(
   'Acompanhe: https://www.fpacstore.com.br/#/order/{{numero_pedido}}',
   { ...order, publicTrackingUrl: secureUrl },

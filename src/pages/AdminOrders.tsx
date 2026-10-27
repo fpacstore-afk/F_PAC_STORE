@@ -3107,8 +3107,8 @@ Total: R$ ${totalSum.toFixed(2)}`;
                         {isAdminOrderDelivered(order) && (
                           <button 
                             onClick={() => {
-                               const name = order.customerName.split(' ')[0].toUpperCase();
-                               const msg = `👕 F PAC STORE • NÃO É SÓ ROUPA. É IDENTIDADE! 👕\n━━━━━━━━━━━━━━━━━━━━━━━━━━━\nFala ${name}!\n\n🎉 *SEU PEDIDO JÁ FOI ENTREGUE!* 🎉\n\nEsperamos de verdade que você curta muito a sua nova peça F PAC STORE. Ela foi pioneira para trazer estética, identidade e atitude para seu guarda-roupa! 🔥\n\n📸 *NO INSTAGRAM:*\nQuando vestir sua nova peça, tire uma foto irada e marque a gente no Instagram *@f_pac_store*. Vamos adorar repostar você! \n━━━━━━━━━━━━━━━━━━━━━━━━━━━\n🌟CANAIS OFICIAIS F PAC STORE:\n🌐 Site Oficial:www.fpacstore.com.br\n📸 Instagram: @f_pac_store\n💬 WhatsApp Oficial: (47) 99746-5602\n📍 Loja/Expedição em Joinville/SC\n🛡️Esta é uma mensagem automática de suporte e acompanhamento de pedido.`;
+                               const name = order.customerName.split(' ')[0];
+                               const msg = `Oi, ${name}! Seu pedido chegou direitinho? Se precisar de algo, estamos por aqui. Se quiser mostrar seu look, marque @f_pac_store. 💛`;
                                window.open(`https://wa.me/${order.customerPhone.replace(/\D/g, '')}?text=${encodeURIComponent(msg)}`, '_blank');
                             }}
                             className="w-full bg-[#eab308] text-black py-3 text-[10px] font-black uppercase tracking-widest hover:bg-black hover:text-[#eab308] transition-all shadow-lg"

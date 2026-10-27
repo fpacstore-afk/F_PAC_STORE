@@ -301,10 +301,17 @@ export function renderStageTemplate(templateStr: string, orderData: any): string
   
   const items = orderData?.items || [];
   const firstItemName = items[0]?.name || items[0]?.title || 'Camiseta F PAC';
-  const itemsSummary = items.map((i: any) => {
+  const itemLines = items.map((i: any) => {
     const details = [i.color && `Cor: ${i.color}`, i.size && `Tam.: ${i.size}`, i.stampName && `Estampa: ${i.stampName}`].filter(Boolean);
     return `• ${i.quantity || 1}x ${i.name || i.title || 'Camiseta'}${details.length ? ` (${details.join(' · ')})` : ''}`;
-  }).join('\n') || `• ${firstItemName}`;
+  });
+  const itemsSummary = itemLines.join('\n') || `• ${firstItemName}`;
+  const firstShortItem = items[0]
+    ? `${Number(items[0].quantity) || 1}x ${String(items[0].name || items[0].title || 'Produto').slice(0, 50)}`
+    : '';
+  const shortItems = firstShortItem
+    ? `Item: ${firstShortItem}${items.length > 1 ? ` (+${items.length - 1} no pedido)` : ''}`
+    : '';
   const totalQty = items.reduce((acc: number, item: any) => acc + (Number(item.quantity) || 1), 0) || 1;
 
   const dateStr = orderData?.createdAt
@@ -324,6 +331,7 @@ export function renderStageTemplate(templateStr: string, orderData: any): string
     .replace(/\{\{numero_pedido\}\}/g, String(orderId))
     .replace(/\{\{valor_pedido\}\}/g, formattedTotal)
     .replace(/\{\{produto\}\}/g, itemsSummary)
+    .replace(/\{\{resumo_itens\}\}/g, shortItems)
     .replace(/\{\{quantidade\}\}/g, String(totalQty))
     .replace(/\{\{data\}\}/g, dateStr)
     .replace(/\{\{previsao\}\}/g, deliveryEstimate)
