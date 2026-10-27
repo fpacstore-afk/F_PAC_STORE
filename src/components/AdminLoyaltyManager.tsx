@@ -130,19 +130,19 @@ export default function AdminLoyaltyManager({ orders }: AdminLoyaltyManagerProps
     } else {
       switch (type) {
         case 'tier_up':
-          text = `👕 *F PAC STORE • CLUBE F PAC* 👕\n━━━━━━━━━━━━━━━━━━━━━━━━━━━\nParabéns *${name}*!\n\n🏆 *VOCÊ SUBIU DE NÍVEL!* 🏆\nVocê acaba de alcançar o nível *${customer.tier.name.toUpperCase()}* ${customer.tier.badge} no nosso programa de fidelidade!\n\nAgora você possui novos benefícios exclusivos:\n${customer.tier.benefits.map(b => `• ${b}`).join('\n')}\n\nAproveite no nosso site oficial:\nhttps://www.fpacstore.com.br/#/clube\n━━━━━━━━━━━━━━━━━━━━━━━━━━━`;
+          text = `Oi, ${name}! 🏆 Você chegou ao nível *${customer.tier.name}* no Clube F PAC. Veja seus benefícios: https://fpacstore.com.br/clube`;
           break;
         case 'coupon':
-          text = `👕 *F PAC STORE • CUPOM ESPECIAL* 👕\n━━━━━━━━━━━━━━━━━━━━━━━━━━━\nFala *${name}*!\n\nVocê é um cliente especial do nível *${customer.tier.name}* ${customer.tier.badge} e liberamos um cupom exclusivo de presente para sua próxima compra:\n\n🎟️ *CUPOM: FIDELIDADE10*\n👉 10% OFF em todo o site!\n\nGaranta no link:\nhttps://www.fpacstore.com.br/#/catalog\n━━━━━━━━━━━━━━━━━━━━━━━━━━━`;
+          text = `Oi, ${name}! 🎟️ Confira o cupom *FIDELIDADE10* na sua próxima compra: https://fpacstore.com.br/catalog`;
           break;
         case 'launch':
-          text = `👕 *F PAC STORE • LANÇAMENTO EXCLUSIVO* 👕\n━━━━━━━━━━━━━━━━━━━━━━━━━━━\nFala *${name}*!\n\nComo você é cliente VIP no nível *${customer.tier.name}* ${customer.tier.badge}, estamos te avisando em *PRIMEIRA MÃO* do novo Drop exclusivo de estampas da F PAC STORE!\n\n🔥 Confira antes de todo mundo no site:\nhttps://www.fpacstore.com.br/#/catalog\n━━━━━━━━━━━━━━━━━━━━━━━━━━━`;
+          text = `Oi, ${name}! 🔥 Temos novidades no catálogo da F PAC. Dá uma olhada: https://fpacstore.com.br/catalog`;
           break;
         case 'return':
-          text = `👕 *F PAC STORE • SAUDADES!* 👕\n━━━━━━━━━━━━━━━━━━━━━━━━━━━\nFala *${name}*! Tudo certo?\n\nSentimos sua falta nas últimas semanas! Preparamos um presente para você renovar seu kit de camisetas na F PAC STORE:\n\n🎁 *FRETE GRÁTIS + CUPOM VOLTAFPAC*\n\nAcesse e confira as novidades:\nhttps://www.fpacstore.com.br/#/catalog\n━━━━━━━━━━━━━━━━━━━━━━━━━━━`;
+          text = `Oi, ${name}! Quer ver as novidades da F PAC? Confira o cupom *VOLTAFPAC* no catálogo: https://fpacstore.com.br/catalog`;
           break;
         case 'benefit':
-          text = `👕 *F PAC STORE • BENEFÍCIO DO NÍVEL ${customer.tier.name.toUpperCase()}* 👕\n━━━━━━━━━━━━━━━━━━━━━━━━━━━\nOlá *${name}*!\n\nLembrete especial: como membro do nível *${customer.tier.name}* ${customer.tier.badge}, você tem direito aos seguintes benefícios ativos:\n${customer.tier.benefits.map(b => `• ${b}`).join('\n')}\n\nDúvidas ou pedidos? Responda a esta mensagem para atendimento prioritário!\n━━━━━━━━━━━━━━━━━━━━━━━━━━━`;
+          text = `Oi, ${name}! Seus benefícios do nível *${customer.tier.name}* estão no Clube F PAC: https://fpacstore.com.br/clube`;
           break;
       }
     }

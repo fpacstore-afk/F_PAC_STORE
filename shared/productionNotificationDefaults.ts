@@ -73,7 +73,7 @@ ${footer}`,
 const revisedTemplate = (icon: string, title: string, body: string) => template(icon, title, body)
   .replace('🛡️ Mensagem automática de acompanhamento do pedido.', 'Acompanhamento do pedido • F PAC STORE');
 
-export const DEFAULT_STAGE_TEMPLATES: Record<string, string> = {
+const VERBOSE_STAGE_TEMPLATES: Record<string, string> = {
   ...Object.fromEntries(Object.entries(PREVIOUS_STAGE_TEMPLATES).map(([key, value]) => [key, value
     .replace('https://www.fpacstore.com.br/#/order/{{numero_pedido}}', 'https://fpacstore.com.br/tracking')
     .replace('🛡️ Mensagem automática de acompanhamento do pedido.', 'Acompanhamento do pedido • F PAC STORE')])),
@@ -87,6 +87,27 @@ export const DEFAULT_STAGE_TEMPLATES: Record<string, string> = {
   embalagem: revisedTemplate('🔍', 'CONTROLE DE QUALIDADE E EMBALAGEM', 'Estamos conferindo o acabamento e preparando a embalagem do seu pedido. Avisaremos quando estiver pronto para entrega ou retirada.'),
   ready: revisedTemplate('📦', 'PRONTO PARA ENTREGA OU RETIRADA', 'Seu pedido está produzido, conferido e embalado. A entrega ou retirada será realizada conforme combinado. Acompanhe a confirmação dessa etapa nas próximas atualizações.'),
   completed: revisedTemplate('✅', 'PRODUÇÃO CONCLUÍDA', 'Concluímos a produção do seu pedido. A entrega ou retirada segue o andamento registrado no pedido e o combinado com nossa equipe. Obrigado por escolher a F PAC STORE!'),
+};
+for (const [legacy, current] of Object.entries({ aguardando_impressao: 'separacao_corte', estampa_finalizada: 'estamparia', controle_qualidade: 'embalagem', pronto_envio: 'ready' })) {
+  VERBOSE_STAGE_TEMPLATES[legacy] = VERBOSE_STAGE_TEMPLATES[current];
+}
+
+const short = (icon: string, stage: string, details: string, includeItem = false) => `Oi, *{{nome_cliente}}*! ${icon} *${stage}* · pedido #{{numero_pedido}}.\n${details}${includeItem ? '\n{{resumo_itens}}' : ''}\nAcompanhe: {{link_acompanhamento}}`;
+
+export const DEFAULT_STAGE_TEMPLATES: Record<string, string> = {
+  received: short('✅', 'Pedido recebido', 'Registramos seu pedido. Avisaremos quando avançar.', true),
+  payment_pending: short('💳', 'Pagamento pendente', 'Confira o combinado com a equipe para seguir.'),
+  payment_approved: short('✅', 'Pagamento confirmado', 'Pagamento registrado. Avisaremos sobre a produção.'),
+  payment_rejected: short('💳', 'Pagamento não aprovado', 'Confira a forma de pagamento ou fale com a equipe.'),
+  payment_refunded: short('💳', 'Estorno registrado', 'O prazo para receber o valor depende da forma de pagamento.'),
+  separacao_corte: short('✂️', 'Em preparação', 'Estamos separando os itens do pedido.'),
+  estamparia: short('🎨', 'Em estamparia', 'Sua arte entrou na produção.'),
+  embalagem: short('🔍', 'Em conferência', 'Estamos conferindo e embalando o pedido.'),
+  ready: short('📦', 'Pronto para entrega ou retirada', 'Seguiremos o combinado com você.'),
+  completed: short('✅', 'Produção concluída', 'Entrega ou retirada segue o combinado.'),
+  shipped: 'F PAC STORE · 🚚 *Pedido #{{numero_pedido}} enviado*\nRastreio: {{link_rastreio}}\nAcompanhe: {{link_acompanhamento}}',
+  delivered: 'F PAC STORE · 🎉 *Pedido #{{numero_pedido}} entregue*\nTudo certo por aí? Se precisar, responda aqui.',
+  cancelled: 'F PAC STORE · ⚠️ *Pedido #{{numero_pedido}} cancelado*\nSe precisar de ajuda, responda aqui.',
 };
 for (const [legacy, current] of Object.entries({ aguardando_impressao: 'separacao_corte', estampa_finalizada: 'estamparia', controle_qualidade: 'embalagem', pronto_envio: 'ready' })) {
   DEFAULT_STAGE_TEMPLATES[legacy] = DEFAULT_STAGE_TEMPLATES[current];
@@ -106,13 +127,14 @@ export const DEFAULT_NOTIFICATION_CONFIG: ProductionNotificationConfig = {
 export function resolveSavedStageTemplates(saved: Record<string, string> = {}) {
   const templates = { ...DEFAULT_STAGE_TEMPLATES, ...saved };
   for (const [key, value] of Object.entries(saved)) {
-    if (value === PREVIOUS_STAGE_TEMPLATES[key]) templates[key] = DEFAULT_STAGE_TEMPLATES[key];
+    if (!DEFAULT_STAGE_TEMPLATES[key]) continue;
+    if (value === PREVIOUS_STAGE_TEMPLATES[key] || value === VERBOSE_STAGE_TEMPLATES[key]) templates[key] = DEFAULT_STAGE_TEMPLATES[key];
   }
   const oldSeparation = separation.replace('Nossa equipe está separando e preparando', 'O pagamento foi confirmado e nossa equipe já está separando e preparando');
   for (const key of ['separacao_corte', 'aguardando_impressao', 'payment_approved']) {
-    if ([oldSeparation, DEFAULT_STAGE_TEMPLATES.separacao_corte.replace('Nossa equipe está separando e preparando', 'O pagamento foi confirmado e nossa equipe já está separando e preparando')].includes(templates[key])) templates[key] = DEFAULT_STAGE_TEMPLATES[key];
+    if ([oldSeparation, VERBOSE_STAGE_TEMPLATES.separacao_corte.replace('Nossa equipe está separando e preparando', 'O pagamento foi confirmado e nossa equipe já está separando e preparando')].includes(templates[key])) templates[key] = DEFAULT_STAGE_TEMPLATES[key];
   }
-  const oldPending = DEFAULT_STAGE_TEMPLATES.payment_pending.replace('O pagamento do seu pedido ainda está pendente. A produção e a entrega seguem o combinado com nossa equipe.', 'Seu pedido foi criado e aguarda a confirmação do pagamento para entrar em produção.');
+  const oldPending = VERBOSE_STAGE_TEMPLATES.payment_pending.replace('O pagamento do seu pedido ainda está pendente. A produção e a entrega seguem o combinado com nossa equipe.', 'Seu pedido foi criado e aguarda a confirmação do pagamento para entrar em produção.');
   if (templates.payment_pending === oldPending) templates.payment_pending = DEFAULT_STAGE_TEMPLATES.payment_pending;
   const oldReady = ready.replace('PRONTO PARA ENTREGA OU RETIRADA', 'PRONTO PARA ENVIO').replace('Vamos seguir com a entrega ou retirada conforme combinado.', 'A próxima atualização será a postagem ou retirada.');
   for (const key of ['ready', 'pronto_envio']) if (templates[key] === oldReady) templates[key] = DEFAULT_STAGE_TEMPLATES[key];

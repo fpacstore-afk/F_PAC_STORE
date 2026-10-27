@@ -51,6 +51,7 @@ const manual = await prepareRecoveryWhatsApp(id);
 assert.equal(manual.whatsappSent, false);
 assert.equal(new URL(manual.whatsappUrl).pathname, '/5547997465602');
 assert.match(new URL(manual.whatsappUrl).searchParams.get('text')!, /\/bag\/recover#id=/);
+assert.doesNotMatch(new URL(manual.whatsappUrl).searchParams.get('text')!, /NÃO É SÓ ROUPA|━━━━━━━━/);
 await db.collection('abandoned_checkouts').doc(id).update({ payment_status: 'approved' });
 await assert.rejects(() => readRecoveryCartByToken(id, capability), { status: 410 });
 await db.collection('abandoned_checkouts').doc(id).update({ payment_status: 'pending', recoveryRevokedAt: new Date().toISOString() });

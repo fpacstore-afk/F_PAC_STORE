@@ -16,6 +16,12 @@ export function renderStageTemplate(templateStr: string, orderData: any): string
     const details = [item.color && `Cor: ${item.color}`, item.size && `Tam.: ${item.size}`, item.stampName && `Estampa: ${item.stampName}`].filter(Boolean);
     return `• ${Number(item.quantity) || 1}x ${item.name || item.title || 'Produto F PAC'}${details.length ? ` (${details.join(' · ')})` : ''}`;
   }).join('\n') || '• Produto F PAC';
+  const firstShortItem = items[0]
+    ? `${Number(items[0].quantity) || 1}x ${String(items[0].name || items[0].title || 'Produto').slice(0, 50)}`
+    : '';
+  const shortItems = firstShortItem
+    ? `Item: ${firstShortItem}${items.length > 1 ? ` (+${items.length - 1} no pedido)` : ''}`
+    : '';
   const totalQty = items.reduce((sum: number, item: any) => sum + (Number(item.quantity) || 1), 0) || 1;
   const rawDate = orderData?.createdAt?.seconds ? new Date(orderData.createdAt.seconds * 1000) : new Date(orderData?.createdAt || Date.now());
   const dateStr = Number.isNaN(rawDate.getTime()) ? new Date().toLocaleDateString('pt-BR') : rawDate.toLocaleDateString('pt-BR');
@@ -30,6 +36,7 @@ export function renderStageTemplate(templateStr: string, orderData: any): string
     .replace(/\{\{numero_pedido\}\}/g, String(orderId))
     .replace(/\{\{valor_pedido\}\}/g, formattedTotal)
     .replace(/\{\{produto\}\}/g, itemsSummary)
+    .replace(/\{\{resumo_itens\}\}/g, shortItems)
     .replace(/\{\{quantidade\}\}/g, String(totalQty))
     .replace(/\{\{data\}\}/g, dateStr)
     .replace(/\{\{previsao\}\}/g, deliveryEstimate)

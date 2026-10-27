@@ -208,7 +208,7 @@ export async function prepareRecoveryWhatsApp(id: string) {
   const lead = await currentRecoveryLead(id);
   if (!lead) throw Object.assign(new Error('Esta sacola não está mais disponível para recuperação.'), { status: 410 });
   const url = await recoveryCheckoutUrl(id);
-  const message = `F PAC STORE • NÃO É SÓ ROUPA. É IDENTIDADE!\n\nOlá! Você pediu um lembrete da sua sacola. Confira suas escolhas, mesmo em outro aparelho:\n${url}\n\nPreços e disponibilidade serão atualizados. A sacola não reserva estoque.\nCancelar lembretes: ${recoveryCancelUrl(lead)}`;
+  const message = `Oi! Sua sacola F PAC está aqui: ${url}\nPreço e estoque podem mudar; a sacola não reserva peças. Cancelar lembretes: ${recoveryCancelUrl(lead)}`;
   return { whatsappUrl: manualWhatsAppUrl(lead.phone, message), whatsappSent: false };
 }
 
@@ -286,7 +286,7 @@ export async function sendWhatsAppMessage(phone: string, type: 'payment_approved
 
     // Get Messages Templates requested by the user
     let content = "";
-    const name = String(payload?.customerName || payload?.customer_name || payload?.name || "Cliente").split(" ")[0].toUpperCase();
+    const name = String(payload?.customerName || payload?.customer_name || payload?.name || "Cliente").split(" ")[0];
     const orderId = payload?.id ? `#${payload.id}` : "";
 
     if (type === 'custom_message') {
@@ -294,27 +294,25 @@ export async function sendWhatsAppMessage(phone: string, type: 'payment_approved
     } else {
       switch (type) {
         case 'payment_approved':
-          content = `✅ *PAGAMENTO CONFIRMADO!* ✅\n\nSeu pagamento do pedido *${orderId}* foi aprovado com sucesso! 🎉\n\nNossa equipe foi avisada. A produção e a entrega serão informadas conforme o andamento do seu pedido.`;
+          content = `Oi, ${name}! ✅ Pagamento do pedido *${orderId}* confirmado. Avisaremos sobre a produção.`;
           break;
         case 'abandoned_60m':
-          content = `Olá! Você pediu um lembrete da sua sacola F PAC STORE. Confira suas escolhas, mesmo em outro aparelho:\n${recoveryUrl}\n\nPreços e disponibilidade serão atualizados. A sacola não reserva estoque.\nCancelar lembretes: ${recoveryCancelUrl(payload)}`;
+          content = `Oi, ${name}! Sua sacola está salva: ${recoveryUrl}\nPreço e estoque podem mudar; a sacola não reserva peças. Cancelar lembretes: ${recoveryCancelUrl(payload)}`;
           break;
         case 'abandoned_24h':
-          content = `Este é o último lembrete automático da sua sacola F PAC STORE. Se ainda tiver interesse, confira suas escolhas, mesmo em outro aparelho:\n${recoveryUrl}\n\nA disponibilidade e os valores podem mudar. Se precisar, fale com nossa equipe.\nCancelar lembretes: ${recoveryCancelUrl(payload)}`;
+          content = `Último lembrete da sua sacola: ${recoveryUrl}\nPreço e estoque podem mudar. Cancelar lembretes: ${recoveryCancelUrl(payload)}`;
           break;
         case 'order_shipped':
-          const tracking = payload?.trackingCode || payload?.trackingUrl || "Acompanhamento pendente";
-          content = `🚀 *SEU PEDIDO FOI ENVIADO!* 🚀\n\nExcelente notícia: seu pedido *${orderId}* já foi despachado e está a caminho de sua casa para trazer o máximo de estilo e identidade! 📦\n\n📊 *DADOS DE RASTREIO E ENVIO:*\nCódigo/Link de Rastreio: \`${tracking}\``;
+          const tracking = payload?.trackingCode || payload?.trackingUrl;
+          content = `Oi, ${name}! 🚚 Pedido *${orderId}* enviado.${tracking ? ` Rastreio: ${tracking}` : ' Enviaremos o rastreio quando estiver disponível.'}`;
           break;
         case 'manual_order_pending':
-          content = `Seu pedido *${orderId}* foi gerado com sucesso pela equipe da *F PAC*.\n\n📋 *Status atual:* Aguardando Pagamento.\n\nA produção e a entrega seguem o combinado com nossa equipe.\n\nCaso tenha qualquer dúvida, nossa equipe está à disposição.\n\nObrigado por escolher a *F PAC*! 🖤💛`;
+          content = `Oi, ${name}! Pedido *${orderId}* registrado. O pagamento e a entrega seguem o combinado com a equipe.`;
           break;
       }
     }
 
-    const message = type === 'custom_message' 
-      ? content 
-      : `👕 F PAC STORE • NÃO É SÓ ROUPA. É IDENTIDADE! 👕\n━━━━━━━━━━━━━━━━━━━━━━━━━━━\nFala ${name}!\n\n${content}\n━━━━━━━━━━━━━━━━━━━━━━━━━━━\n🌟CANAIS OFICIAIS F PAC STORE:\n🌐 Site Oficial:www.fpacstore.com.br\n📸 Instagram: @f_pac_store\n💬 WhatsApp Oficial: (47) 99746-5602\n📍 Loja/Expedição em Joinville/SC\n🛡️Esta é uma mensagem automática de suporte e acompanhamento de pedido.`;
+    const message = type === 'custom_message' ? content : `F PAC STORE · ${content}`;
 
     // Send using Evolution API if environment is configured
     const apiUrl = process.env.EVOLUTION_API_URL;
