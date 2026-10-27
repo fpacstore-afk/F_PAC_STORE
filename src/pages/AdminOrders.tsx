@@ -1,3 +1,4 @@
+import { garmentFamily, garmentTitle } from '../../shared/garmentModels';
 import { collection, deleteDoc, doc, getDoc, onSnapshot, orderBy, query, serverTimestamp, setDoc, updateDoc, writeBatch } from 'firebase/firestore';
 import { AnimatePresence, motion } from 'framer-motion';
 import { BadgePercent, BarChart3, BellRing, Boxes, CheckCircle, ChevronDown, ChevronUp, ClipboardCheck, ClipboardList, Eye, EyeOff, Factory, FileSpreadsheet, Gift, Images, Layers, LayoutDashboard, Loader2, Mail, MessageCircle, Package, Plus, Radio, RefreshCw, Search, Sparkles, Trash2, Truck, Users, WalletCards, Warehouse, XCircle } from 'lucide-react';
@@ -663,8 +664,13 @@ function AdminOrdersInner() {
   });
   const isPlainManualProduct = (product: any) => product.productFinish === 'plain' || /\b(lisa|liso|base|sem estampa)\b/i.test(`${product.name || ''} ${(product.tags || []).join(' ')}`);
   const readyManualProducts = currentProducts.filter(product => !isPlainManualProduct(product) && !['draft', 'archived', 'inactive'].includes(product.status))
-    .map(product => ({ ...product, stampNames: (product.stampIds || []).map(id => catalogStamps.find(stamp => stamp.id === id)?.name).filter(Boolean) }));
-  const assembledManualProducts = currentProducts.filter(product => isPlainManualProduct(product) && !['archived', 'inactive'].includes(product.status));
+    .flatMap(product => {
+      const models = product.modelSeparationRequired && !product.garmentModelId && garmentFamily(product)
+        ? currentProducts.filter(base => isPlainManualProduct(base) && base.garmentModelId && base.baseModel === product.baseModel && !['archived','inactive'].includes(base.status)) : [];
+      const choices = models.length ? models.map(base => ({ ...product, garmentModelId: base.garmentModelId, garmentModelName: base.garmentModelName, neckline: base.neckline, supplierName: base.supplierName, stockBaseSlug: base.slug || base.id, sizes: base.sizes, colors: base.colors, name: garmentTitle(product.name, base) })) : [product];
+      return choices.map(choice => ({ ...choice, stampNames: (choice.stampIds || []).map(id => catalogStamps.find(stamp => stamp.id === id)?.name).filter(Boolean) }));
+    });
+  const assembledManualProducts = currentProducts.filter(product => isPlainManualProduct(product) && !(product.modelSeparationRequired && !product.garmentModelId) && !['archived', 'inactive'].includes(product.status));
 
   // --- BI / INDUSTRIAL INTELLIGENCE REPORTS REAL-TIME useMemo ---
   const reportData = useMemo(() => {
@@ -1798,6 +1804,7 @@ function AdminOrdersInner() {
           id: item.product.id,
           ...(isCustomProduct ? { manualLineId: item.id } : {}),
           productId: item.product.id,
+          garmentModelId: item.product.garmentModelId, garmentModelName: item.product.garmentModelName, neckline: item.product.neckline, stockBaseSlug: item.product.stockBaseSlug,
           slug: item.product.slug,
           parentSlug: item.product.parentSlug || item.product.slug || item.product.id,
           variantKey: `${item.color}_${item.size}`,

@@ -1,3 +1,4 @@
+import { garmentProfiles, requiresGarmentClassification } from '../../shared/garmentModels';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { db } from '../lib/firebase';
@@ -40,12 +41,13 @@ export function useProductCostProfiles() {
     [remoteProfiles]
   );
 
-  const resolveForProduct = useCallback((selector: ProductCostSelector & Record<string, any>) => remoteProfiles
+  const resolveForProduct = useCallback((selector: ProductCostSelector & Record<string, any>) => requiresGarmentClassification(selector) ? null : selector.garmentModelId ? catalogProductCost(costCatalog.catalog, selector) : remoteProfiles
     ? resolveProductCostProfile(profiles, selector) || catalogProductCost(costCatalog.catalog, selector)
     : catalogProductCost(costCatalog.catalog, selector) || resolveProductCostProfile(profiles, selector), [costCatalog.catalog, profiles, remoteProfiles]);
 
   return {
     profiles,
+    garmentModels: garmentProfiles(costCatalog.catalog),
     loading: loading || costCatalog.loading,
     syncError: syncError || Boolean(costCatalog.error),
     isUsingFallback: remoteProfiles === null,

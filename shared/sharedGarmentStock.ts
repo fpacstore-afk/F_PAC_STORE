@@ -1,3 +1,5 @@
+import { garmentFamily, garmentTitle, requiresGarmentClassification, sameGarmentModel } from './garmentModels';
+
 /** One physical garment pool serves every artwork using that exact base model. */
 export type StockProduct = { id?: string; slug?: string; parentSlug?: string; productFinish?: string; baseModel?: string; stockBaseSlug?: string; stockMode?: string; status?: string; [key: string]: any };
 export type InventoryAllocation = { productSlug: string; variantKey: string; quantity: number; source: 'plain' | 'ready' };
@@ -7,12 +9,27 @@ export const stockSlug = (product: StockProduct) => String(product.slug || produ
 export function resolveGarmentBase(product: StockProduct, products: StockProduct[]): StockProduct | undefined {
   if (product.productFinish === 'plain' || product.stockMode === 'ready_only') return undefined;
   const bases = products.filter(p => p.productFinish === 'plain' && !['archived', 'inactive'].includes(String(p.status)));
-  if (product.stockBaseSlug) return bases.find(p => [p.id, p.slug].includes(product.stockBaseSlug));
+  if (requiresGarmentClassification(product)) return undefined;
+  if (product.stockBaseSlug) return bases.find(p => [p.id, p.slug].includes(product.stockBaseSlug) && sameGarmentModel(product, p));
   const model = normalized(product.baseModel);
   if (!model || /outro|sem modelo/.test(model)) return undefined;
-  const matches = bases.filter(p => normalized(p.baseModel) === model);
+  const matches = bases.filter(p => normalized(p.baseModel) === model && sameGarmentModel(product, p));
   // Ambiguous physical bases need an explicit choice, never an invented pool.
   return matches.length === 1 ? matches[0] : undefined;
+}
+
+export function resolveItemGarmentBase(item: any, product: StockProduct | undefined, products: StockProduct[]) {
+  if (product?.garmentModelId && item.garmentModelId && product.garmentModelId !== item.garmentModelId) throw new Error('O modelo da peça mudou. Confira sua escolha antes de comprar.');
+  if (product?.productFinish === 'plain') return requiresGarmentClassification(product) ? undefined : product;
+  if (product && item.garmentModelId && !product.garmentModelId) {
+    return resolveGarmentBase({ ...product, garmentModelId: item.garmentModelId, stockBaseSlug: undefined }, products);
+  }
+  if (product) return resolveGarmentBase(product, products);
+  if (item.garmentModelId) {
+    const candidates = products.filter(p => p.productFinish === 'plain' && p.garmentModelId === item.garmentModelId && !['inactive', 'archived'].includes(String(p.status)));
+    return candidates.length === 1 ? candidates[0] : undefined;
+  }
+  return resolveManualGarmentBase(item.customDetails?.model, products);
 }
 
 export function resolveManualGarmentBase(model: unknown, products: StockProduct[]) {
@@ -65,7 +82,8 @@ export function allocateGarments(items: any[], products: StockProduct[], invento
   return items.map(item => {
     const product = products.find(p => [p.id, p.slug].filter(Boolean).some(id => [item.productId, item.slug, item.baseProductSlug].includes(id)));
     const customModel = item.customProduct && item.customDetails?.model;
-    const base = product?.productFinish === 'plain' ? product : (product ? resolveGarmentBase(product, products) : resolveManualGarmentBase(customModel, products));
+    const base = resolveItemGarmentBase(item, product, products);
+    if ((requiresGarmentClassification(product) || item.garmentModelId) && !base) throw new Error('Escolha um modelo com estoque conferido. As peças misturadas aguardam separação por fornecedor.');
     const readySlug = String(product ? (product.parentSlug || stockSlug(product)) : (item.parentSlug || item.slug || item.productId || item.id || ''));
     const variantKey = String(item.variantKey || `${item.color}_${item.size}`);
     const requested = Math.max(1, Math.floor(Number(item.quantity) || 1));
@@ -74,7 +92,7 @@ export function allocateGarments(items: any[], products: StockProduct[], invento
     const isPlain = product?.productFinish === 'plain';
     const readyInventory = inventories.get(readySlug);
     const readyVerified = product?.productFinish !== 'printed' || readyInventory?.variants?.[variantKey]?.physicalCountVerified === true;
-    const ready = isPlain || !readyVerified ? 0 : take(readySlug, variantKey, requested);
+    const ready = isPlain || !readyVerified || requiresGarmentClassification(product) || Boolean(base?.garmentModelId && !product?.garmentModelId) ? 0 : take(readySlug, variantKey, requested);
     if (ready) allocations.push({ productSlug: readySlug, variantKey, quantity: ready, source: 'ready' });
     const baseSlug = base && stockSlug(base);
     const plain = baseSlug && isGarmentVariantAllowed(base!, variantKey) ? take(baseSlug, variantKey, requested - ready) : 0;
@@ -85,6 +103,8 @@ export function allocateGarments(items: any[], products: StockProduct[], invento
       throw error;
     }
     // Ignore caller-supplied allocations; these come exclusively from authoritative balances.
-    return { ...item, inventoryAllocations: allocations, ...(baseSlug ? { stockBaseSlug: baseSlug } : {}), ...(plain ? { printProcurementStatus: 'to_order', madeToOrderQuantity: plain } : { madeToOrderQuantity: 0 }) };
+    const modelSource = base?.garmentModelId ? base : product;
+    const modelSnapshot = modelSource?.garmentModelId ? { garmentModelId: modelSource.garmentModelId, garmentModelName: modelSource.garmentModelName || '', neckline: modelSource.neckline || '', name: garmentTitle(String(item.name || product?.name || ''), modelSource) } : {};
+    return { ...item, ...modelSnapshot, inventoryAllocations: allocations, ...(baseSlug ? { stockBaseSlug: baseSlug } : {}), ...(plain ? { printProcurementStatus: 'to_order', madeToOrderQuantity: plain } : { madeToOrderQuantity: 0 }) };
   });
 }

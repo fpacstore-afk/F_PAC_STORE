@@ -1,3 +1,4 @@
+import { requiresGarmentClassification } from './garmentModels';
 import { dtfCost, normalize, origin, round, type Catalog } from './pricingWorkbench';
 import { artworkDimensions } from './orderCostComposition';
 import { inferProductCostSelector, type ProductCostProfile } from './productCostProfiles';
@@ -15,14 +16,16 @@ const MODEL_SOURCES: Record<string, { supplier: string; product: string }> = {
 
 export function productCostRecipeKey(product: Record<string, any>) {
   const selector = inferProductCostSelector(product);
-  return JSON.stringify([selector.baseModel, selector.productFinish, selector.collection,
+  return JSON.stringify([product.garmentModelId || '', selector.baseModel, selector.productFinish, selector.collection,
     product.stampIds || [], product.stampSizes || [], product.stampIdsByColor || {}, product.stampSizesByColor || {}]);
 }
 
 /** Reference unit cost, without guessing a purchase lot or replacing order COGS. */
 export function catalogProductCost(catalog: Catalog, product: Record<string, any>): ProductCostProfile | null {
+  if (requiresGarmentClassification(product)) return null;
   const selector = inferProductCostSelector(product);
-  const model = MODEL_SOURCES[normalize(String(selector.baseModel || ''))];
+  const source = product.garmentModelId ? catalog.entries.find(entry => entry.id === product.garmentModelId && entry.kind === 'product' && entry.active) : null;
+  const model = product.garmentModelId ? (source ? { supplier: source.supplier || '', product: source.name } : null) : MODEL_SOURCES[normalize(String(selector.baseModel || ''))];
   if (!model) return null;
   const prices = catalog.entries.filter(entry => entry.active && entry.kind === 'price'
     && normalize(entry.supplier || '') === normalize(model.supplier)
@@ -70,7 +73,7 @@ export function catalogProductCost(catalog: Catalog, product: Record<string, any
     pending.push('Adicionais por pedido dependem da quantidade real e não entram integralmente em cada produto');
   }
   return {
-    id: `catalog-recipe-${normalize(String(selector.baseModel)).replace(/[^a-z0-9]+/g, '-')}-${selector.productFinish || 'printed'}`,
+    id: `catalog-recipe-${product.garmentModelId || 'legacy'}-${normalize(String(selector.baseModel)).replace(/[^a-z0-9]+/g, '-')}-${selector.productFinish || 'printed'}`,
     baseModel: String(selector.baseModel), productFinish: selector.productFinish === 'plain' ? 'plain' : 'printed', collection: String(selector.collection || 'TODOS'),
     unitCost: round(components.reduce((total, component) => total + component.unitCost, 0)), coverage: 'partial',
     pendingComponents: [...new Set(pending)], sourceLabel: `${catalog.sourceTitle || 'Precificação e Orçamentos'} · ${model.supplier} · referência individual`,

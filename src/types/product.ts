@@ -77,6 +77,14 @@ export interface ProductVariantDefinition {
 }
 
 export interface Product {
+  supplierName?: string;
+  garmentModelId?: string;
+  garmentModelName?: string;
+  neckline?: string;
+  sizeChartMode?: string;
+  modelSeparationRequired?: boolean;
+  modelClassificationPending?: boolean;
+
   id: string;
   name: string;
   slug: string;

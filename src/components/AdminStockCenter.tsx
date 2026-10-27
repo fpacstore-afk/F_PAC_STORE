@@ -1,3 +1,4 @@
+import { GarmentModelStockPanel } from './admin/GarmentModelStockPanel';
 import { countedReadyInventory } from '../../shared/sharedGarmentStock';
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { db, handleFirestoreError, OperationType } from '../lib/firebase';
@@ -710,6 +711,7 @@ export function AdminStockCenter() {
 
   return (
     <div className="space-y-4">
+      <GarmentModelStockPanel />
       {/* 1. HERO HEADER - ESTAMPAS STANDARD PATTERN */}
       <div className="bg-black text-white px-4 md:px-8 py-4 md:py-6 border-b-2 border-[#eab308] relative overflow-hidden">
         <div className="absolute right-0 bottom-0 opacity-10 translate-x-12 translate-y-12 pointer-events-none">

@@ -19,6 +19,13 @@ export interface PrintConfiguration {
 }
 
 export interface CartItem {
+  garmentModelId?: string;
+  garmentModelName?: string;
+  neckline?: string;
+  sizeChartMode?: string;
+  modelSeparationRequired?: boolean;
+  modelClassificationPending?: boolean;
+
   id: string;
   category?: string;
   productId?: string;

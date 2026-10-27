@@ -1,3 +1,4 @@
+import { garmentFamily } from '../../../../shared/garmentModels';
 import { resolveGarmentBase, stockSlug } from '../../../../shared/sharedGarmentStock';
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
@@ -169,7 +170,7 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
 }) => {
   const { formatMoney, formatPercent, maskFinancial, showFinancialValues } = useFinancialPrivacy();
   const { inventory, products: inventoryProducts } = useInventory({ administrative: true });
-  const { resolveForProduct, loading: costProfilesLoading, syncError: costProfilesSyncError, isUsingFallback } = useProductCostProfiles();
+  const { resolveForProduct, garmentModels, loading: costProfilesLoading, syncError: costProfilesSyncError, isUsingFallback } = useProductCostProfiles();
   const colorPresets = useProductColorPresets(isOpen);
   const lastAutomaticCostProfileId = useRef<string | null>(null);
   const [activeTab, setActiveTab] = useState<
@@ -780,6 +781,7 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
 
       const fallbackSku = normalizeProductSku(formData.sku) || `FPAC-PROD-${Math.floor(1000 + Math.random() * 9000)}`;
       const productName = formData.name?.trim() || fallbackSku;
+      if (product?.productFinish === 'plain' && (product.garmentModelId || '') !== (formData.garmentModelId || '') && variantRows.some(row => row.currentStock > 0)) throw new Error('Esta base possui saldo. Separe as peças pela transferência de modelos; não altere o fornecedor de um saldo misturado.');
       const productRef = doc(db, 'products', product?.id || pendingNewProductId.current || doc(collection(db, 'products')).id);
       const targetId = productRef.id;
       if (!product) pendingNewProductId.current = targetId;
@@ -1197,6 +1199,22 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
                       {BASE_MODELS.map((model) => <option key={model} value={model}>{model}</option>)}
                     </select>
                   </div>
+
+
+                  {garmentFamily(formData) && <div className="rounded-xl border border-amber-400/40 p-3">
+                    <label className="mb-1 block text-xs font-bold">Fornecedor / modelo físico exato</label>
+                    <select value={formData.garmentModelId || ''} onChange={event => {
+                      const chosen = garmentModels.find(p => p.garmentModelId === event.target.value);
+                      if (!chosen) { setFormData({ ...formData, garmentModelId: '', garmentModelName: '', modelSeparationRequired: true, stockBaseSlug: undefined, sizeChart: [] }); return; }
+                      const { supplierName, sourceProductName, sourceCode, sourceColors, sourceRestrictions, ...profile } = chosen;
+                      const base = inventoryProducts.find(p => p.productFinish === 'plain' && p.garmentModelId === chosen.garmentModelId);
+                      setFormData({ ...formData, ...profile, supplierName, modelSeparationRequired: true, stockBaseSlug: isPlainProduct ? undefined : base ? stockSlug(base) : undefined });
+                    }} className="min-h-11 w-full rounded-lg border border-white/20 bg-black p-2 text-xs text-white">
+                      <option value="">Modelo em conferência / estoque misturado</option>
+                      {garmentModels.filter(p => p.garmentFamily === garmentFamily(formData)).map(p => <option key={p.garmentModelId} value={p.garmentModelId}>{p.supplierName} · {p.sourceProductName} · {p.garmentModelName}</option>)}
+                    </select>
+                    <p className="mt-2 text-xs">A ficha define gola e medidas. Para dividir saldos misturados, use a transferência por modelo na Gestão de Estoque.</p>
+                  </div>}
 
                   {formData.productFinish === 'printed' && (
                     <StampRecipeEditor

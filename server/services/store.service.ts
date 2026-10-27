@@ -1,4 +1,4 @@
-import { allocateGarments, resolveGarmentBase, resolveManualGarmentBase, stockSlug } from '../../shared/sharedGarmentStock.js';
+import { allocateGarments, resolveItemGarmentBase, resolveGarmentBase, resolveManualGarmentBase, stockSlug } from '../../shared/sharedGarmentStock.js';
 import { FieldValue } from 'firebase-admin/firestore';
 import { getDb } from "../firebase.js";
 import { generateTrackingToken, hashTrackingToken } from './tracking.service.js';
@@ -217,7 +217,7 @@ export async function reserveStock(orderId: string, items: any[], idempotencyKey
     const sourceSlugs = new Set<string>();
     for (const item of items) {
       const product = catalog.find(p => [p.id, p.slug].filter(Boolean).some(id => [item.productId, item.slug, item.baseProductSlug].includes(id)));
-      const base = product?.productFinish === 'plain' ? product : (product ? resolveGarmentBase(product, catalog) : resolveManualGarmentBase(item.customDetails?.model, catalog));
+      const base = resolveItemGarmentBase(item, product, catalog);
       sourceSlugs.add(String(product ? (product.parentSlug || stockSlug(product)) : getPhysicalSlug(item)));
       if (base) sourceSlugs.add(stockSlug(base));
     }

@@ -1,3 +1,4 @@
+import { GarmentModelSelector } from '../components/GarmentModelSelector';
 import { CatalogUnavailable } from '../components/CatalogUnavailable';
 import { getProductVisualKind } from '../lib/productPresentation';
 import React, { useState, useEffect, lazy, Suspense } from "react";
@@ -73,6 +74,13 @@ import { fetchPublicStamps } from "../services/publicStamps";
 import { fetchPublicProducts, subscribePublicProductSnapshot } from "../services/publicProducts";
 
 interface Product {
+  garmentModelId?: string;
+  garmentModelName?: string;
+  neckline?: string;
+  sizeChartMode?: string;
+  modelClassificationPending?: boolean;
+  garmentOptions?: any[];
+  stockAvailabilitySlug?: string;
   stockBaseSlug?: string;
   id: string;
   name: string;
@@ -119,9 +127,17 @@ const PRIME_LOCATIONS = ["Peito Central", "Peito Esquerdo", "Peito Direito", "Co
 export default function ProductDetail() {
   const { slug } = useParams();
   const initialProduct = resolveCatalogProduct(slug || "", staticProducts, []);
-  const [product, setProduct] = useState<Product | null>(
+  const [catalogProduct, setProduct] = useState<Product | null>(
     (initialProduct as Product | null) || null,
   );
+  const [chosenGarmentId, setChosenGarmentId] = useState('');
+  const product = React.useMemo(() => {
+    if (!catalogProduct) return null;
+    const option = catalogProduct.garmentOptions?.find(p => p.garmentModelId === chosenGarmentId);
+    if (!option) return catalogProduct;
+    const { name, id, slug: baseSlug, price, images, ...physical } = option;
+    return { ...catalogProduct, ...physical, id: catalogProduct.id, slug: catalogProduct.slug, name: catalogProduct.name, price: catalogProduct.price, images: catalogProduct.images, parentSlug: undefined, stockBaseSlug: baseSlug || id, stockAvailabilitySlug: baseSlug || id, modelClassificationPending: false };
+  }, [catalogProduct, chosenGarmentId]);
   const [loading, setLoading] = useState(!initialProduct);
   const [catalogError, setCatalogError] = useState(false);
 
@@ -470,6 +486,7 @@ export default function ProductDetail() {
 
   const navigate = useNavigate();
   const [selectionParams] = useSearchParams();
+  useEffect(() => { setChosenGarmentId(selectionParams.get('model') || ''); }, [slug, selectionParams]);
   const requestedColor = (selectionParams.get('color') || '').slice(0, 50);
   const requestedSize = (selectionParams.get('size') || '').slice(0, 20);
 
@@ -550,14 +567,14 @@ export default function ProductDetail() {
     return colorsSource || [];
   })();
 
-  const itemInv = product ? inventory?.[product.slug] : null;
+  const itemInv = product ? inventory?.[product.stockAvailabilitySlug || product.slug] : null;
   const parentInv = product?.parentSlug
     ? inventory?.[product.parentSlug]
     : null;
   const isProductOutOfStock =
     (!!itemInv &&
       (itemInv.available === false ||
-        getStock(product.slug, undefined, product.parentSlug) <= 0)) ||
+        getStock(product.stockAvailabilitySlug || product.slug, undefined, product.parentSlug) <= 0)) ||
     (!!parentInv && parentInv.available === false);
 
   const currentVariantKey =
@@ -566,15 +583,15 @@ export default function ProductDetail() {
       : undefined;
   const madeToOrderProduct = Boolean(product?.stockBaseSlug);
   const stockCount = product
-    ? getStock(product.slug, currentVariantKey, product.parentSlug)
+    ? getStock(product.stockAvailabilitySlug || product.slug, currentVariantKey, product.parentSlug)
     : 0;
 
   const isFullyAvailable = product
     ? isProductOutOfStock
       ? false
       : currentVariantKey
-        ? isAvailable(product.slug, currentVariantKey, product.parentSlug) &&
-          getStock(product.slug, currentVariantKey, product.parentSlug) > 0
+        ? isAvailable(product.stockAvailabilitySlug || product.slug, currentVariantKey, product.parentSlug) &&
+          getStock(product.stockAvailabilitySlug || product.slug, currentVariantKey, product.parentSlug) > 0
         : true
     : false;
 
@@ -892,7 +909,7 @@ export default function ProductDetail() {
     const qtyToAdd = Math.max(1, quantity);
     const variantKey = `${selectedColor}_${selectedSize}`;
     const availableStock = getStock(
-      product.slug,
+      product.stockAvailabilitySlug || product.slug,
       variantKey,
       product.parentSlug,
     );
@@ -900,7 +917,7 @@ export default function ProductDetail() {
     // Encontrar quanto de mesma variação (produto, cor, tamanho) já temos no carrinho
     const existingInCart = items.find(
       (item) =>
-        item.id === product.id &&
+        (item.productId || item.id) === product.id && item.garmentModelId === product.garmentModelId &&
         item.color === selectedColor &&
         item.size === selectedSize,
     );
@@ -919,8 +936,10 @@ export default function ProductDetail() {
       return;
     }
 
+    if (product.modelClassificationPending) { toast.error('Escolha um modelo com estoque conferido.'); return; }
     addItem({
-      id: product.id,
+      id: product.garmentModelId ? `${product.id}::${product.garmentModelId}` : product.id,
+      garmentModelId: product.garmentModelId, garmentModelName: product.garmentModelName, neckline: product.neckline, stockBaseSlug: product.stockBaseSlug,
       productId: product.id,
       category: product.category,
       slug: product.slug,
@@ -1337,6 +1356,8 @@ export default function ProductDetail() {
               {/* CORE ATRIBUTOS DO TECIDO */}
               <div className="space-y-4 pt-4 border-t border-black/[0.04]">
 
+                <GarmentModelSelector options={catalogProduct?.garmentOptions || []} selected={chosenGarmentId} onChange={id => { setChosenGarmentId(id); setSelectedColor(''); setSelectedSize(''); }} />
+                {product.modelClassificationPending && <p className="mb-4 rounded-lg bg-amber-50 p-3 text-xs text-amber-950">Modelos em conferência. A disponibilidade será liberada após a separação das peças.</p>}
                 {/* 1. Cores */}
                 <div className="space-y-1.5">
                   <span className="text-[8px] text-zinc-400 font-extrabold tracking-widest uppercase block font-mono">
@@ -1388,7 +1409,7 @@ export default function ProductDetail() {
                   <div className="grid grid-cols-5 gap-1 uppercase">
                     {["P", "M", "G", "GG", "XGG"].map((size) => {
                       const isChosen = selectedSize === size;
-                      const isStocked = getStock(product.slug, `${selectedColor}_${size}`, product.parentSlug) > 0;
+                      const isStocked = getStock(product.stockAvailabilitySlug || product.slug, `${selectedColor}_${size}`, product.parentSlug) > 0;
 
                       return (
                         <button
@@ -1489,7 +1510,7 @@ export default function ProductDetail() {
         </div>
 
         {/* Render standard modals & charts */}
-        <SizeChart model={getProductVisualKind(product)} customData={product.sizeChart} availableSizes={product.sizes} />
+        <SizeChart specific={product.sizeChartMode === 'specific'} model={getProductVisualKind(product)} customData={product.sizeChart} availableSizes={product.sizes} />
         <AnimatePresence>
           {showPrimeConfirmation && (
             <motion.div
@@ -2168,7 +2189,9 @@ export default function ProductDetail() {
               )}
 
               {/* Colors Select Row */}
-              <div className="space-y-3">
+              <GarmentModelSelector options={catalogProduct?.garmentOptions || []} selected={chosenGarmentId} onChange={id => { setChosenGarmentId(id); setSelectedColor(''); setSelectedSize(''); }} />
+                {product.modelClassificationPending && <p className="mb-4 rounded-lg bg-amber-50 p-3 text-xs text-amber-950">Modelos em conferência. A disponibilidade será liberada após a separação das peças.</p>}
+                <div className="space-y-3">
                 <h3 className="text-xs font-black uppercase tracking-widest text-[#eab308] font-mono">
                   1. Escolha a Cor
                 </h3>
@@ -2179,8 +2202,8 @@ export default function ProductDetail() {
                     const isColorAvailable = sizes.some((size) => {
                       const key = `${color.name}_${size}`;
                       return (
-                        isAvailable(product.slug, key, product.parentSlug) &&
-                        getStock(product.slug, key, product.parentSlug) > 0
+                        isAvailable(product.stockAvailabilitySlug || product.slug, key, product.parentSlug) &&
+                        getStock(product.stockAvailabilitySlug || product.slug, key, product.parentSlug) > 0
                       );
                     });
                     return (
@@ -2228,8 +2251,8 @@ export default function ProductDetail() {
                   {(product.sizes || ["P", "M", "G", "GG"]).map((size) => {
                     const sizeKey = `${selectedColor}_${size}`;
                     const isSizeAvailable =
-                      isAvailable(product.slug, sizeKey, product.parentSlug) &&
-                      getStock(product.slug, sizeKey, product.parentSlug) > 0;
+                      isAvailable(product.stockAvailabilitySlug || product.slug, sizeKey, product.parentSlug) &&
+                      getStock(product.stockAvailabilitySlug || product.slug, sizeKey, product.parentSlug) > 0;
                     return (
                       <button
                         id={`size-btn-${size}`}
@@ -3434,7 +3457,7 @@ export default function ProductDetail() {
         </div>
       </div>
 
-      <SizeChart model={getProductVisualKind(product)} customData={product.sizeChart} availableSizes={product.sizes} />
+      <SizeChart specific={product.sizeChartMode === 'specific'} model={getProductVisualKind(product)} customData={product.sizeChart} availableSizes={product.sizes} />
 
       <AnimatePresence>
         {showPrimeConfirmation && (

@@ -307,6 +307,8 @@ export default function CatalogStorefront() {
                     <div className="p-3 md:p-4 flex flex-col flex-1">
                       <p className="text-[7px] md:text-[8px] font-black uppercase tracking-[0.16em] text-[#9a7100]">{isPrime ? 'PRIME' : normalize(product.collection || product.category || product.baseModel || 'F PAC').toUpperCase()}</p>
                       <Link to={productTarget} className="mt-1"><h2 className="text-xs md:text-lg font-black uppercase leading-tight text-black group-hover:text-[#9a7100] transition-colors line-clamp-2">{product.name || product.headline || 'F PAC STORE'}</h2></Link>
+                      {product.garmentOptions?.length > 0 && <p className="mt-2 text-xs text-black/60">Gola alta ou clássica · medidas por modelo</p>}
+                      {product.modelClassificationPending && <p className="mt-1 text-xs text-amber-800">Escolha um modelo com saldo conferido</p>}
                       <div className="mt-auto pt-3 flex items-end justify-between gap-2">
                         <div>
                           {prices.hasDiscount && <p className="mt-1 text-xs text-black/35 line-through">R$ {prices.originalPrice.toFixed(2).replace('.', ',')}</p>}

@@ -86,12 +86,13 @@ const tableRows = getProductSizeChart('oversized');
 
 interface SizeChartProps {
   model?: ProductVisualKind;
+  specific?: boolean;
   onClose?: () => void;
   customData?: { size: string; length: string; width: string; sleeve: string; notes?: string }[];
   availableSizes?: string[];
 }
 
-export function SizeChart({ onClose, customData, model, availableSizes }: SizeChartProps) {
+export function SizeChart({ onClose, customData, model, availableSizes, specific }: SizeChartProps) {
   const location = useLocation();
 
   // The home page used to render a global oversized chart. Product measurements now
@@ -99,7 +100,7 @@ export function SizeChart({ onClose, customData, model, availableSizes }: SizeCh
   if (location.pathname === '/' || model === 'cap') return null;
 
   const hasCustomData = Boolean(customData && customData.length > 0);
-  const activeRows = resolveProductSizeChart(model, customData, availableSizes);
+  const activeRows = specific && !customData?.length ? (availableSizes || []).map(size => ({ size, length: '', width: '', sleeve: '' })) : resolveProductSizeChart(model, customData, availableSizes);
   const pending = !activeRows.some(row => row.length || row.width);
   const drawings = activeRows.filter(row => [row.length, row.width, row.sleeve].every(value => Number.isFinite(parseFloat(value)) && parseFloat(value) > 0)).map(row => ({ size: row.size, height: parseFloat(row.length), width: parseFloat(row.width), sleeve: parseFloat(row.sleeve) }));
 
@@ -151,7 +152,7 @@ export function SizeChart({ onClose, customData, model, availableSizes }: SizeCh
                   <td className="p-3.5 pl-5 font-black text-zinc-950 font-mono text-sm">{row.size}</td>
                   <td className="p-3.5 font-bold text-zinc-800">{row.length || 'Em conferência'}</td>
                   <td className="p-3.5 font-bold text-zinc-800">{row.width || 'Em conferência'}</td>
-                  <td className="p-3.5 font-bold text-zinc-800">{row.sleeve || 'Em conferência'}</td>
+                  <td className="p-3.5 font-bold text-zinc-800">{model === 'regata' ? 'Sem mangas' : row.sleeve || 'Em conferência'}</td>
                 </tr>
               ))}
             </tbody>
@@ -177,13 +178,13 @@ export function SizeChart({ onClose, customData, model, availableSizes }: SizeCh
               <span className="w-10 h-10 rounded-full bg-[#eab308]/10 border border-[#eab308]/30 flex items-center justify-center text-[#eab308] group-hover:bg-[#eab308] group-hover:text-black transition-colors">
                 <div className="w-2 h-2 rounded-full bg-current" />
               </span>
-              <span className="opacity-60">MANGA: Do ombro até o punho</span>
+              <span className="opacity-60">{model === 'regata' ? 'SEM MANGAS' : 'MANGA: Do ombro até o punho'}</span>
           </div>
         </div>
       )}
       
       <p className="mt-4 text-center text-[9px] text-gray-400 font-extrabold uppercase tracking-[0.4em] border-t border-black/[0.03] pt-4">
-        * As medidas podem variar até 2cm para mais ou para menos.
+        {specific ? '* Medidas específicas da ficha selecionada. Confira a peça antes de escolher.' : '* As medidas podem variar até 2cm para mais ou para menos.'}
       </p>
     </div>
   );
