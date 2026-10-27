@@ -48,8 +48,9 @@ export async function unifyGarmentModel(db: any, input: any, actor: string) {
     const now = new Date().toISOString();
     // Keep the original matrix and availability switches exactly as configured.
     const { sizes: _sizes, ...identity } = profile;
-    const next = clean({ ...original, ...identity, id: source.id, slug: sourceSlug, name: `${profile.garmentFamily === 'regata' ? 'Regata' : profile.garmentFamily === 'oversized' ? 'Camiseta Oversized' : 'Camiseta Tradicional'} F PAC — ${profile.garmentModelName}`, sku: `FPAC-${profile.sourceCode}`, legacyReferences: [...new Set([...(original.legacyReferences || []), original.sku].filter(Boolean))], confirmedBaseModels: [...new Set([...(original.confirmedBaseModels || []), original.baseModel].filter(Boolean))], modelSeparationRequired: true, modelClassificationPending: false, mergedProductIds: [...new Set([...(original.mergedProductIds || []), duplicate.id])], updatedAt: now });
-    tx.set(source.ref, next);
+    const identityUpdate = clean({ ...identity, id: source.id, slug: sourceSlug, name: `${profile.garmentFamily === 'regata' ? 'Regata' : profile.garmentFamily === 'oversized' ? 'Camiseta Oversized' : 'Camiseta Tradicional'} F PAC — ${profile.garmentModelName}`, sku: `FPAC-${profile.sourceCode}`, legacyReferences: [...new Set([...(original.legacyReferences || []), original.sku].filter(Boolean))], confirmedBaseModels: [...new Set([...(original.confirmedBaseModels || []), original.baseModel].filter(Boolean))], modelSeparationRequired: true, modelClassificationPending: false, mergedProductIds: [...new Set([...(original.mergedProductIds || []), duplicate.id])], updatedAt: now });
+    const next = { ...original, ...identityUpdate };
+    tx.update(source.ref, identityUpdate);
     tx.update(duplicate.ref, { status: 'archived', primeBaseEnabled: false, mergedIntoProductId: source.id, mergedIntoSlug: sourceSlug, mergedAt: now, updatedAt: now });
     for (const linked of links) if (![source.id, duplicate.id].includes(linked.id)) tx.update(linked.ref, { stockBaseSlug: sourceSlug, updatedAt: now });
     const result = { productId: source.id, sku: next.sku, physicalQuantity: balance.totalPhysicalStock, reservedQuantity: balance.totalReservedStock, archivedDuplicateId: duplicate.id };

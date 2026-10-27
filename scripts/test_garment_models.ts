@@ -1,4 +1,6 @@
 import assert from 'node:assert/strict';
+import express from 'express';
+import { createGarmentModelsRouter } from '../server/controllers/garmentModels.controller';
 import { garmentProfile, garmentProfiles, supplierSizeChart, garmentTitle } from '../shared/garmentModels';
 import { allocateGarments, resolveGarmentBase, isGarmentVariantAllowed, compatibleGarmentSource } from '../shared/sharedGarmentStock';
 import { cartAvailabilityIssues } from '../shared/cartAvailability';
@@ -118,4 +120,24 @@ await db.collection('products').doc('existing').update({variants:[{colorName:'Pr
 await transferGarmentModel(db,laterTransfer,'isolated');
 assert.equal((await inv('original-traditional')).variants.Preto_M.physicalQuantity,56,'Later classification uses the surviving pool');
 assert.deepEqual((await inv('garment-tig-001')).variants,{},'Archived duplicate remains empty');
-console.log('PASS supplier identity, measurements, classification, atomic/idempotent duplicate unification preserving stock and reservations, single public source, and subsequent transfers to the surviving pool.');
+// Exercise the HTTP boundary too: JSON bodies must be labeled as JSON.
+await db.collection('products').doc('http-source').set({...mixed,id:'http-source',slug:'http-source'});
+await db.collection('inventory').doc('http-source').set({variants:{Preto_M:{physicalQuantity:2,reservedQuantity:1}}});
+const httpApp = express();
+httpApp.use(express.json());
+httpApp.use('/models',createGarmentModelsRouter(()=>db));
+const listener = httpApp.listen(0,'127.0.0.1');
+await new Promise<void>(resolve=>listener.once('listening',resolve));
+try {
+  const address = listener.address() as {port:number};
+  const url = `http://127.0.0.1:${address.port}/models/unify`;
+  const body = JSON.stringify({sourceId:'http-source',garmentModelId:'TIG-002',expectedPhysicalQuantity:2,requestId:'http-unify'});
+  assert.equal((await fetch(url,{method:'POST',body})).status,400,'Unparsed text must not mutate stock');
+  assert.equal((await db.collection('products').doc('http-source').get()).data().garmentModelId,undefined);
+  const response = await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body});
+  const result:any = await response.json();
+  assert.equal(response.status,200); assert.equal(result.physicalQuantity,2); assert.equal(result.reservedQuantity,1);
+  const retry:any = await (await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body})).json();
+  assert.equal(retry.alreadyApplied,true);
+} finally { await new Promise<void>((resolve,reject)=>listener.close(error=>error?reject(error):resolve())); }
+console.log('PASS supplier identity, measurements, classification, atomic/idempotent duplicate unification preserving stock and reservations, HTTP JSON requests, single public source, and subsequent transfers to the surviving pool.');
