@@ -7,6 +7,7 @@ import { estimateCampaignPerformance } from '../../shared/financialDashboard';
 import { financialDateKey, isActiveFinancialRecord } from '../../shared/cashFlow';
 import { isSalesCashFlowEntry, SALES_MOVEMENT_MESSAGE } from '../../shared/financialMovementScope';
 import { LegacySalesHistory } from './admin/financial/LegacySalesHistory';
+import { MeiRevenueReport } from './admin/financial/MeiRevenueReport';
 import { CASH_FLOW_DESCRIPTION_OPTIONS, MANUAL_CASH_FLOW_CATEGORIES } from '../../shared/cashFlowOptions';
 import { parseCurrencyInput } from '../../shared/currencyInput';
 import React, { useState, useEffect, useMemo, useRef } from 'react';
@@ -112,7 +113,8 @@ export type FinancialSubTab =
   | 'traffic' 
   | 'products' 
   | 'sheets' 
-  | 'orders';
+  | 'orders'
+  | 'mei';
 
 export interface AdminFinancialProps {
   initialSubTab?: FinancialSubTab;
@@ -1089,12 +1091,12 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
           </div>
 
           <div className="flex flex-wrap gap-2">
-            <button 
+            {activeSubTab !== 'mei' && <button
               onClick={() => handleDownloadCSV(activeSubTab === 'cashflow' ? 'cashflow' : 'orders')}
               className="bg-[#eab308] text-black hover:bg-white transition-all px-4 py-2 text-[9px] font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer"
             >
               <Download size={13} /> Exportar CSV
-            </button>
+            </button>}
           </div>
         </div>
       </div>
@@ -1189,7 +1191,8 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
           { id: 'ledger', label: '9. Histórico', icon: <FileText size={14} /> },
           { id: 'traffic', label: '10. Tráfego Ads', icon: <BarChart3 size={14} /> },
           { id: 'products', label: '11. Margem por produto', icon: <Package size={14} /> },
-          { id: 'sheets', label: '12. Integração Sheets', icon: <FileSpreadsheet size={14} /> }
+          { id: 'sheets', label: '12. Integração Sheets', icon: <FileSpreadsheet size={14} /> },
+           { id: 'mei', label: '13. Relatório MEI', icon: <FileText size={14} /> }
         ].map(tab => (
           <button
             key={tab.id}
@@ -1208,6 +1211,7 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
       </div>
 
       {activeSubTab === 'expenses' && <ExpenseCenter cashflow={cashflow} investments={investments} traffic={traffic} />}
+      {activeSubTab === 'mei' && isAdmin && <MeiRevenueReport orders={orders} onOpenOrder={(order) => { if (order) setSelectedOrderForDrawer(order); }} />}
 
       {/* ----------------------------------------------------
           SUBTAB 1: DASHBOARD
