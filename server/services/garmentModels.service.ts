@@ -16,6 +16,49 @@ export async function readGarmentModels(db: any) {
   return { profiles: garmentProfiles(config.data()?.catalog), products: products.docs.map((doc: any) => ({ ...doc.data(), id: doc.id })), inventory: Object.fromEntries(inventory.docs.map((doc: any) => [doc.id, doc.data()])) };
 }
 
+/** Owner-confirmed duplicate: identify the stock-bearing record in place.
+ * No inventory, reservation, order or movement is rewritten or summed. */
+export async function unifyGarmentModel(db: any, input: any, actor: string) {
+  const { sourceId, garmentModelId, expectedPhysicalQuantity, requestId } = input || {};
+  if (![sourceId, garmentModelId, requestId].every(v => typeof v === 'string' && /^[a-zA-Z0-9_-]{1,100}$/.test(v)) || !Number.isSafeInteger(expectedPhysicalQuantity) || expectedPhysicalQuantity < 0) throw new Error('Confira os dois cadastros e o saldo atual.');
+  return db.runTransaction(async (tx: any) => {
+    const eventRef = db.collection('garment_model_events').doc(requestId);
+    const [event, config, products] = await Promise.all([tx.get(eventRef), tx.get(db.collection('pricing_workbench').doc('catalog')), tx.get(db.collection('products'))]);
+    const operation = { sourceId, garmentModelId, expectedPhysicalQuantity };
+    if (event.exists) {
+      if (event.data().type !== 'unify_empty_duplicate' || !Object.entries(operation).every(([key, value]) => event.data().operation?.[key] === value)) throw new Error('Identificador já usado por outra operação.');
+      return { ...event.data().result, alreadyApplied: true };
+    }
+    const source = products.docs.find((doc: any) => doc.id === sourceId);
+    const duplicate = products.docs.find((doc: any) => doc.id === garmentBaseId(garmentModelId));
+    const profile = garmentProfiles(config.data()?.catalog).find(p => p.garmentModelId === garmentModelId);
+    const original = source?.data(), extra = duplicate?.data();
+    if (!source || !duplicate || !profile || source.id === duplicate.id || original.productFinish !== 'plain' || original.garmentModelId || original.mergedIntoProductId || extra.mergedIntoProductId || extra.productFinish !== 'plain' || extra.garmentModelId !== garmentModelId || garmentFamily(original) !== profile.garmentFamily) throw new Error('Selecione a base original e o cadastro vazio do mesmo modelo.');
+    if (products.docs.some((doc: any) => ![source.id, duplicate.id].includes(doc.id) && doc.data().productFinish === 'plain' && doc.data().garmentModelId === garmentModelId && !doc.data().mergedIntoProductId && !['archived','inactive'].includes(doc.data().status))) throw new Error('Existe outra base deste modelo. Confira antes de unificar.');
+    const sourceSlug = original.slug || source.id, duplicateSlug = extra.slug || duplicate.id;
+    const [sourceInventory, duplicateInventory] = await Promise.all([tx.get(db.collection('inventory').doc(sourceSlug)), tx.get(db.collection('inventory').doc(duplicateSlug))]);
+    const inventory = sourceInventory.data() || {}, empty = duplicateInventory.data() || {};
+    const balance = totals(inventory.variants || {}), otherBalance = totals(empty.variants || {});
+    if (!sourceInventory.exists || balance.totalPhysicalStock !== expectedPhysicalQuantity) throw new Error('O saldo mudou. Atualize a tela antes de unificar.');
+    const hasBalance = [otherBalance.stock, otherBalance.totalReservedStock, empty.stock, empty.physicalQuantity, empty.totalPhysicalStock, empty.reservedQuantity, empty.totalReservedStock].some(n => Number(n) !== 0 && Number.isFinite(Number(n)));
+    if (hasBalance || Object.values(empty.variants || {}).some((v: any) => Number(v.physicalQuantity ?? v.stock ?? 0) !== 0 || Number(v.reservedQuantity ?? v.reserved ?? 0) !== 0)) throw new Error('O segundo cadastro possui saldo ou reservas. Esta unificação exige o duplicado vazio.');
+    if ((original.sizes || []).some((size: string) => !profile.sizes.includes(size))) throw new Error('Há tamanhos fora da ficha selecionada. Confira os cadastros.');
+    const links = products.docs.filter((doc: any) => [duplicate.id, duplicateSlug].includes(doc.data().stockBaseSlug));
+    if (links.some((doc: any) => doc.data().garmentModelId && doc.data().garmentModelId !== garmentModelId)) throw new Error('Há um vínculo de outro modelo. Confira os cadastros.');
+    const now = new Date().toISOString();
+    // Keep the original matrix and availability switches exactly as configured.
+    const { sizes: _sizes, ...identity } = profile;
+    const next = clean({ ...original, ...identity, id: source.id, slug: sourceSlug, name: `${profile.garmentFamily === 'regata' ? 'Regata' : profile.garmentFamily === 'oversized' ? 'Camiseta Oversized' : 'Camiseta Tradicional'} F PAC — ${profile.garmentModelName}`, sku: `FPAC-${profile.sourceCode}`, legacyReferences: [...new Set([...(original.legacyReferences || []), original.sku].filter(Boolean))], confirmedBaseModels: [...new Set([...(original.confirmedBaseModels || []), original.baseModel].filter(Boolean))], modelSeparationRequired: true, modelClassificationPending: false, mergedProductIds: [...new Set([...(original.mergedProductIds || []), duplicate.id])], updatedAt: now });
+    tx.set(source.ref, next);
+    tx.update(duplicate.ref, { status: 'archived', primeBaseEnabled: false, mergedIntoProductId: source.id, mergedIntoSlug: sourceSlug, mergedAt: now, updatedAt: now });
+    for (const linked of links) if (![source.id, duplicate.id].includes(linked.id)) tx.update(linked.ref, { stockBaseSlug: sourceSlug, updatedAt: now });
+    const result = { productId: source.id, sku: next.sku, physicalQuantity: balance.totalPhysicalStock, reservedQuantity: balance.totalReservedStock, archivedDuplicateId: duplicate.id };
+    tx.set(eventRef, { type: 'unify_empty_duplicate', operation, actor, sourceSlug, duplicateSlug, previousSource: original, previousDuplicate: extra, relinkedProductIds: links.map((doc: any) => doc.id), result, createdAt: now });
+    tx.set(db.collection('stock_movements').doc(`${requestId}_unify`), { productSlug: sourceSlug, type: 'product_merge', quantity: 0, reason: `Cadastros unificados: ${original.sku || source.id} + ${next.sku}. Saldo e reservas preservados.`, relatedTransferId: requestId, operator: actor, createdAt: now });
+    return { ...result, alreadyApplied: false };
+  });
+}
+
 /** Create empty, distinct pools. Never copy the legacy pool into both suppliers. */
 export async function initializeGarmentModels(db: any, actor: string) {
   return db.runTransaction(async (tx: any) => {
@@ -51,15 +94,18 @@ export async function transferGarmentModel(db: any, input: any, actor: string) {
   const { sourceId, garmentModelId, variantKey, quantity, expectedPhysicalQuantity, requestId } = input || {};
   if (![sourceId, garmentModelId, requestId].every(v => typeof v === 'string' && /^[a-zA-Z0-9_-]{1,100}$/.test(v)) || typeof variantKey !== 'string' || !variantKey || variantKey.length > 150 || /[./]/.test(variantKey) || !Number.isSafeInteger(quantity) || quantity <= 0 || !Number.isSafeInteger(expectedPhysicalQuantity)) throw new Error('Confira modelo, variação, quantidade e saldo contado.');
   return db.runTransaction(async (tx: any) => {
-    const eventRef = db.collection('garment_model_events').doc(requestId), targetId = garmentBaseId(garmentModelId);
-    const [event, config, source, target] = await Promise.all([tx.get(eventRef), tx.get(db.collection('pricing_workbench').doc('catalog')), tx.get(db.collection('products').doc(sourceId)), tx.get(db.collection('products').doc(targetId))]);
+    const eventRef = db.collection('garment_model_events').doc(requestId);
+    const [event, config, source, products] = await Promise.all([tx.get(eventRef), tx.get(db.collection('pricing_workbench').doc('catalog')), tx.get(db.collection('products').doc(sourceId)), tx.get(db.collection('products'))]);
     const operation = { sourceId, garmentModelId, variantKey, quantity, expectedPhysicalQuantity };
     if (event.exists) {
       if (!Object.entries(operation).every(([key, value]) => event.data().operation?.[key] === value)) throw new Error('Identificador já utilizado por outra transferência. Atualize a tela.');
       return { transferred: quantity, alreadyApplied: true };
     }
-    const sourceData = source.data(), targetData = target.data(), profile = garmentProfiles(config.data()?.catalog).find(p => p.garmentModelId === garmentModelId);
-    if (!source.exists || !target.exists || sourceData.productFinish !== 'plain' || sourceData.garmentModelId || !profile || targetData.garmentModelId !== garmentModelId || garmentFamily(sourceData) !== profile.garmentFamily) throw new Error('Selecione uma base mista e um modelo compatível.');
+    const matches = products.docs.filter((doc: any) => doc.data().productFinish === 'plain' && doc.data().garmentModelId === garmentModelId && !doc.data().mergedIntoProductId && !['archived','inactive'].includes(doc.data().status));
+    const target = matches.length === 1 ? matches[0] : undefined;
+    const sourceData = source.data(), targetData = target?.data(), profile = garmentProfiles(config.data()?.catalog).find(p => p.garmentModelId === garmentModelId);
+    if (!source.exists || !target || sourceData.productFinish !== 'plain' || sourceData.garmentModelId || !profile || targetData.garmentModelId !== garmentModelId || garmentFamily(sourceData) !== profile.garmentFamily) throw new Error('Selecione uma base mista e um modelo compatível.');
+    const targetId = targetData.slug || target.id;
     const sourceSlug = sourceData.slug || sourceId;
     if (sourceSlug === targetId) throw new Error('Origem e destino precisam ser diferentes.');
     const sourceRef = db.collection('inventory').doc(sourceSlug), targetRef = db.collection('inventory').doc(targetId);

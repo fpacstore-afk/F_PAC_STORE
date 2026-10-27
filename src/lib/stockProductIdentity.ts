@@ -1,4 +1,5 @@
 import { manualProductIdentity } from './manualProductIdentity';
+import { garmentTitle } from '../../shared/garmentModels';
 
 const normalize = (value: unknown) => String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
 
@@ -35,7 +36,7 @@ export function stockProductIdentity(product: any, designs: Array<{ id: string; 
     return String(design?.name || design?.code || id).trim();
   }));
   const identity = manualProductIdentity({ ...product, stampNames: stamps });
-  const baseName = readableName([product.name, product.garmentModelName, product.supplierName].filter(Boolean).join(' · '));
+  const baseName = readableName([garmentTitle(product.name || 'Produto', product), product.supplierName].filter(Boolean).join(' · '));
   const artwork = stamps.filter(stamp => !normalize(baseName).includes(normalize(stamp)));
   const withArtwork = artwork.length ? `${baseName} ${artwork.join(' + ')}` : baseName;
   const color = singleColor(product);

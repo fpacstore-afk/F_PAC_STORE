@@ -33,4 +33,8 @@ Catálogo e página do produto permitem escolher a ficha exata antes de cor e ta
 
 ## Validação
 
+### Cadastros confirmados como a mesma peça
+
+Em **Modelos e fornecedores**, escolher a base antiga e a ficha exata, e usar **Unificar cadastros da mesma peça**. A operação autenticada `/api/admin/garment-models/unify` exige que o cadastro adicional esteja sem saldo e sem reservas, confere o saldo esperado e mantém o produto e o documento de estoque originais. Não soma nem movimenta unidades. Mantém cores, tamanhos, variantes inativas, reservas e históricos; identifica a base original pelo modelo e arquiva o duplicado com referência ao registro preservado. Vínculos futuros apontam para a base sobrevivente. Uma confirmação explícita de compatibilidade mantém o vínculo dos nomes antigos do modelo. Repetições da mesma solicitação não duplicam a auditoria. Os testes incluem saldo alterado, duplicado com reserva, conservação integral do estoque, seleção pública única e transferências futuras.
+
 `test:garment-models` usa banco isolado: identidade, tabelas, privacidade, criação de saldos vazios, transferência conservativa/idempotente, reservas, concorrência por saldo esperado, checkout autoritativo e sacola. A suíte completa anterior foi executada. TypeScript, build e preflight em ambiente production também são obrigatórios antes do merge. Nenhuma simulação cria pagamento ou notificação real.

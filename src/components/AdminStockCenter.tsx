@@ -128,7 +128,7 @@ export function AdminStockCenter() {
     finally { setCompletingCosts(false); }
   };
   const products = useMemo(
-    () => mergeProductsWithPrivateCosts(rawProducts, costsByProductId),
+    () => mergeProductsWithPrivateCosts(rawProducts, costsByProductId).filter((product: any) => !product.mergedIntoProductId),
     [rawProducts, costsByProductId]
   );
   const duplicateReferences = useMemo(() => duplicateProductReferences(products), [products]);
