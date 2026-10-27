@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { getDb } from '../firebase.js';
-import { initializeGarmentModels, readGarmentModels, transferGarmentModel } from '../services/garmentModels.service.js';
+import { initializeGarmentModels, readGarmentModels, transferGarmentModel, unifyGarmentModel } from '../services/garmentModels.service.js';
 export function createGarmentModelsRouter(dbProvider = getDb) {
   const router = Router();
   router.use((_req, res, next) => { res.setHeader('Cache-Control', 'private, no-store'); next(); });
@@ -8,5 +8,6 @@ export function createGarmentModelsRouter(dbProvider = getDb) {
   router.get('/', handle(() => readGarmentModels(dbProvider())));
   router.post('/initialize', handle((req: any) => initializeGarmentModels(dbProvider(), req.user?.uid || 'admin')));
   router.post('/transfer', handle((req: any) => transferGarmentModel(dbProvider(), req.body, req.user?.uid || 'admin')));
+  router.post('/unify', handle((req: any) => unifyGarmentModel(dbProvider(), req.body, req.user?.uid || 'admin')));
   return router;
 }

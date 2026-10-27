@@ -10,6 +10,7 @@ export const stockSlug = (product: StockProduct) => String(product.slug || produ
 export function compatibleGarmentSource(product: StockProduct, base: StockProduct) {
   const model = normalized(product.baseModel);
   if (model !== normalized(base.baseModel)) return false;
+  if ((base.confirmedBaseModels || []).some((value: string) => normalized(value) === model)) return true;
   if (!base.garmentModelId || product.garmentModelId) return true;
   if (/suedine|oversized premium 240gsm/.test(model)) return /suedine/.test(normalized(base.sourceProductName || base.name));
   return true;

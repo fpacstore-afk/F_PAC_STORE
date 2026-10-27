@@ -111,7 +111,7 @@ export function useInventory({ administrative = false, enabled = true }: { admin
           merged.push(dynamicP);
         }
       });
-      setProducts(merged);
+      setProducts(merged.filter((product: any) => !product.mergedIntoProductId));
     }, (error) => {
       handleFirestoreError(error, OperationType.LIST, 'products');
       setProducts(staticProducts);
