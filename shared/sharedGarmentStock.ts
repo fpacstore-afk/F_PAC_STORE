@@ -46,7 +46,11 @@ export function variantAvailable(data: any, key: string): number {
 export function isGarmentVariantAllowed(product: StockProduct, key: string): boolean {
   const colors = Array.isArray(product.colors) ? product.colors.filter((c: any) => typeof c === 'string' || (c?.active !== false && c?.available !== false && c?.status !== 'inactive')).map((c: any) => typeof c === 'string' ? c : c.name) : [];
   const sizes = Array.isArray(product.sizes) ? product.sizes : [];
-  return (!colors.length || colors.some((color: string) => key.startsWith(`${color}_`))) && (!sizes.length || sizes.some((size: string) => key.endsWith(`_${size}`)));
+  const size = sizes.find((value: string) => key.endsWith(`_${value}`));
+  const color = size ? key.slice(0, -(size.length + 1)) : key.slice(0, key.lastIndexOf('_'));
+  const restricted = (product.sourceRestrictions || product.restrictions || []).some((rule: any) => (rule.colors || []).some((value: string) => normalized(value) === normalized(color)) && !(rule.sizes || []).includes(size));
+  const configured = (product.variants || []).find((variant: any) => variant.colorName === color && variant.size === size);
+  return !restricted && configured?.active !== false && (!colors.length || colors.some((color: string) => key.startsWith(`${color}_`))) && (!sizes.length || Boolean(size));
 }
 
 /** Legacy catalog quantities described sale options, not physical ready pieces.

@@ -92,7 +92,7 @@ export async function loadPublicCatalog(database = getDb()) {
     if (projected && !base) delete projected.stockBaseSlug;
     if (projected && base?.garmentModelId) Object.assign(projected, ...['garmentModelId','garmentModelName','neckline','collar','sizeChartMode','sizeChart','fabric','gsm','fit','specs'].map(key => ({ [key]: base[key] })));
     if (projected && garmentFamily(product) && product.modelSeparationRequired && !product.garmentModelId) {
-      projected.garmentOptions = rawProducts.filter(p => p.productFinish === 'plain' && p.garmentModelId && p.baseModel === product.baseModel && !['inactive','archived'].includes(p.status)).map(p => projectPrimeBase(p.id, p)).filter(Boolean);
+      projected.garmentOptions = rawProducts.filter(p => p.productFinish === 'plain' && p.garmentModelId && p.baseModel === product.baseModel && !['inactive','archived'].includes(p.status)).map(p => { const option = projectPrimeBase(p.id, p); if (!option) return null; return { ...option, sizes: (option.sizes || []).filter((size: string) => !product.sizes?.length || product.sizes.includes(size)), colors: (option.colors || []).filter((color: any) => !product.colors?.length || product.colors.some((allowed: any) => (typeof allowed === 'string' ? allowed : allowed.name) === color.name)) }; }).filter(Boolean);
     }
     return projected && base ? { ...projected, stockBaseSlug: stockSlug(base), fulfillment: 'made_to_order' } : projected;
   }).filter(Boolean);

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { garmentProfile, garmentProfiles, supplierSizeChart, garmentTitle } from '../shared/garmentModels';
-import { allocateGarments, resolveGarmentBase } from '../shared/sharedGarmentStock';
+import { allocateGarments, resolveGarmentBase, isGarmentVariantAllowed } from '../shared/sharedGarmentStock';
 import { cartAvailabilityIssues } from '../shared/cartAvailability';
 import { getDb } from '../server/firebase';
 import { initializeGarmentModels, transferGarmentModel } from '../server/services/garmentModels.service';
@@ -14,6 +14,8 @@ await db.collection('pricing_workbench').doc('catalog').set({ catalog: { entries
 assert.equal(garmentProfile(entries[0])!.neckline, 'high_closed');
 assert.equal(garmentProfile(entries[1])!.neckline, 'classic_open');
 assert.equal(garmentProfiles({entries}).length, 4);
+assert.equal(isGarmentVariantAllowed({sizes:['P','M'],colors:[{name:'Branco'}],sourceRestrictions:[{colors:['Branco'],sizes:['P']}]},'Branco_M'),false);
+assert.equal(isGarmentVariantAllowed({sizes:['P','M'],colors:[{name:'Branco'}],sourceRestrictions:[{colors:['Branco'],sizes:['P']}]},'Branco_P'),true);
 assert.deepEqual(supplierSizeChart(entries[0]).find(row=>row.size==='M'), {size:'M',length:'68 cm',width:'52 cm',sleeve:'18 cm'});
 assert.deepEqual(supplierSizeChart(entries[1])[0], {size:'M',length:'71 cm',width:'56 cm',sleeve:'24 cm'});
 assert.deepEqual(supplierSizeChart(entries[2]).find(row=>row.size==='M'),{size:'M',length:'73 cm',width:'55 cm',sleeve:'25 cm'});
