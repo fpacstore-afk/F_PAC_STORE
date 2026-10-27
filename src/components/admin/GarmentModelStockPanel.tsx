@@ -35,7 +35,7 @@ export function GarmentModelStockPanel() {
     {variant && <p className="my-3 text-sm">Físico: {physical} · Reservado: {reserved} · Livre para separar: {Math.max(0, physical - reserved)}</p>}
     <button disabled={busy || !sourceId || !modelId || !variantKey || !Number.isSafeInteger(Number(quantity)) || Number(quantity) <= 0} className="mt-3 min-h-11 rounded-lg bg-[#eab308] px-4 text-sm font-bold disabled:opacity-50" onClick={() => void run(async () => {
       pending.current ||= { sourceId, garmentModelId: modelId, variantKey, quantity: Number(quantity), expectedPhysicalQuantity: physical, requestId: crypto.randomUUID() };
-      const response = await authenticatedFetch('/api/admin/garment-models/transfer', { method: 'POST', body: JSON.stringify(pending.current) }); const result = await parseApiJson<any>(response);
+      const response = await authenticatedFetch('/api/admin/garment-models/transfer', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(pending.current) }); const result = await parseApiJson<any>(response);
       if (!response.ok) throw new Error(result.error || 'Não foi possível transferir.');
       pending.current = null; await load(); setQuantity(''); setMessage(`Separação registrada: ${result.transferred} peça(s). Total preservado entre origem e destino.`);
     })}>Transferir peças conferidas</button>
@@ -45,7 +45,7 @@ export function GarmentModelStockPanel() {
       <button disabled={busy} className="min-h-11 rounded-lg border border-black px-4 text-sm font-bold disabled:opacity-50" onClick={() => void run(async () => {
         const previous = pendingUnification.current;
         if (!previous || previous.sourceId !== sourceId || previous.garmentModelId !== modelId || previous.expectedPhysicalQuantity !== totalPhysical) pendingUnification.current = { sourceId, garmentModelId: modelId, expectedPhysicalQuantity: totalPhysical, requestId: crypto.randomUUID() };
-        const response = await authenticatedFetch('/api/admin/garment-models/unify', { method: 'POST', body: JSON.stringify(pendingUnification.current) });
+        const response = await authenticatedFetch('/api/admin/garment-models/unify', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(pendingUnification.current) });
         const result = await parseApiJson<any>(response);
         if (!response.ok) throw new Error(result.error || 'Não foi possível unificar.');
         pendingUnification.current = null; await load(); setSourceId(''); setModelId(''); setVariantKey(''); setQuantity('');
