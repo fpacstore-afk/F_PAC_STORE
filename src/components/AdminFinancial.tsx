@@ -1091,12 +1091,12 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
           </div>
 
           <div className="flex flex-wrap gap-2">
-            <button 
-              onClick={() => activeSubTab !== 'mei' && handleDownloadCSV(activeSubTab === 'cashflow' ? 'cashflow' : 'orders')}
+            {activeSubTab !== 'mei' && <button
+              onClick={() => handleDownloadCSV(activeSubTab === 'cashflow' ? 'cashflow' : 'orders')}
               className="bg-[#eab308] text-black hover:bg-white transition-all px-4 py-2 text-[9px] font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer"
             >
-              <Download size={13} /> {activeSubTab === 'mei' ? 'CSV dentro do relatório MEI' : 'Exportar CSV'}
-            </button>
+              <Download size={13} /> Exportar CSV
+            </button>}
           </div>
         </div>
       </div>
