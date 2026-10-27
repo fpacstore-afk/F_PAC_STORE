@@ -2969,7 +2969,7 @@ export default function ProductDetail() {
                       TECIDO / COMPOSIÇÃO
                     </span>
                     <span className="text-[11px] font-extrabold text-zinc-950 uppercase mt-0.5 block">
-                      {product.fabric || (product.slug === "prime" ? "100% ALGODÃO PENTEADO PREMIUM" : "100% ALGODÃO PELETIZED HEAVYWEIGHT")}
+                      {product.fabric || "COMPOSIÇÃO EM CONFERÊNCIA"}
                     </span>
                   </div>
 
@@ -2978,7 +2978,7 @@ export default function ProductDetail() {
                       GRAMATURA
                     </span>
                     <span className="text-[11px] font-extrabold text-zinc-950 uppercase mt-0.5 block">
-                      {product.gsm || (product.slug === "prime" ? "220 G/M² COTTON COMFORT" : "240 G/M² MONSTER HEAVYWEIGHT")}
+                      {product.gsm || "GRAMATURA EM CONFERÊNCIA"}
                     </span>
                   </div>
 
