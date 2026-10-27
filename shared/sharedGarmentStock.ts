@@ -6,6 +6,15 @@ export type InventoryAllocation = { productSlug: string; variantKey: string; qua
 const normalized = (value: unknown) => String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase().replace(/\s+/g, ' ');
 export const stockSlug = (product: StockProduct) => String(product.slug || product.id || '').trim();
 
+/** Legacy Suedine templates may switch supplier, never silently switch fabric. */
+export function compatibleGarmentSource(product: StockProduct, base: StockProduct) {
+  const model = normalized(product.baseModel);
+  if (model !== normalized(base.baseModel)) return false;
+  if (!base.garmentModelId || product.garmentModelId) return true;
+  if (/suedine|oversized premium 240gsm/.test(model)) return /suedine/.test(normalized(base.sourceProductName || base.name));
+  return true;
+}
+
 export function resolveGarmentBase(product: StockProduct, products: StockProduct[]): StockProduct | undefined {
   if (product.productFinish === 'plain' || product.stockMode === 'ready_only') return undefined;
   const bases = products.filter(p => p.productFinish === 'plain' && !['archived', 'inactive'].includes(String(p.status)));
@@ -13,7 +22,7 @@ export function resolveGarmentBase(product: StockProduct, products: StockProduct
   if (product.stockBaseSlug) return bases.find(p => [p.id, p.slug].includes(product.stockBaseSlug) && sameGarmentModel(product, p));
   const model = normalized(product.baseModel);
   if (!model || /outro|sem modelo/.test(model)) return undefined;
-  const matches = bases.filter(p => normalized(p.baseModel) === model && sameGarmentModel(product, p));
+  const matches = bases.filter(p => compatibleGarmentSource(product, p) && sameGarmentModel(product, p));
   // Ambiguous physical bases need an explicit choice, never an invented pool.
   return matches.length === 1 ? matches[0] : undefined;
 }

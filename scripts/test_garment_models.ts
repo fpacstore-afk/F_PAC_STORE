@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { garmentProfile, garmentProfiles, supplierSizeChart, garmentTitle } from '../shared/garmentModels';
-import { allocateGarments, resolveGarmentBase, isGarmentVariantAllowed } from '../shared/sharedGarmentStock';
+import { allocateGarments, resolveGarmentBase, isGarmentVariantAllowed, compatibleGarmentSource } from '../shared/sharedGarmentStock';
 import { cartAvailabilityIssues } from '../shared/cartAvailability';
 import { getDb } from '../server/firebase';
 import { initializeGarmentModels, transferGarmentModel } from '../server/services/garmentModels.service';
@@ -26,6 +26,8 @@ assert.equal(regata!.neckline,'tank');
 assert.deepEqual(regata!.sizeChart.find(row=>row.size==='M'),{size:'M',length:'67 cm',width:'55 cm',sleeve:''});
 assert.equal(regata!.gsm,'160 g/m²');
 assert.equal(garmentTitle('Camisa', {garmentModelName:'Gola alta'}),'Camisa — Gola alta');
+assert.equal(compatibleGarmentSource({baseModel:'Tradicional Suedine'},{baseModel:'Tradicional Suedine',garmentModelId:'TIG-001',sourceProductName:'Camiseta 30.1'}),false);
+assert.equal(compatibleGarmentSource({baseModel:'Tradicional Suedine'},{baseModel:'Tradicional Suedine',garmentModelId:'TIG-002',sourceProductName:'Camiseta Suedine'}),true);
 
 const mixed = {id:'mixed',slug:'mixed-pool',name:'Camiseta Tradicional F PAC',baseModel:'Tradicional Suedine',productFinish:'plain',status:'draft',primeBaseEnabled:true,sizes:['M'],colors:[{name:'Preto',hex:'#123456'}]};
 const print = {id:'design',slug:'design',name:'Camiseta Tradicional F PAC',baseModel:'Tradicional Suedine',productFinish:'printed',status:'active',price:79.9,sizes:['M'],colors:[{name:'Preto',hex:'#123456'}],images:['shirt.jpg']};

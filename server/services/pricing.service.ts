@@ -1,3 +1,4 @@
+import { compatibleGarmentSource } from '../../shared/sharedGarmentStock';
 import { garmentFamily, garmentTitle } from '../../shared/garmentModels';
 import { isCatalogSleeveSize } from '../../shared/primeArtworkSizing.js';
 import { isPrimeStampCompatible } from '../../shared/primeStampCompatibility.js';
@@ -289,7 +290,7 @@ export async function calculateOrderPricing(input: PricingInput, context: Partia
     if (requestedModel && canonicalProductData?.garmentModelId && requestedModel !== canonicalProductData.garmentModelId) throw new Error('O modelo escolhido não corresponde ao produto.');
     if (requestedModel && !canonicalProductData?.garmentModelId) {
       const bases = await db.collection('products').where('garmentModelId', '==', requestedModel).get();
-      const compatible = bases.docs.filter(doc => { const p = doc.data(); return p.productFinish === 'plain' && p.baseModel === canonicalProductData?.baseModel && !['inactive','archived'].includes(p.status); });
+      const compatible = bases.docs.filter(doc => { const p = doc.data(); return p.productFinish === 'plain' && compatibleGarmentSource(canonicalProductData || {}, p) && !['inactive','archived'].includes(p.status); });
       if (compatible.length !== 1) throw new Error('Modelo físico indisponível. Confira a peça escolhida.');
       physicalModel = compatible[0].data();
       dbCost = undefined;

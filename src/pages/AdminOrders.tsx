@@ -1,3 +1,4 @@
+import { compatibleGarmentSource } from '../../shared/sharedGarmentStock';
 import { garmentFamily, garmentTitle } from '../../shared/garmentModels';
 import { collection, deleteDoc, doc, getDoc, onSnapshot, orderBy, query, serverTimestamp, setDoc, updateDoc, writeBatch } from 'firebase/firestore';
 import { AnimatePresence, motion } from 'framer-motion';
@@ -666,7 +667,7 @@ function AdminOrdersInner() {
   const readyManualProducts = currentProducts.filter(product => !isPlainManualProduct(product) && !['draft', 'archived', 'inactive'].includes(product.status))
     .flatMap(product => {
       const models = product.modelSeparationRequired && !product.garmentModelId && garmentFamily(product)
-        ? currentProducts.filter(base => isPlainManualProduct(base) && base.garmentModelId && base.baseModel === product.baseModel && !['archived','inactive'].includes(base.status)) : [];
+        ? currentProducts.filter(base => isPlainManualProduct(base) && base.garmentModelId && compatibleGarmentSource(product, base) && !['archived','inactive'].includes(base.status)) : [];
       const choices = models.length ? models.map(base => ({ ...product, garmentModelId: base.garmentModelId, garmentModelName: base.garmentModelName, neckline: base.neckline, supplierName: base.supplierName, stockBaseSlug: base.slug || base.id, sizes: base.sizes, colors: base.colors, name: garmentTitle(product.name, base) })) : [product];
       return choices.map(choice => ({ ...choice, stampNames: (choice.stampIds || []).map(id => catalogStamps.find(stamp => stamp.id === id)?.name).filter(Boolean) }));
     });
