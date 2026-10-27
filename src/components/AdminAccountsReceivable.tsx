@@ -30,7 +30,8 @@ import {
   ShieldCheck, 
   History, 
   ChevronRight,
-  Receipt
+  Receipt,
+  MessageCircle
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { 
@@ -44,6 +45,7 @@ import {
   getPaymentBadgeType 
 } from '../utils/orderFinancial';
 import { FinancialEvent } from '../types/financial';
+import { getReceivableWhatsAppLink } from '../../shared/receivableWhatsApp';
 import { parseCurrencyInput } from '../../shared/currencyInput';
 import { receivableMatchesPeriod, type ReceivableDateBasis } from '../../shared/financialDashboard';
 
@@ -594,6 +596,7 @@ export default function AdminAccountsReceivable({ initialSearchTerm = '', onNavi
                   const pending = getOrderPendingAmount(order);
                   const refunded = getOrderRefundedAmount(order);
                   const dueDate = getOrderPaymentDueDate(order);
+                  const whatsappLink = getReceivableWhatsAppLink(order);
                   const createdDate = order.createdAt?.toDate ? order.createdAt.toDate() : (order.createdAt ? new Date(order.createdAt) : null);
 
                   return (
@@ -672,6 +675,29 @@ export default function AdminAccountsReceivable({ initialSearchTerm = '', onNavi
                       {/* Ações */}
                       <td className="py-3 px-4 text-right">
                         <div className="flex items-center justify-end gap-1.5">
+                          {whatsappLink.url ? (
+                            <a
+                              href={whatsappLink.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="px-2 py-1 bg-emerald-600 text-white hover:bg-emerald-700 transition-all text-[8px] font-black uppercase tracking-wider inline-flex items-center gap-1 whitespace-nowrap"
+                              title="Abrir WhatsApp do cliente com a mensagem de pendência para revisar e enviar"
+                              aria-label={`Abrir WhatsApp sobre a pendência do pedido #${order.id}`}
+                            >
+                              <MessageCircle size={12} /> WhatsApp
+                            </a>
+                          ) : (
+                            <button
+                              type="button"
+                              disabled
+                              title={whatsappLink.unavailableReason || undefined}
+                              aria-label={`WhatsApp indisponível: ${whatsappLink.unavailableReason}`}
+                              className="px-2 py-1 bg-gray-100 text-gray-400 text-[8px] font-black uppercase tracking-wider inline-flex items-center gap-1 whitespace-nowrap cursor-not-allowed"
+                            >
+                              <MessageCircle size={12} /> WhatsApp
+                            </button>
+                          )}
+
                           {/* Registrar Pagamento */}
                           {pending > 0 && (
                             <button
