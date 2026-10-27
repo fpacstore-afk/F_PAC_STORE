@@ -1,3 +1,4 @@
+import { garmentProfile, garmentTitle } from '../../../shared/garmentModels';
 import React, { useEffect, useState } from 'react';
 import { Link2, Plus, Trash2, Upload } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -219,7 +220,8 @@ export function ManualCustomProductForm({ stamps, disabled = false, isGift, onAd
       toast.error('Adicione pelo menos uma peça com tamanho e quantidade válidos.');
       return;
     }
-    onAdd(items);
+    const physical = garmentProfile(costProduct);
+    onAdd(physical ? items.map(item => ({ ...item, displayName: garmentTitle(item.displayName || item.product.name, physical), product: { ...item.product, garmentModelId: physical.garmentModelId, garmentModelName: physical.garmentModelName, neckline: physical.neckline } })) : items);
     // Cada inclusão cria um novo grupo de produto; os itens anteriores ficam no carrinho.
     setProductName('');
     setModel('');

@@ -1,4 +1,4 @@
-export type ProductVisualKind = 'oversized' | 'traditional' | 'cropped' | 'hoodie' | 'shorts' | 'cap';
+export type ProductVisualKind = 'oversized' | 'traditional' | 'cropped' | 'hoodie' | 'shorts' | 'cap' | 'regata';
 
 export interface ProductVisualDefinition {
   kind: ProductVisualKind;
@@ -14,6 +14,7 @@ export const PRODUCT_VISUALS: Readonly<Record<ProductVisualKind, ProductVisualDe
   cropped: { kind: 'cropped', label: 'Cropped Oversized', spriteIndex: 2, frontMax: [30, 35], backMax: [30, 40] },
   hoodie: { kind: 'hoodie', label: 'Moletom / Casaco', spriteIndex: 3, frontMax: [30, 25], backMax: [30, 40] },
   shorts: { kind: 'shorts', label: 'Bermuda', spriteIndex: 4, frontMax: [3, 3], backMax: [10, 10] },
+  regata: { kind: 'regata', label: 'Regata', spriteIndex: 0, frontMax: [30, 40], backMax: [30, 40] },
   cap: { kind: 'cap', label: 'Boné', spriteIndex: 5, frontMax: [12, 8], backMax: [10, 6] },
 });
 
@@ -33,6 +34,7 @@ export function getProductVisualKind(product: any): ProductVisualKind {
     ...(Array.isArray(product?.tags) ? product.tags : []),
   ].filter(Boolean).join(' '));
 
+  if (/regata|tank/.test(source)) return 'regata';
   if (/cropped|boxy feminina|feminino/.test(source)) return 'cropped';
   if (/moletom|casaco|hoodie|jacket|jaqueta/.test(source)) return 'hoodie';
   if (/bermuda|shorts|short|cargo/.test(source)) return 'shorts';

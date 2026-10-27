@@ -1,3 +1,4 @@
+import { garmentFamily, garmentTitle } from '../../shared/garmentModels';
 import { isCatalogSleeveSize } from '../../shared/primeArtworkSizing.js';
 import { isPrimeStampCompatible } from '../../shared/primeStampCompatibility.js';
 import { calculateStorefrontTotals, selectActivePromotion } from '../../shared/storefrontTotals.js';
@@ -56,6 +57,7 @@ interface PricingInput {
       orientationInstruction?: string;
     }>;
     baseProductSlug?: string;
+    garmentModelId?: string;
   }>;
   customerInfo: {
     cep?: string;
@@ -282,6 +284,22 @@ export async function calculateOrderPricing(input: PricingInput, context: Partia
       }
     }
 
+    let physicalModel = canonicalProductData;
+    const requestedModel = String(rawItem.garmentModelId || '').trim();
+    if (requestedModel && canonicalProductData?.garmentModelId && requestedModel !== canonicalProductData.garmentModelId) throw new Error('O modelo escolhido não corresponde ao produto.');
+    if (requestedModel && !canonicalProductData?.garmentModelId) {
+      const bases = await db.collection('products').where('garmentModelId', '==', requestedModel).get();
+      const compatible = bases.docs.filter(doc => { const p = doc.data(); return p.productFinish === 'plain' && p.baseModel === canonicalProductData?.baseModel && !['inactive','archived'].includes(p.status); });
+      if (compatible.length !== 1) throw new Error('Modelo físico indisponível. Confira a peça escolhida.');
+      physicalModel = compatible[0].data();
+      dbCost = undefined;
+    }
+    if (canonicalProductData?.modelSeparationRequired && garmentFamily(canonicalProductData)) {
+      if (!physicalModel?.garmentModelId) throw new Error('Escolha um modelo com estoque conferido por fornecedor.');
+      if (!(physicalModel.sizes || []).includes(size) || !(physicalModel.colors || []).some((c: any) => (typeof c === 'string' ? c : c.name) === color)) throw new Error('Cor ou tamanho indisponível para este modelo.');
+    }
+    const garmentSnapshot = physicalModel?.garmentModelId ? { garmentModelId: physicalModel.garmentModelId, garmentModelName: String(physicalModel.garmentModelName || ''), neckline: String(physicalModel.neckline || ''), stockBaseSlug: physicalModel.productFinish === 'plain' ? String(physicalModel.slug || '') : String(physicalModel.stockBaseSlug || '') } : {};
+
     const hasCatalogCost = typeof dbCost === 'number' && dbCost > 0;
     const hasCustomPrintCostsToReview = isPrimeCustom && Boolean(customization?.prints?.length);
     const isCostComplete = hasCatalogCost && canonicalProductData?.costCalculation?.coverage !== 'partial' && !hasCustomPrintCostsToReview;
@@ -303,7 +321,7 @@ export async function calculateOrderPricing(input: PricingInput, context: Partia
     const variantKey = (rawItem as any).variantKey || `${color}_${size}`;
     const variantId = (rawItem as any).variantId || variantKey;
     const canonicalParentSlug = isPrimeCustom ? String(canonicalProductData?.slug || canonicalProductId) : String(canonicalProductData?.parentSlug || slug).trim();
-    const canonicalName = String(canonicalProductData?.name || name).trim().slice(0, 200);
+    const canonicalName = garmentTitle(String(canonicalProductData?.name || name).trim(), physicalModel).slice(0, 300);
     const canonicalSkuBase = String(canonicalProductData?.sku || '').trim();
     const sku = canonicalSkuBase
       ? `${canonicalSkuBase}-${color.substring(0, 2).toUpperCase()}-${size.toUpperCase()}`
@@ -316,6 +334,7 @@ export async function calculateOrderPricing(input: PricingInput, context: Partia
       name: canonicalName, price: unitPrice, originalPrice, quantity, color, size, image: '', category,
     });
     verifiedItems.push({
+      ...garmentSnapshot,
       id: rawItem.id || (slug ? `${slug}_${variantKey}` : `item-${Date.now()}`),
       productId: canonicalProductId || pricingSlug || slug,
       slug: pricingSlug || slug,

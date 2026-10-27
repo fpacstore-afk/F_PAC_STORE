@@ -9,6 +9,8 @@ import path from "path";
 import fs from "fs";
 import dotenv from "dotenv";
 import cors from "cors";
+import { createGarmentModelsRouter } from "./server/controllers/garmentModels.controller.js";
+import { GARMENT_MODEL_REVISION, garmentProfiles } from "./shared/garmentModels.js";
 import helmet from "helmet";
 import { ShippingStatus } from "./server/types/order.types.js";
 
@@ -252,6 +254,14 @@ const isAllowedOrigin = (origin: string | undefined): boolean => {
 };
 
 app.set('trust proxy', 1);
+app.get('/api/garment-models', catalogReadLimiter, cors({ origin: 'https://fpac-estudio-mockups.fpacstore.chatgpt.site', methods: ['GET'] }), async (_req, res) => {
+  try {
+    const config = await getDb().collection('pricing_workbench').doc('catalog').get();
+    const profiles = garmentProfiles(config.data()?.catalog).map(({ supplierName, sourceProductName, sourceCode, sourceColors, sourceRestrictions, ...profile }) => ({ ...profile, colors: sourceColors, restrictions: sourceRestrictions }));
+    res.setHeader('Cache-Control', 'public, max-age=60');
+    res.json({ revision: GARMENT_MODEL_REVISION, profiles });
+  } catch { res.status(503).json({ error: 'GARMENT_MODELS_UNAVAILABLE' }); }
+});
 app.use(cors({
   origin: (origin, callback) => {
     if (isAllowedOrigin(origin)) {
@@ -323,6 +333,7 @@ console.log('----------------------------------------------------');
 
 // 5. API Routes Router
 const apiRouter = express.Router();
+apiRouter.use('/admin/garment-models', adminApiLimiter, authenticateAdmin, createGarmentModelsRouter());
 apiRouter.use('/admin/pricing-workbench', adminApiLimiter, authenticateAdmin, createPricingRouter());
 apiRouter.use('/admin/orders/:orderId/mockup-approvals', adminApiLimiter, authenticateAdmin, createMockupAdminRouter());
 apiRouter.use('/mockup-approvals', publicApiLimiter, createMockupPublicRouter());

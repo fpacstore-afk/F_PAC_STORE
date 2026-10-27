@@ -1,3 +1,4 @@
+import { applyGarmentProfile, garmentFamily, garmentProfiles, requiresGarmentClassification } from '../../shared/garmentModels';
 import { resolveGarmentBase, stockSlug, garmentAvailability, countedReadyInventory } from '../../shared/sharedGarmentStock.js';
 import { getDb } from '../firebase.js';
 import { getVariantStats } from './store.service.js';
@@ -5,7 +6,7 @@ import { isProductPublished, normalizeProductStatus } from '../../shared/product
 import { isPrimeBaseProduct } from '../../shared/primeBaseProduct.js';
 import { createCachedRequest } from '../../shared/cachedRequest.js';
 
-const scalarFields = ['slug', 'sku', 'name', 'headline', 'description', 'status', 'parentSlug', 'category', 'productType', 'collection', 'line', 'sizeSystem', 'price', 'promotionalPrice', 'is_prime', 'customizable', 'baseModel', 'fit', 'modeling', 'material', 'gsm', 'isNew', 'isBestseller', 'isLimitedEdition', 'weight', 'width', 'height', 'length', 'fabric', 'collar', 'printDetails', 'videoUrl', 'pixDiscountPercent', 'maxInstallments', 'stampSize', 'seal', 'displayOrder', 'brand', 'productFinish', 'stockBaseSlug', 'stockMode'];
+const scalarFields = ['slug', 'sku', 'name', 'headline', 'description', 'status', 'parentSlug', 'category', 'productType', 'collection', 'line', 'sizeSystem', 'price', 'promotionalPrice', 'is_prime', 'customizable', 'baseModel', 'fit', 'modeling', 'material', 'gsm', 'isNew', 'isBestseller', 'isLimitedEdition', 'weight', 'width', 'height', 'length', 'fabric', 'collar', 'printDetails', 'videoUrl', 'pixDiscountPercent', 'maxInstallments', 'stampSize', 'seal', 'displayOrder', 'brand', 'productFinish', 'stockBaseSlug', 'stockMode', 'garmentModelId', 'garmentModelName', 'neckline', 'garmentModelRevision', 'shrinkage', 'sizeChartMode', 'modelSeparationRequired', 'modelClassificationPending'];
 const listFields = ['images', 'collections', 'lines', 'sizes', 'tags', 'specs', 'careInstructions', 'imageStampSizes', 'stampGallery', 'stampGallerySizes'];
 const nestedFields: Record<string, string[]> = {
   colors: ['name', 'label', 'hex', 'images', 'status', 'available', 'active'],
@@ -57,7 +58,7 @@ export function projectPrimeBase(id: string, source: Record<string, any>) {
   if (!isPrimeBaseProduct(source)) return null;
   const publicData = projectPublicProduct(id, { ...source, status: 'active', productFinish: 'printed' })!;
   const base: Record<string, any> = { id, productFinish: 'plain' };
-  for (const key of ['slug', 'name', 'status', 'baseModel', 'category', 'productType', 'fit', 'modeling', 'colors', 'sizes', 'variants', 'price', 'sizeChart']) {
+  for (const key of ['slug', 'name', 'status', 'baseModel', 'category', 'productType', 'fit', 'modeling', 'colors', 'sizes', 'variants', 'price', 'sizeChart', 'garmentModelId', 'garmentModelName', 'neckline', 'collar', 'fabric', 'gsm', 'specs', 'shrinkage', 'sizeChartMode', 'modelClassificationPending', 'modelSeparationRequired']) {
     if (publicData[key] !== undefined) base[key] = publicData[key];
   }
   return base;
@@ -82,17 +83,26 @@ export async function loadPublicCatalog(database = getDb()) {
   const [productSnapshot, inventorySnapshot] = await Promise.all([
     database.collection('products').get(), database.collection('inventory').get(),
   ]);
-  const rawProducts = productSnapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
+  const modelConfig = await database.collection('pricing_workbench').doc('catalog').get();
+  const profiles = garmentProfiles(modelConfig.data()?.catalog);
+  const rawProducts = productSnapshot.docs.map(doc => applyGarmentProfile({ ...doc.data(), id: doc.id }, profiles));
   const products = rawProducts.map(product => {
     const projected = projectPublicProduct(product.id, product);
     const base = resolveGarmentBase(product, rawProducts);
     if (projected && !base) delete projected.stockBaseSlug;
+    if (projected && base?.garmentModelId) Object.assign(projected, ...['garmentModelId','garmentModelName','neckline','collar','sizeChartMode','sizeChart','fabric','gsm','fit','specs'].map(key => ({ [key]: base[key] })));
+    if (projected && garmentFamily(product) && product.modelSeparationRequired && !product.garmentModelId) {
+      projected.garmentOptions = rawProducts.filter(p => p.productFinish === 'plain' && p.garmentModelId && p.baseModel === product.baseModel && !['inactive','archived'].includes(p.status)).map(p => { const option = projectPrimeBase(p.id, p); if (!option) return null; return { ...option, sizes: (option.sizes || []).filter((size: string) => !product.sizes?.length || product.sizes.includes(size)), colors: (option.colors || []).filter((color: any) => !product.colors?.length || product.colors.some((allowed: any) => (typeof allowed === 'string' ? allowed : allowed.name) === color.name)) }; }).filter(Boolean);
+    }
     return projected && base ? { ...projected, stockBaseSlug: stockSlug(base), fulfillment: 'made_to_order' } : projected;
   }).filter(Boolean);
-  const primeBases = productSnapshot.docs.map(doc => projectPrimeBase(doc.id, doc.data() || {})).filter(Boolean);
+  const primeBases = rawProducts.map(product => projectPrimeBase(product.id, product)).filter(Boolean);
   const allowedIds = new Set([...products, ...primeBases].flatMap(product => [product!.id, product!.slug, product!.parentSlug, product!.stockBaseSlug].filter(Boolean)));
   const availability: Record<string, ReturnType<typeof projectPublicAvailability>> = Object.create(null);
-  for (const doc of inventorySnapshot.docs) if (allowedIds.has(doc.id)) availability[doc.id] = projectPublicAvailability(doc.data() || {});
+  for (const doc of inventorySnapshot.docs) if (allowedIds.has(doc.id)) {
+    const owner = rawProducts.find(p => [p.id,p.slug].includes(doc.id));
+    availability[doc.id] = requiresGarmentClassification(owner) ? { available: false, availableQuantity: 0, variants: {} } : projectPublicAvailability(doc.data() || {});
+  }
   const inventories = new Map(inventorySnapshot.docs.map(doc => [doc.id, doc.data()]));
   for (const product of rawProducts) {
     const base = resolveGarmentBase(product, rawProducts);
@@ -100,6 +110,16 @@ export async function loadPublicCatalog(database = getDb()) {
     if (!base && product.productFinish !== 'printed') continue;
     const slug = stockSlug(product);
     availability[slug] = base ? garmentAvailability(product, base, inventories.get(slug), inventories.get(stockSlug(base))) : projectPublicAvailability(countedReadyInventory(inventories.get(slug)) || {});
+    if (requiresGarmentClassification(product)) {
+      const options = products.find(p => p!.id === product.id)?.garmentOptions || [];
+      const variants: Record<string, any> = {};
+      for (const option of options) for (const [key, value] of Object.entries(availability[option.slug || option.id]?.variants || {})) {
+        const quantity = Number((value as any).availableQuantity || 0) + Number(variants[key]?.availableQuantity || 0);
+        variants[key] = { available: quantity > 0, availableQuantity: quantity };
+      }
+      const total = Object.values(variants).reduce((n: number, v: any) => n + v.availableQuantity, 0);
+      availability[slug] = { available: total > 0, availableQuantity: total, variants };
+    }
     availability[product.id] = availability[slug];
   }
   return { products, primeBases, count: products.length, availability };

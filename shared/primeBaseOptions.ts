@@ -1,4 +1,11 @@
 type BaseProduct = {
+  garmentModelId?: string;
+  garmentModelName?: string;
+  neckline?: string;
+  sizeChartMode?: string;
+  modelSeparationRequired?: boolean;
+  modelClassificationPending?: boolean;
+
   sizeChart?: { size: string; length: string; width: string; sleeve: string; notes?: string }[];
   id: string; slug?: string; colors?: any[]; sizes?: any[]; variants?: any[];
   category?: string; weight?: number; width?: number; height?: number; length?: number;

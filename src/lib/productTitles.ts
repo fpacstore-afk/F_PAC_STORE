@@ -1,7 +1,9 @@
+import { garmentTitle } from '../../shared/garmentModels';
 import { getStampDisplayName, getStampSearchAliases, type StampNameSource } from '../../shared/stampDisplayNames';
 
 export type ProductTitleSource = {
   name?: unknown;
+  garmentModelName?: string;
   catalogName?: unknown;
   headline?: unknown;
   collection?: unknown;
@@ -52,9 +54,9 @@ export function getStorefrontProductTitle(
     .map(id => stampNames[String(id ?? '').trim()])
     .find(value => Boolean(value?.trim()))
     ?.trim().replace(/\s+[-–—]\s+(Preto|Branco|Neon)$/i, '');
-  if (!artworkName) return catalogName && !selectedColor ? name : baseTitle;
-  return normalizeTitlePart(baseTitle).includes(normalizeTitlePart(artworkName))
-    ? baseTitle : `${baseTitle} — ${artworkName}`;
+  if (!artworkName) return garmentTitle(catalogName && !selectedColor ? name : baseTitle, product);
+  return garmentTitle(normalizeTitlePart(baseTitle).includes(normalizeTitlePart(artworkName))
+    ? baseTitle : `${baseTitle} — ${artworkName}`, product);
 }
 
 /** Public presentation only: never rewrite stored product names, recipes or old orders. */

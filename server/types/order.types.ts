@@ -38,6 +38,9 @@ export type ShippingStatus =
   | 'returned';
 
 export interface OrderItem {
+  garmentModelId?: string;
+  garmentModelName?: string;
+  neckline?: string;
   id: string;
   productId?: string;
   slug?: string;

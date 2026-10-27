@@ -15,6 +15,7 @@ import { useFixedControlHeight } from '../hooks/useFixedControlHeight';
 import { calculatePrimePrice } from '../../shared/primePricing';
 import { primeBaseOptions } from '../../shared/primeBaseOptions';
 import { getPrimeFabricColor } from '../lib/primeMockupColors';
+import { GarmentModelSelector } from '../components/GarmentModelSelector';
 import { SizeChart } from '../components/SizeChart';
 import { PRIME_CUSTOM_FIXED_PRICE, getCustomizationProfileById } from '../../shared/customizationProfiles';
 import { isDesignPublic, normalizeDesignDocument, sortDesignCatalog } from '../lib/stampCatalog';
@@ -55,7 +56,7 @@ type Placement = {
 };
 type AppliedArtwork = Artwork & { productKey: string; printSize: string; bounds?: ArtworkBounds; position?: PrimeArtPosition };
 
-const PRIME_FALLBACK_PRODUCTS = (Object.keys(PRODUCT_VISUALS) as ProductVisualKind[]).map(kind => ({
+const PRIME_FALLBACK_PRODUCTS = (Object.keys(PRODUCT_VISUALS) as ProductVisualKind[]).filter(kind => kind !== 'regata').map(kind => ({
   id: `prime-${kind}`,
   slug: kind === 'oversized' ? 'prime' : kind,
   name: PRODUCT_VISUALS[kind].label,
@@ -168,9 +169,13 @@ export default function PrimeCustomApproved() {
 
   const selectedProduct = productOptions.find(product => (product.id || product.slug) === productId) || productOptions[0];
   const visualKind = getProductVisualKind(selectedProduct);
+  const [physicalBaseId, setPhysicalBaseId] = useState('');
   const matchingBases = useMemo(() => products.filter(product => getProductVisualKind(product) === visualKind), [products, visualKind]);
-  const baseOptions = useMemo(() => primeBaseOptions(matchingBases, availability), [matchingBases, availability]);
-  const selectedBase = baseOptions.combinations.find(item => item.color.name === color && item.size === size)?.base;
+  const eligibleBases = matchingBases.filter(p => !p.modelClassificationPending);
+  const physicalBases = eligibleBases.filter(p => !physicalBaseId || (p.slug || p.id) === physicalBaseId);
+  const baseOptions = useMemo(() => primeBaseOptions(physicalBases, availability), [matchingBases, physicalBaseId, availability]);
+  const selectedBase = (eligibleBases.length <= 1 || physicalBaseId) ? baseOptions.combinations.find(item => item.color.name === color && item.size === size)?.base : undefined;
+  useEffect(() => { setPhysicalBaseId(''); }, [visualKind]);
   const isRegisteredProduct = matchingBases.length > 0;
   const canPurchase = Boolean(selectedBase && !catalogLoading && !catalogError);
   const visual = PRODUCT_VISUALS[visualKind];
@@ -332,7 +337,8 @@ export default function PrimeCustomApproved() {
       slug: profile.cartSlug,
       baseProductSlug: selectedBase.slug || selectedBase.id,
       parentSlug: selectedBase.slug || selectedBase.id,
-      name: `${visual.label} PRIME (${color})`,
+      garmentModelId: selectedBase.garmentModelId, garmentModelName: selectedBase.garmentModelName, neckline: selectedBase.neckline,
+      name: `${visual.label} PRIME${selectedBase.garmentModelName ? ` — ${selectedBase.garmentModelName}` : ''} (${color})`,
       price,
       originalPrice: price,
       image: `/product-visuals/${visualKind}-front-v1.webp`,
@@ -455,6 +461,7 @@ export default function PrimeCustomApproved() {
           <aside className="space-y-3 lg:sticky lg:top-[calc(var(--site-header-height)+12px)]">
             <section className="rounded-2xl border border-black/10 bg-white p-4 md:p-5 shadow-sm">
               <h2 className="text-[10px] font-black uppercase tracking-[0.18em]"><span className="text-[#b88700]">3.</span> Cor e tamanho</h2>
+              <GarmentModelSelector options={eligibleBases.filter(p => p.garmentModelId).map(p => ({ ...p, garmentModelId: p.slug || p.id }))} selected={physicalBaseId} onChange={id => { setPhysicalBaseId(id); setColor(''); setSize(''); }} />
               <div className="mt-4"><div className="flex items-center justify-between"><b className="text-xs">Cor</b><span className="text-xs text-black/50">{color || "Sem disponibilidade"}</span></div><div className="mt-2 flex flex-wrap gap-2">{colors.map((item: any) => <button key={item.name} type="button" onClick={() => setColor(item.name)} title={item.name} className={`h-10 w-10 rounded-full border-[3px] border-white ${color === item.name ? 'ring-2 ring-[#f5bd19]' : 'ring-1 ring-black/20'}`} style={{ backgroundColor: getPrimeFabricColor(item.name, item.hex) }} />)}</div></div>
               <div className="mt-4"><div className="flex items-center justify-between"><b className="text-xs">Tamanho</b><button hidden={visualKind === 'cap'} type="button" onClick={() => setShowSizes(true)} className="inline-flex items-center gap-1 text-[9px] underline text-black/55"><Ruler size={12} /> Guia</button></div><div className="mt-2 grid grid-cols-4 gap-2">{sizes.map((item: string) => <button key={item} type="button" onClick={() => setSize(item)} className={`min-h-10 rounded-lg border text-xs font-black ${size === item ? 'border-black bg-black text-white' : 'border-black/10 bg-white'}`}>{item}</button>)}</div></div>
             </section>
@@ -499,7 +506,7 @@ export default function PrimeCustomApproved() {
         </div>
       </div>
 
-      {showSizes && <div className="fixed inset-0 z-[100] grid place-items-center bg-black/80 p-4"><div className="relative max-h-[90dvh] w-full max-w-lg overflow-y-auto rounded-2xl bg-white p-5 text-black"><button type="button" onClick={() => setShowSizes(false)} className="absolute right-3 top-2 h-10 w-10 text-xl" aria-label="Fechar guia">×</button><SizeChart model={visualKind} customData={selectedBase?.sizeChart} availableSizes={sizes} onClose={() => setShowSizes(false)} /></div></div>}
+      {showSizes && <div className="fixed inset-0 z-[100] grid place-items-center bg-black/80 p-4"><div className="relative max-h-[90dvh] w-full max-w-lg overflow-y-auto rounded-2xl bg-white p-5 text-black"><button type="button" onClick={() => setShowSizes(false)} className="absolute right-3 top-2 h-10 w-10 text-xl" aria-label="Fechar guia">×</button><SizeChart specific={selectedBase?.sizeChartMode === 'specific'} model={visualKind} customData={selectedBase?.sizeChart} availableSizes={sizes} onClose={() => setShowSizes(false)} /></div></div>}
       {expandedPreview && <div className="fixed inset-0 z-[110] grid place-items-center bg-black/90 p-3 md:p-8" onClick={() => setExpandedPreview(false)}><div className="relative w-full max-w-[min(56rem,90dvh)]" onClick={event => event.stopPropagation()}><button type="button" onClick={() => setExpandedPreview(false)} className="absolute right-3 top-3 z-20 grid h-10 w-10 place-items-center rounded-full bg-black text-white shadow-lg" aria-label="Fechar visualização ampliada"><X size={18} /></button><ProductMockupSprite interactive kind={visualKind} view={activePlacement.side} tone={mockupTone} className="max-h-[90dvh] aspect-square rounded-2xl" label={`${visual.label} ${color} - ${activePlacement.label}`}>{previewOverlay}<div className="absolute bottom-4 left-4 rounded-full bg-black/80 px-4 py-2 text-[10px] font-bold text-white backdrop-blur-sm">{activePlacement.label} · {visualKind === 'cap' ? `${areaHeight}×${areaWidth} cm (altura × largura)` : `${areaWidth}×${areaHeight} cm`}</div></ProductMockupSprite></div></div>}
     </div>
   );
