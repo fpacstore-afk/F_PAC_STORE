@@ -2,7 +2,7 @@ rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
     function isAdmin() {
-      return request.auth != null && (request.auth.token.email == 'fpacstore@gmail.com' || request.auth.token.email == 'atendimento@fpacstore.com.br');
+      return request.auth != null && (request.auth.token.get('admin', false) == true || request.auth.token.get('role', '') == 'admin' || (request.auth.token.get('email_verified', false) == true && request.auth.token.get('email', '') in ['fpacstore@gmail.com', 'atendimento@fpacstore.com.br']));
     }
     // Only management lists the bucket or writes directly.
     match /{allPaths=**} { allow read, write: if isAdmin(); }

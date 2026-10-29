@@ -1,3 +1,5 @@
+import { SECURITY_HEADERS } from './shared/securityHeaders.js';
+import { sharedRequestLimit, safeApiError } from './server/middleware/requestSecurity.js';
 import { getInventoryOverview, saveInventoryCount } from './server/controllers/inventoryCount.controller.js';
 import { getEmailDeliveryHistory } from './server/services/emailDelivery.service.js';
 import { saveCompanyMovementFromSheet } from './server/services/companyMovementSheet.service';
@@ -190,7 +192,7 @@ import {
 } from "./server/controllers/commercialReview.controller.js";
 import { requestOrderReturnController } from "./server/controllers/order.controller.js";
 import { ingestPublic } from './server/controllers/publicIngestion.controller.js';
-import { ingestionLimiter } from './server/middleware/rateLimiter.js';
+import { entryLimiter, ingestionLimiter } from './server/middleware/rateLimiter.js';
 
 const app = express();
 const isSandbox = process.env.DEFAULT_APP_PORT === "3000" && process.env.NODE_ENV !== "production" && !process.env.K_SERVICE;
@@ -203,26 +205,13 @@ app.use(helmet({
   crossOriginResourcePolicy: { policy: "cross-origin" }
 }));
 
-// CSP observation phase: report-only, no resource blocking.
+// Match the enforced production policy on every public hosting layer.
 app.use((_req, res, next) => {
-  // Enforce the directives that do not depend on payment/Firebase script origins.
-  res.setHeader('Content-Security-Policy', "base-uri 'self'; object-src 'none'; frame-ancestors 'self'");
-  res.setHeader(
-    "Content-Security-Policy-Report-Only",
-    [
-      "default-src 'self'",
-      "base-uri 'self'",
-      "object-src 'none'",
-      "frame-ancestors 'self'",
-      "script-src 'self' 'unsafe-inline' https://sdk.mercadopago.com",
-      "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-      "font-src 'self' https://fonts.gstatic.com data:",
-      "img-src 'self' data: blob: https:",
-      "media-src 'self' blob: https:",
-      "connect-src 'self' https://firestore.googleapis.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://*.googleapis.com https://*.firebaseio.com https://*.firebasestorage.app https://api.cloudinary.com https://viacep.com.br https://ipapi.co",
-      "frame-src 'self' https://*.firebaseapp.com",
-    ].join("; ")
-  );
+  if (process.env.NODE_ENV === 'production') {
+    for (const [name, value] of Object.entries(SECURITY_HEADERS)) res.setHeader(name, value);
+  } else {
+    res.setHeader('Content-Security-Policy', "base-uri 'self'; object-src 'none'; frame-ancestors 'self'");
+  }
   next();
 });
 
@@ -267,7 +256,7 @@ app.use(cors({
     if (isAllowedOrigin(origin)) {
       callback(null, true);
     } else {
-      callback(new Error('Acesso bloqueado pelas políticas de CORS da F PAC STORE'));
+      callback(Object.assign(new Error('Origem não permitida.'), { status: 403 }));
     }
   },
   credentials: true,
@@ -275,9 +264,16 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization', 'idempotency-key', 'x-admin-api-key', 'x-sync-secret', 'x-signature', 'x-request-id', 'x-file-name', 'x-media-kind', 'x-tracking-token']
 }));
 
-app.use(['/api/events', '/api/identity'], express.json({ limit: '48kb' }));
+// A cheap entry limiter runs before parsing untrusted bodies.
+app.use('/api', entryLimiter);
+const paymentAbuseGuard = sharedRequestLimit('payment', 30, 15 * 60_000);
+const leadAbuseGuard = sharedRequestLimit('lead', 60, 15 * 60_000);
+app.use('/api/checkout/process-payment', paymentAbuseGuard);
+app.use(['/api/checkout/lead', '/api/checkout/recovery/restore'], leadAbuseGuard);
+app.use(['/api/events', '/api/identity'], express.json({ limit: '48kb', inflate: false }));
 app.use(express.json({
   limit: '10mb',
+  inflate: false,
   verify: (req: any, _res, buf) => {
     if (buf && buf.length) {
       req.rawBody = Buffer.from(buf);
@@ -343,7 +339,7 @@ apiRouter.get("/health", publicApiLimiter, (req, res) => {
   res.json({ status: "ok", timestamp: new Date().toISOString() });
 });
 
-apiRouter.post('/artwork/upload', leadCaptureLimiter, express.raw({ type: ['image/png', 'image/jpeg', 'image/webp'], limit: '10mb' }), uploadArtwork);
+apiRouter.post('/artwork/upload', leadCaptureLimiter, express.raw({ type: ['image/png', 'image/jpeg', 'image/webp'], limit: '10mb', inflate: false }), uploadArtwork);
 apiRouter.get('/artwork/:id', catalogReadLimiter, readArtwork);
 apiRouter.get('/artwork/catalog/:id/bounds', catalogReadLimiter, readCatalogArtworkBounds);
 apiRouter.post('/events/session', ingestionLimiter, ingestPublic('analytics'));
@@ -2188,14 +2184,8 @@ app.use("/api", (req, res) => {
   res.status(404).json({ error: `Rota de API não encontrada: ${req.method} ${req.originalUrl}` });
 });
 
-// Global Express error handler
-app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
-  if (req.path.startsWith('/api')) {
-    logger.error(`❌ [API-ERROR] ${req.method} ${req.path}:`, err);
-    return res.status(500).json({ error: err?.message || "Erro interno no servidor de API" });
-  }
-  next(err);
-});
+// Never expose exception details or request credentials in error responses.
+app.use(safeApiError);
 
 // Serve uploads statically
 app.use("/uploads", express.static(path.join(process.cwd(), "public", "uploads")));

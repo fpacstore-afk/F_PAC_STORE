@@ -1,5 +1,11 @@
 import rateLimit from "express-rate-limit";
 
+export const entryLimiter = rateLimit({
+  windowMs: 60_000, max: process.env.NODE_ENV === 'test' ? 10000 : 300,
+  standardHeaders: true, legacyHeaders: false,
+  message: { error: 'Muitas solicitações. Aguarde um minuto.' },
+});
+
 export const ingestionLimiter = rateLimit({
   windowMs: 60_000, max: 60, standardHeaders: true, legacyHeaders: false,
   validate: { trustProxy: false }, message: { error: 'Limite temporário de atualizações atingido.' },

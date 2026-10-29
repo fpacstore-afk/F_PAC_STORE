@@ -1,3 +1,4 @@
+import { isAdminIdentity } from '../../shared/adminIdentity';
 import { compatibleGarmentSource } from '../../shared/sharedGarmentStock';
 import { garmentFamily, garmentTitle } from '../../shared/garmentModels';
 import { collection, deleteDoc, doc, getDoc, onSnapshot, orderBy, query, serverTimestamp, setDoc, updateDoc, writeBatch } from 'firebase/firestore';
@@ -562,7 +563,7 @@ function AdminOrdersInner() {
     }
   }, []);
 
-  const isAdmin = user?.email === 'fpacstore@gmail.com' || user?.email === 'atendimento@fpacstore.com.br' || hasBypass;
+  const isAdmin = isAdminIdentity(user) || hasBypass;
 
   useEffect(() => {
     if (authLoading || !user || !isAdmin || activeTab !== 'orders') return;
@@ -1332,7 +1333,8 @@ function AdminOrdersInner() {
         </head>
         <body>
           <div class="print-actions">
-            <button type="button" onclick="window.print()">Imprimir etiqueta 10×15</button>
+            <button type="button" id="print-local-label">Imprimir etiqueta 10×15</button>
+            <script defer src="/print-preview.js"></script>
             <span>Confira os dados abaixo antes de imprimir.</span>
           </div>
           <div class="container">
@@ -1516,24 +1518,7 @@ function AdminOrdersInner() {
           ${order.observations ? `<div class="section"><div class="section-title">Observações de produção</div><div class="observations">${escapeHtml(order.observations)}</div></div>` : ''}
           <footer>CONFERIR PEÇA, TAMANHO, COR E POSIÇÃO DAS ARTES ANTES DA PRODUÇÃO</footer>
           </main>
-          <script>
-            window.onload = function () {
-              const printTicket = function () {
-                const ticket = document.querySelector('.ticket');
-                const heightPx = Math.ceil(ticket ? ticket.getBoundingClientRect().height : document.body.scrollHeight);
-                const pageHeightMm = Math.max(60, Math.ceil((heightPx * 25.4 / 96) + 4));
-                const pageRule = document.getElementById('production-ticket-page');
-                if (pageRule) pageRule.textContent = '@page { size: 80mm ' + pageHeightMm + 'mm; margin: 0; }';
-                window.focus();
-                window.print();
-              };
-              const imagesReady = Promise.all(Array.from(document.images).map(function (image) {
-                return typeof image.decode === 'function' ? image.decode().catch(function () {}) : Promise.resolve();
-              }));
-              Promise.all([document.fonts ? document.fonts.ready : Promise.resolve(), imagesReady])
-                .then(function () { setTimeout(printTicket, 100); }, function () { setTimeout(printTicket, 100); });
-            };
-          </script>
+          <script defer src="/print-preview.js"></script>
         </body>
       </html>`);
     printWindow.document.close();

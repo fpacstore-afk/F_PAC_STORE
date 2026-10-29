@@ -37,6 +37,9 @@ jobs:
       - name: Install dependencies
         run: npm ci --include=dev
 
+      - name: Production dependency security audit
+        run: npm run security:audit
+
       - name: Lint
         run: npm run lint
 
@@ -191,6 +194,14 @@ jobs:
             --region "$GCP_REGION" \
             --to-revisions="${{ steps.candidate.outputs.revision }}=100" \
             --quiet
+
+      - name: Record runtime capacity and probe configuration
+        run: |
+          gcloud run services describe "$CLOUD_RUN_SERVICE" \
+            --project "$GCP_PROJECT_ID" --region "$GCP_REGION" --format=json | python3 -c '
+          import json,sys
+          data=json.load(sys.stdin); template=data.get("spec",{}).get("template",{}); spec=template.get("spec",{}); annotations=template.get("metadata",{}).get("annotations",{})
+          print(json.dumps({"scaling":{k:annotations.get(k) for k in ["autoscaling.knative.dev/minScale","autoscaling.knative.dev/maxScale"]},"concurrency":spec.get("containerConcurrency"),"timeoutSeconds":spec.get("timeoutSeconds"),"containers":[{k:c.get(k) for k in ["resources","startupProbe","livenessProbe"]} for c in spec.get("containers",[])]},indent=2))'
 
       - name: Deploy frontend to Firebase Hosting
         run: |

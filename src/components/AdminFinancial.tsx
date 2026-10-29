@@ -1,3 +1,4 @@
+import { isAdminIdentity } from '../../shared/adminIdentity';
 import { companyMovements, companyMovementExportId } from '../../shared/companyMovements';
 import { isOwnerWithdrawal } from '../../shared/ownerWithdrawals';
 import { ProductRow } from './admin/financial/ProductCostRow';
@@ -126,7 +127,7 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
   const { formatMoney, formatPercent, maskFinancial, showFinancialValues } = useFinancialPrivacy();
   const { user, loading: authLoading } = useAuth();
   const isDevBypass = import.meta.env.DEV && localStorage.getItem('admin_bypass') === 'true';
-  const isAdmin = user?.email === 'fpacstore@gmail.com' || user?.email === 'atendimento@fpacstore.com.br' || isDevBypass;
+  const isAdmin = isAdminIdentity(user) || isDevBypass;
 
   const [activeSubTab, setActiveSubTab] = useState<FinancialSubTab>(initialSubTab || 'dashboard');
   const [selectedOrderForDrawer, setSelectedOrderForDrawer] = useState<any | null>(null);

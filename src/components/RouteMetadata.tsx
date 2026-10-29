@@ -3,6 +3,8 @@ import { useLocation } from 'react-router-dom';
 
 const titles: Record<string, string> = {
   '/': 'Streetwear com identidade',
+  '/privacidade': 'Política de privacidade',
+  '/termos': 'Condições de compra e uso',
   '/prime': 'Crie sua peça Prime',
   '/prime-custom': 'Crie sua peça Prime',
   '/bag': 'Minha sacola',

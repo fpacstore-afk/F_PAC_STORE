@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Logo } from './Logo';
 import { ArrowRight, ShieldCheck, Truck, RefreshCw, X, MessageCircle, Instagram } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -9,10 +9,29 @@ const WHATSAPP_URL = 'https://wa.me/5547997465602';
 
 export function Footer() {
   const [isReturnsModalOpen, setIsReturnsModalOpen] = useState(false);
+  const returnsRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!isReturnsModalOpen) return;
+    const previous = document.activeElement as HTMLElement | null;
+    const dialog = returnsRef.current;
+    dialog?.focus();
+    const keydown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') { event.preventDefault(); setIsReturnsModalOpen(false); }
+      if (event.key !== 'Tab' || !dialog) return;
+      const items = Array.from(dialog.querySelectorAll<HTMLElement>('button, a[href], input, [tabindex="0"]')).filter(item => !item.hasAttribute('disabled'));
+      const first = items[0], last = items[items.length - 1];
+      if (!first) { event.preventDefault(); return; }
+      if (event.shiftKey && (document.activeElement === first || document.activeElement === dialog)) { event.preventDefault(); last.focus(); }
+      else if (!event.shiftKey && (document.activeElement === last || document.activeElement === dialog)) { event.preventDefault(); first.focus(); }
+    };
+    document.addEventListener('keydown', keydown);
+    return () => { document.removeEventListener('keydown', keydown); previous?.focus(); };
+  }, [isReturnsModalOpen]);
+
 
   const handleReturnWhatsApp = () => {
-    const message = `Olá!%0A%0AGostaria%20de%20solicitar%20uma%20troca%20ou%20devolução.%0A%0ANúmero%20do%20pedido:%0AMotivo%20da%20troca%20ou%20devolução:%0AFotos%20do%20produto%20(em%20caso%20de%20defeito%20ou%20avaria):`;
-    window.open(`${WHATSAPP_URL}?text=${message}`, '_blank');
+    const message = `Olá!%0A%0AGostaria%20de%20solicitar%20uma%20troca%20ou%20devolução.%0A%0ANúmero%20do%20pedido:%0AMotivo%20(opcional%20no%20arrependimento):%0AFotos%20do%20produto%20(em%20caso%20de%20defeito%20ou%20avaria):`;
+    window.open(`${WHATSAPP_URL}?text=${message}`, '_blank', 'noopener,noreferrer');
   };
 
   return (
@@ -28,6 +47,7 @@ export function Footer() {
             onClick={() => setIsReturnsModalOpen(false)}
           >
             <motion.div
+              ref={returnsRef} role="dialog" aria-modal="true" aria-labelledby="returns-title" tabIndex={-1}
               initial={{ scale: 0.96, y: 14 }}
               animate={{ scale: 1, y: 0 }}
               exit={{ scale: 0.96, y: 14 }}
@@ -37,7 +57,7 @@ export function Footer() {
               <div className="sticky top-0 bg-white border-b border-black/5 p-5 md:p-6 flex items-center justify-between z-10">
                 <div>
                   <p className="text-[9px] font-black text-[#b88700] uppercase tracking-[0.22em]">Ajuda F PAC</p>
-                  <h2 className="mt-1 text-xl md:text-2xl font-black uppercase tracking-tighter italic">Trocas e Devoluções</h2>
+                  <h2 id="returns-title" className="mt-1 text-xl md:text-2xl font-black uppercase tracking-tighter italic">Trocas e Devoluções</h2>
                 </div>
                 <button onClick={() => setIsReturnsModalOpen(false)} className="w-11 h-11 flex items-center justify-center rounded-full hover:bg-black/5 transition-colors" aria-label="Fechar política de trocas e devoluções">
                   <X size={22} />
@@ -51,13 +71,13 @@ export function Footer() {
                   <h3 className="font-black text-xs uppercase tracking-[0.18em] text-black flex items-center gap-2"><span className="w-1.5 h-1.5 bg-[#eab308] rounded-full" />1. Prazo para solicitação</h3>
                   <ul className="space-y-2 text-sm text-[#475569] pl-4 border-l border-black/5">
                     <li>• <span className="font-bold">Trocas:</span> até 07 dias corridos após o recebimento do produto.</li>
-                    <li>• <span className="font-bold">Devoluções por arrependimento:</span> até 7 dias corridos após o recebimento, conforme o Código de Defesa do Consumidor.</li>
+                    <li>• <span className="font-bold">Devoluções por arrependimento:</span> até 7 dias corridos após o recebimento, sem necessidade de justificar a decisão, conforme o Código de Defesa do Consumidor. Os direitos relacionados a defeitos e à garantia legal permanecem preservados.</li>
                   </ul>
                 </section>
 
                 <section className="space-y-3">
                   <h3 className="font-black text-xs uppercase tracking-[0.18em] text-black flex items-center gap-2"><span className="w-1.5 h-1.5 bg-[#eab308] rounded-full" />2. Condições do produto</h3>
-                  <p className="text-sm text-[#475569] pl-4">O item deve estar:</p>
+                  <p className="text-sm text-[#475569] pl-4">Preserve o produto e seus acessórios para a devolução, sem prejudicar os direitos legais de análise e arrependimento. Para trocas comerciais por preferência, o item deve estar:</p>
                   <ul className="space-y-2 text-sm text-[#475569] pl-4 border-l border-black/5">
                     <li>• Sem sinais de uso, lavagem ou alteração</li>
                     <li>• Com etiquetas originais fixadas</li>
@@ -70,20 +90,20 @@ export function Footer() {
                   <p className="text-sm text-[#475569] pl-4">A solicitação deve ser feita através do canal de contato disponível no site, informando:</p>
                   <ul className="space-y-2 text-sm text-[#475569] pl-4 border-l border-black/5">
                     <li>• Número do pedido</li>
-                    <li>• Motivo da troca ou devolução</li>
+                    <li>• Motivo da troca ou devolução (opcional no arrependimento)</li>
                     <li>• Fotos do produto (em caso de defeito ou avaria)</li>
                   </ul>
                 </section>
 
                 <section className="space-y-3">
                   <h3 className="font-black text-xs uppercase tracking-[0.18em] text-black flex items-center gap-2"><span className="w-1.5 h-1.5 bg-[#eab308] rounded-full" />4. Análise e aprovação</h3>
-                  <p className="text-sm text-[#475569] pl-4 border-l border-black/5">Após o envio das informações, a solicitação será analisada. Se aprovada, o cliente receberá as instruções para envio do produto.</p>
+                  <p className="text-sm text-[#475569] pl-4 border-l border-black/5">Após o envio das informações, a solicitação será analisada. O cliente receberá as instruções para envio do produto. A análise não afasta o exercício de direitos legais.</p>
                 </section>
 
                 <section className="space-y-3">
                   <h3 className="font-black text-xs uppercase tracking-[0.18em] text-black flex items-center gap-2"><span className="w-1.5 h-1.5 bg-[#eab308] rounded-full" />5. Envio do produto</h3>
                   <ul className="space-y-2 text-sm text-[#475569] pl-4 border-l border-black/5">
-                    <li>• Em casos de defeito, o custo do frete é de responsabilidade da loja.</li>
+                    <li>• Em casos de defeito ou exercício do arrependimento legal, a devolução é sem ônus ao consumidor; os valores devidos são restituídos, incluindo o frete aplicável.</li>
                     <li>• Para trocas por tamanho ou preferência, o frete pode ser de responsabilidade do cliente.</li>
                   </ul>
                 </section>
@@ -100,7 +120,7 @@ export function Footer() {
 
                 <section className="space-y-3">
                   <h3 className="font-black text-xs uppercase tracking-[0.18em] text-black flex items-center gap-2"><span className="w-1.5 h-1.5 bg-[#eab308] rounded-full" />7. Prazo de conclusão</h3>
-                  <p className="text-sm text-[#475569] pl-4 border-l border-black/5">O processo de troca ou devolução será concluído em até 10 dias úteis após o recebimento do produto pela loja.</p>
+                  <p className="text-sm text-[#475569] pl-4 border-l border-black/5">As etapas da devolução e do reembolso serão comunicadas no atendimento, respeitando os direitos e prazos legais. A visualização do estorno depende do meio de pagamento.</p>
                 </section>
               </div>
 
@@ -143,6 +163,8 @@ export function Footer() {
           <div className="col-span-1 md:col-span-2">
             <h4 className="font-black mb-4 text-black uppercase tracking-[0.16em] text-[10px]">Ajuda</h4>
             <ul className="space-y-3 text-gray-600 text-sm">
+              <li><Link to="/privacidade" className="hover:text-[#b88700] transition-colors">Política de privacidade</Link></li>
+              <li><Link to="/termos" className="hover:text-[#b88700] transition-colors">Condições de compra e uso</Link></li>
               <li><Link to="/tracking" className="hover:text-[#b88700] transition-colors">Acompanhar pedido</Link></li>
               <li><button onClick={() => setIsReturnsModalOpen(true)} className="hover:text-[#b88700] transition-colors text-left">Trocas e devoluções</button></li>
               <li><a href={`${WHATSAPP_URL}?text=Olá!%20Gostaria%20de%20tirar%20uma%20dúvida%20sobre%20a%20F%20PAC%20STORE.`} target="_blank" rel="noopener noreferrer" className="hover:text-[#b88700] transition-colors">Falar com a F PAC</a></li>
@@ -172,6 +194,7 @@ export function Footer() {
         </div>
 
         <div className="border-t border-black/10 py-5 flex flex-col sm:flex-row justify-between sm:items-center gap-3 text-[9px] uppercase font-black tracking-[0.16em] text-black/35">
+          <p>Joinville/SC · <a href="mailto:atendimento@fpacstore.com.br" className="underline">atendimento@fpacstore.com.br</a></p>
           <p translate="no">&copy; {new Date().getFullYear()} F PAC STORE</p>
           <span translate="no">Vista atitude. Vista F PAC STORE.</span>
         </div>

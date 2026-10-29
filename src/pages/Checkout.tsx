@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, CheckCircle2, LockKeyhole, MapPin, ShieldCheck
 } from 'lucide-react';
@@ -215,6 +215,7 @@ export default function Checkout() {
                 </div>
               </div>
 
+              <p className="my-4 text-xs leading-relaxed text-white/80">Confira as <Link to="/termos" className="underline">condições de compra</Link> e a <Link to="/privacidade" className="underline">política de privacidade</Link> antes de concluir. Lembretes e estatísticas opcionais têm escolhas próprias.</p>
               <div className="pt-2 border-t border-white/5">
                 {paymentResult && paymentResult.payment_method_id === 'pix' ? (
                   <PixDisplay pixResult={paymentResult} onApproved={handlePaymentSuccess} />

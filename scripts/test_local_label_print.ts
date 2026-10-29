@@ -44,7 +44,9 @@ printLabel(order);
 assert.equal(closed, true, 'the label document must finish loading');
 assert.equal(printCalled, false, 'opening the preview must not trigger an early print job');
 assert.match(html, /@page\s*\{\s*size: 100mm 150mm;/);
-assert.match(html, /onclick="window\.print\(\)"/, 'the user can print the rendered preview');
+assert.match(html, /id="print-local-label"/, 'the user can print the rendered preview');
+assert.match(html, /src="\/print-preview\.js"/, 'the preview must load trusted same-origin code');
+assert.doesNotMatch(html, /onclick=|<script>/, 'the preview must not need unsafe inline scripts');
 assert.match(html, /\.print-actions\s*\{\s*display: none !important;/, 'preview controls must be hidden on paper');
 assert.doesNotMatch(html, /window\.close\(/, 'the window must remain open until printing finishes');
 assert.match(html, /CLIENTE &lt;TESTE&gt;/);
@@ -71,3 +73,27 @@ assert.ok(pdf.includes('2x Camiseta <script>alert\\(1\\)</script>'), 'PDF must c
 assert.ok(pdf.includes('TEL: \\(47\\) 99999-9999'), 'PDF should escape parentheses exactly once');
 
 console.log('PASS: local label waits for the user to print its rendered preview and the 10×15 PDF contains order details.');
+
+// Execute the real print script under a script-src self policy model (no inline handlers).
+const printScript = fs.readFileSync('public/print-preview.js', 'utf8');
+let click: (() => void) | undefined;
+vm.runInNewContext(printScript, {
+  document: { readyState: 'complete', getElementById: () => ({ addEventListener: (_: string, cb: () => void) => { click = cb; } }) },
+  window: { print: () => { printCalled = true; } },
+});
+assert.equal(printCalled, false);
+assert.ok(click); click(); assert.equal(printCalled, true);
+let ticketPrinted = false;
+const timers: Array<() => void> = [];
+const pageRule = { textContent: '' };
+vm.runInNewContext(printScript, {
+  document: { readyState: 'complete', getElementById: (id: string) => id === 'production-ticket-page' ? pageRule : null,
+    querySelector: () => ({ getBoundingClientRect: () => ({ height: 960 }) }), images: [{ decode: async () => {} }], fonts: { ready: Promise.resolve() } },
+  window: { setTimeout: (fn: () => void) => { timers.push(fn); }, focus() {}, print: () => { ticketPrinted = true; } },
+  Promise,
+});
+await new Promise(resolve => setImmediate(resolve));
+assert.equal(ticketPrinted, false); assert.equal(timers.length, 1);
+timers[0](); assert.equal(ticketPrinted, true);
+assert.match(pageRule.textContent, /size: 80mm 258mm/);
+console.log('PASS CSP-compatible label controls and production ticket image/font readiness');
