@@ -5,9 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "NODE_ENV=development node --import tsx server.ts",
-    "build": "vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs && esbuild scripts/reorganize_stock_range.ts --bundle --platform=node --format=cjs --packages=external --outfile=build-server/reorganize-stock-range.cjs",
-    "start": "NODE_ENV=production node dist/server.cjs",
-    "clean": "rm -rf dist",
+    "build": "vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=build-server/server.cjs && esbuild scripts/reorganize_stock_range.ts --bundle --platform=node --format=cjs --packages=external --outfile=build-server/reorganize-stock-range.cjs && npm run verify:public-build",
+    "start": "NODE_ENV=production node build-server/server.cjs",
+    "clean": "rm -rf dist build-server",
     "lint": "tsc --noEmit",
     "test:all": "node --import tsx scripts/run_regressions.ts",
     "test:receivable-whatsapp": "node --import tsx scripts/test_receivable_whatsapp.ts",
@@ -91,7 +91,10 @@
     "test:garment-models": "NODE_ENV=test node --import tsx scripts/test_garment_models.ts",
     "test:security-hardening": "NODE_ENV=test node --import tsx scripts/test_security_hardening.ts",
     "security:audit": "npm audit --omit=dev --audit-level=high",
-    "test:stock-range": "NODE_ENV=test node --import tsx scripts/test_stock_range.ts"
+    "test:stock-range": "NODE_ENV=test node --import tsx scripts/test_stock_range.ts",
+    "verify:public-build": "node --import tsx scripts/verify_public_build.ts",
+    "test:public-build-security": "NODE_ENV=test node --import tsx scripts/test_public_build_security.ts",
+    "test:auth-security": "node --import tsx scripts/test_auth_security.ts"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

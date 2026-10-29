@@ -257,8 +257,8 @@ check('PACKAGE_JSON_SCRIPTS', true, () => {
   const pkgPath = path.resolve(process.cwd(), 'package.json');
   const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
 
-  const hasBuild = pkg.scripts?.build?.includes('vite build') && pkg.scripts?.build?.includes('dist/server.cjs');
-  const hasStart = pkg.scripts?.start?.includes('dist/server.cjs');
+  const hasBuild = pkg.scripts?.build?.includes('vite build') && pkg.scripts?.build?.includes('build-server/server.cjs');
+  const hasStart = pkg.scripts?.start?.includes('build-server/server.cjs');
   const hasLint = pkg.scripts?.lint?.includes('tsc --noEmit');
 
   const passed = Boolean(hasBuild && hasStart && hasLint);

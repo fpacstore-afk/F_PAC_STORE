@@ -1,4 +1,5 @@
 import { SECURITY_HEADERS } from './shared/securityHeaders.js';
+import { denyPrivateFiles } from './server/middleware/privateFiles.js';
 import { sharedRequestLimit, safeApiError } from './server/middleware/requestSecurity.js';
 import { getInventoryOverview, saveInventoryCount } from './server/controllers/inventoryCount.controller.js';
 import { getEmailDeliveryHistory } from './server/services/emailDelivery.service.js';
@@ -226,6 +227,8 @@ app.use((_req, res, next) => {
 });
 
 // Restrição Estrita de CORS
+app.use(denyPrivateFiles);
+
 const allowedOrigins = (process.env.ALLOWED_ORIGINS || '')
   .split(',')
   .map(o => o.trim())
@@ -2191,7 +2194,8 @@ app.use("/api", apiRouter);
 
 // Catch-all 404 handler for API routes
 app.use("/api", (req, res) => {
-  res.status(404).json({ error: `Rota de API não encontrada: ${req.method} ${req.originalUrl}` });
+  res.setHeader('Cache-Control', 'no-store');
+  res.status(404).json({ error: 'Rota de API não encontrada.' });
 });
 
 // Never expose exception details or request credentials in error responses.

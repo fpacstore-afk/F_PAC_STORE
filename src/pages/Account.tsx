@@ -134,7 +134,7 @@ export default function Account() {
                 <input 
                   required 
                   type="password" 
-                  autoComplete="current-password"
+                  autoComplete={authMode === 'register' ? 'new-password' : 'current-password'}
                   value={authPass} 
                   onChange={(e) => setAuthPass(e.target.value)} 
                   className="w-full bg-white border border-black/10 p-4 text-xs focus:outline-none focus:border-[#eab308]" 

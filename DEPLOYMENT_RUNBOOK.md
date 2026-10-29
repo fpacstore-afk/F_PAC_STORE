@@ -55,6 +55,12 @@ gcloud projects add-iam-policy-binding fpac-store62 \
 
 ## 3. Build da Aplicação e Pré-Verificação Local
 
+O frontend público fica em `dist/`. O servidor e seus source maps ficam em
+`build-server/`, fora das pastas publicadas pelo Hosting e Cloudflare. `npm start`
+usa `build-server/server.cjs`. O build rejeita artefatos privados ou assinaturas
+de credenciais reconhecidas no frontend; não substitui rotação de chaves ou
+varredura de todo o histórico do Git.
+
 Antes de publicar, execute o ciclo local de compilação e preflight:
 
 ```bash
