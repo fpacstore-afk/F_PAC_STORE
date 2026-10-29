@@ -94,7 +94,8 @@
     "test:stock-range": "NODE_ENV=test node --import tsx scripts/test_stock_range.ts",
     "verify:public-build": "node --import tsx scripts/verify_public_build.ts",
     "test:public-build-security": "NODE_ENV=test node --import tsx scripts/test_public_build_security.ts",
-    "test:auth-security": "node --import tsx scripts/test_auth_security.ts"
+    "test:auth-security": "node --import tsx scripts/test_auth_security.ts",
+    "test:preview-tags": "python3 scripts/test_preview_tags.py"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

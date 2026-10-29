@@ -261,6 +261,9 @@ jobs:
           REQUIRE_PRIVATE_FILE_404: 'true'
         run: node --import tsx scripts/verify_live_security.ts
 
+      - name: Remove obsolete CI preview access
+        run: python3 scripts/cleanup_preview_tags.py --keep-tag "c-${GITHUB_RUN_NUMBER}"
+
       - name: Promote validated revision
         # Security checks use read-only requests and never print artifact bodies.
         # The one-time stock job above remains conditional on its explicit marker.
