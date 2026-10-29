@@ -5,6 +5,7 @@ import { getVariantStats } from './store.service.js';
 import { isProductPublished, normalizeProductStatus } from '../../shared/productPublication.js';
 import { isPrimeBaseProduct } from '../../shared/primeBaseProduct.js';
 import { createCachedRequest } from '../../shared/cachedRequest.js';
+import { stockFamily } from '../../shared/stockFamilies.js';
 
 const scalarFields = ['slug', 'sku', 'name', 'headline', 'description', 'status', 'parentSlug', 'category', 'productType', 'collection', 'line', 'sizeSystem', 'price', 'promotionalPrice', 'is_prime', 'customizable', 'baseModel', 'fit', 'modeling', 'material', 'gsm', 'isNew', 'isBestseller', 'isLimitedEdition', 'weight', 'width', 'height', 'length', 'fabric', 'collar', 'printDetails', 'videoUrl', 'pixDiscountPercent', 'maxInstallments', 'stampSize', 'seal', 'displayOrder', 'brand', 'productFinish', 'stockBaseSlug', 'stockMode', 'garmentModelId', 'garmentModelName', 'neckline', 'garmentModelRevision', 'shrinkage', 'sizeChartMode', 'modelSeparationRequired', 'modelClassificationPending'];
 const listFields = ['images', 'collections', 'lines', 'sizes', 'tags', 'specs', 'careInstructions', 'imageStampSizes', 'stampGallery', 'stampGallerySizes'];
@@ -23,10 +24,12 @@ const publicStampIds = (value: unknown): string[] => Array.isArray(value)
 
 /** Whitelist at every nesting level: costs, suppliers and arbitrary metadata never pass through. */
 export function projectPublicProduct(id: string, source: Record<string, any>) {
-  if (!isProductPublished(source)) return null;
+  if (!isProductPublished(source) || source.rangeArchived === true || source.mergedIntoProductId) return null;
   const item: Record<string, any> = { id };
   for (const field of scalarFields) if (source[field] !== undefined && scalar(source[field])) item[field] = source[field];
   item.status = normalizeProductStatus(source.status);
+  const family = stockFamily(source);
+  if (family) item.stockFamily = family;
   // Only public artwork identifiers, never print sizes, usage, costs or stock-bearing recipes.
   if (Array.isArray(source.stampIds)) item.stampIds = publicStampIds(source.stampIds);
   if (source.stampIdsByColor && typeof source.stampIdsByColor === 'object' && !Array.isArray(source.stampIdsByColor)) {

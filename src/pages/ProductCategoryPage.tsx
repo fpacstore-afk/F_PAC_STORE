@@ -1,6 +1,6 @@
 import { CatalogUnavailable } from '../components/CatalogUnavailable';
 import React, { useEffect, useMemo, useState } from 'react';
-import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { Link, Navigate, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { Helmet } from 'react-helmet-async';
 import { collection, onSnapshot } from 'firebase/firestore';
 import { ArrowLeft, ArrowRight } from 'lucide-react';
@@ -10,18 +10,9 @@ import { productMatchesStorefrontCategory, buildSellableCatalog, productMatchesC
 import { getProductUrl, getDisplayPrices } from '../lib/utils';
 import { formatBRL } from '../lib/money';
 import { subscribePublicProductSnapshot } from '../services/publicProducts';
+import { STOCK_FAMILIES } from '../../shared/stockFamilies';
 
-const CATEGORY_LABELS: Record<string, { title: string; subtitle: string; eyebrow: string }> = {
-  oversized: { title: 'Camisetas Oversized', subtitle: 'Modelagens amplas para construir um visual streetwear com mais presença.', eyebrow: 'Streetwear' },
-  tradicional: { title: 'Camisetas Tradicionais', subtitle: 'Modelagens versáteis para uma leitura mais clássica da identidade F PAC.', eyebrow: 'Essencial' },
-  casacos: { title: 'Casacos & Moletons', subtitle: 'Camadas para conforto, composição e atitude nos dias mais frios.', eyebrow: 'Camadas' },
-  bones: { title: 'Bonés', subtitle: 'Acessórios para completar o visual sem perder a assinatura F PAC.', eyebrow: 'Acessórios' },
-  chinelos: { title: 'Chinelos & Slides', subtitle: 'Opções casuais para levar a identidade da marca para outros momentos.', eyebrow: 'Lifestyle' },
-  croppeds: { title: 'Croppeds Oversized', subtitle: 'Modelagem feminina oversized, ampla e confortável para composições com personalidade.', eyebrow: 'Feminino Oversized' },
-  bermudas: { title: 'Bermudas', subtitle: 'Conforto e versatilidade para construir o look completo.', eyebrow: 'Composição' },
-  kits: { title: 'Kits F PAC', subtitle: 'Combinações cadastradas para comprar produtos em conjunto.', eyebrow: 'Kits' },
-  acessorios: { title: 'Acessórios', subtitle: 'Itens complementares cadastrados no catálogo F PAC.', eyebrow: 'Complementos' },
-};
+const CATEGORY_LABELS: Record<string, { title:string; subtitle:string; eyebrow:string }> = Object.fromEntries(STOCK_FAMILIES.map(family => [family.id,{ title:family.label, subtitle:family.collars ? 'Escolha entre gola tradicional e gola alta. Cada modelo mantém suas medidas e disponibilidade.' : 'Confira os modelos, cores, tamanhos e disponibilidade desta peça.', eyebrow:'F PAC STORE' }]));
 
 const PRIME_PRODUCT_BY_CATEGORY: Record<string, string> = {
   oversized: 'prime',
@@ -31,6 +22,7 @@ const PRIME_PRODUCT_BY_CATEGORY: Record<string, string> = {
   bermudas: 'shorts',
   bones: 'cap',
 };
+
 
 function normalize(value: unknown) {
   return String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
@@ -87,6 +79,8 @@ export default function ProductCategoryPage() {
     setSearchParams(params, { replace: true });
   };
 
+  if (!STOCK_FAMILIES.some(family => family.id === category)) return <Navigate to="/produtos" replace />;
+
   return (
     <div data-density-page="category" className="min-h-screen bg-[#f7f7f5] pb-20 md:pb-28">
       <Helmet>
@@ -110,7 +104,7 @@ export default function ProductCategoryPage() {
 
       <section className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-3 md:py-8">
         <div className="mb-3 grid grid-cols-3 gap-2 rounded-2xl border border-black/10 bg-white p-2 shadow-sm">
-          {(['prime', 'mark', 'force'] as const).map(line => (
+          {(['prime', 'mark', 'force'] as const).filter(line => line !== 'prime' || PRIME_PRODUCT_BY_CATEGORY[category]).map(line => (
             <button key={line} type="button" onClick={() => selectLine(line)} className={`min-h-12 rounded-xl px-2 text-[9px] md:text-xs font-black uppercase tracking-[0.12em] transition-colors ${selectedLine === line ? 'bg-black text-[#eab308]' : 'bg-[#f5f5f2] text-black'}`}>
               <span className="block">{line}</span><span className={`mt-0.5 block text-[7px] font-bold ${selectedLine === line ? 'text-white/50' : 'text-black/35'}`}>{line === 'prime' ? 'Preço no configurador' : catalogError ? 'Indisponível' : linePrices[line] !== null ? `A partir de ${formatBRL(linePrices[line]!)}` : `${lineCounts[line]} ${lineCounts[line] === 1 ? 'produto' : 'produtos'}`}</span>
             </button>

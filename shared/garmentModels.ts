@@ -46,7 +46,7 @@ export function garmentProfile(entry: any) {
   if (!family || !['zimm', 'tiggas'].includes(supplier) || !entry?.id) return null;
   const neckline = family === 'regata' ? 'tank' : supplier === 'zimm' ? 'high_closed' : 'classic_open';
   const collar = family === 'regata' ? 'Decote de regata · sem mangas' : (supplier === 'zimm' ? 'Gola mais alta e fechada' : 'Gola mais baixa e aberta') + (entry.collar ? ` · ${entry.collar}` : '');
-  const shortName = family === 'regata' ? 'Regata' : supplier === 'zimm' ? 'Gola alta' : 'Gola clássica';
+  const shortName = family === 'regata' ? 'Regata' : supplier === 'zimm' ? 'Gola alta' : 'Gola tradicional';
   const material = String(family === 'regata' ? entry.composition || '' : entry.name || '').replace(/camiseta|camisa|oversized|tradicional/gi, '').trim();
   return {
     garmentModelId: String(entry.id), garmentModelName: [shortName, material].filter(Boolean).join(' · '),

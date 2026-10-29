@@ -154,3 +154,12 @@ curl -s -I https://fpacstore.com.br/produto/camiseta-force | grep -i "content-ty
 # 8.4. Verificação de Rota Inexistente de API (Isolamento JSON 404)
 curl -s https://fpacstore.com.br/api/rota-inexistente-teste | grep -i "Rota de API não encontrada"
 ```
+
+
+## Organização dos sete tipos — 29/10/2026
+
+A revisão marcada com `[stock-range-20261029]` executa uma única tarefa `fpac-stock-range-20261029` antes da promoção, com a imagem candidata e a identidade de execução já usada pelo site. O comando compilado fica em `build-server/`, fora dos ativos públicos. Não altera IAM nem lê credenciais de administração no runner.
+
+A rotina audita produtos e inventário, padroniza a família e os nomes internos, arquiva reversivelmente os cadastros fora da lista e prepara bases ausentes como rascunhos vazios. Não reescreve documentos de estoque existentes, variantes, reservas, preços, IDs, slugs, fichas ou pedidos. O evento privado `stock_range_events/stock-range-20261029-v1` guarda os campos anteriores e o resultado. Uma prévia alterada é recusada; repetir a mesma operação não duplica efeitos.
+
+A execução precisa terminar com sucesso para promover. Deploys posteriores não repetem a tarefa automaticamente; a entrada manual `reorganize_stock` permite uma verificação idempotente. Não há dependência de banco adicionada às probes ou à inicialização de cada instância. A tarefa não tem agendamento recorrente. Reverter tráfego não desfaz a classificação do banco: qualquer reversão de campos deve conferir alterações posteriores e usar o evento protegido, preservando saldos e pedidos.

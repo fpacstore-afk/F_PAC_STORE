@@ -127,9 +127,11 @@ export function useInventory({ administrative = false, enabled = true }: { admin
         newState[docSnap.id] = normalizeInventoryDocument(docSnap.data());
       });
       setInventory(newState);
+      setError(null);
       setLoading(false);
     }, (error) => {
       handleFirestoreError(error, OperationType.LIST, 'inventory');
+      setError('Não foi possível carregar os saldos do estoque. Atualize a página e confira sua sessão.');
       setLoading(false);
     });
 

@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 600" role="img" aria-label="Ilustração de boné trucker preto com laterais de telinha">
+  <defs>
+    <linearGradient id="front" x2=".9" y2="1"><stop stop-color="#373737"/><stop offset="1" stop-color="#101010"/></linearGradient>
+    <linearGradient id="brim" x2="0" y2="1"><stop stop-color="#292929"/><stop offset="1" stop-color="#0c0c0c"/></linearGradient>
+    <pattern id="mesh" width="11" height="11" patternUnits="userSpaceOnUse"><path d="M0 0h11v11H0z" fill="#3e3e3e"/><path d="M0 0l11 11M11 0L0 11" stroke="#b0aaa1" stroke-width="1.4"/></pattern>
+    <filter id="shadow"><feGaussianBlur stdDeviation="13"/></filter>
+  </defs>
+  <path fill="#f4f3ef" d="M0 0h600v600H0z"/>
+  <ellipse cx="302" cy="444" rx="208" ry="27" fill="#1c1c1c" opacity=".15" filter="url(#shadow)"/>
+  <path d="M259 175c103-37 201 33 224 174l-73 58-86-104z" fill="url(#mesh)" stroke="#191919" stroke-width="7"/>
+  <path d="M126 355c2-113 59-184 142-190 65 29 116 100 133 208-102 14-192 15-275-18z" fill="url(#front)" stroke="#171717" stroke-width="7"/>
+  <path d="M268 174c3 49 12 114 27 198M138 340c77 28 156 33 247 25" fill="none" stroke="#5b5b5b" stroke-width="2" opacity=".55"/>
+  <path d="M132 352c81 35 171 42 270 20 45 12 86 40 108 65-53 42-198 59-332 25-69-18-101-44-101-67 6-19 26-34 55-43z" fill="url(#brim)" stroke="#141414" stroke-width="7"/>
+  <path d="M104 402c89 56 268 69 366 32M115 390c91 49 239 64 329 43" fill="none" stroke="#777" opacity=".3" stroke-width="2"/>
+  <ellipse cx="267" cy="166" rx="15" ry="8" fill="#161616"/>
+  <path d="M395 373c17-19 31-29 48-36" fill="none" stroke="#202020" stroke-width="8"/>
+</svg>

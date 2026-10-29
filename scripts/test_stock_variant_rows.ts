@@ -42,4 +42,13 @@ const disabledRows = buildStockVariantRows({
   variants: [{ sku: 'PRETO-M', colorName: 'Preto', size: 'M', active: false }],
 } as any, inventory as any);
 assert.equal(disabledRows.find(row => row.key === 'Preto_M')?.status, 'inactive');
+const internal = { ...product, status:'draft', productFinish:'plain', baseModel:'Tradicional Suedine', garmentModelId:'TIG-001' };
+assert.equal(buildStockVariantRows(internal as any, inventory as any).find(row=>row.key==='Preto_M')?.status,'safe','Internal draft blanks are operational stock, not unpublished finished products');
+assert.equal(buildStockVariantRows({ ...internal, productFinish:'printed' } as any, inventory as any)[0].status,'inactive','Draft retail products remain unpublished/inactive');
+const pending = buildStockVariantRows({ ...internal, garmentModelId:undefined, modelSeparationRequired:true } as any, inventory as any);
+assert.equal(pending.find(row=>row.key==='Preto_M')?.physical,5);
+assert.equal(pending.find(row=>row.key==='Preto_M')?.available,0);
+assert.equal(pending.find(row=>row.key==='Preto_M')?.status,'classification_pending');
+assert.equal(buildStockVariantRows({ ...internal, garmentModelId:undefined, modelSeparationRequired:true, stock:5 } as any)[0].available,0,'Aggregate mixed stock must not be released either');
+assert.equal(buildStockVariantRows(internal as any,{...inventory,variants:{...inventory.variants,Preto_M:{...inventory.variants.Preto_M,active:false}}} as any).find(row=>row.key==='Preto_M')?.status,'inactive','Explicit inventory deactivation is never undone by a draft-base display fix');
 console.log('✅ SKUs, disponibilidade e status por cor/tamanho: verificações aprovadas.');

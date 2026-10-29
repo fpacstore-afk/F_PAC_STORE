@@ -77,6 +77,8 @@ export interface ProductVariantDefinition {
 }
 
 export interface Product {
+  stockFamily?: string;
+  rangeArchived?: boolean;
   supplierName?: string;
   garmentModelId?: string;
   garmentModelName?: string;

@@ -1,8 +1,9 @@
 import type { Product } from '../types/product';
 import type { InventoryState } from '../hooks/useInventory';
 import { normalizeProductStatus } from '../../shared/productPublication';
+import { requiresGarmentClassification } from '../../shared/garmentModels';
 
-export type StockVariantStatus = 'inactive' | 'out' | 'critical' | 'safe' | 'unallocated';
+export type StockVariantStatus = 'inactive' | 'out' | 'critical' | 'safe' | 'unallocated' | 'classification_pending';
 
 export type StockVariantRow = {
   key: string;
@@ -51,7 +52,10 @@ export function buildStockVariantRows(product: StockProduct, inventoryEntry?: In
   });
 
   const baseSku = String(product.sku || product.slug || product.id || 'PROD').trim().toUpperCase();
-  const productActive = normalizeProductStatus(product.status) === 'active';
+  const publication = normalizeProductStatus(product.status);
+  // Internal blank bases are deliberately drafts; publication is not a stock switch.
+  const productActive = publication === 'active' || (product.productFinish === 'plain' && publication === 'draft');
+  const classificationPending = requiresGarmentClassification(product);
   const aggregateStock = quantity(inventoryEntry?.physicalQuantity ?? product.stock);
   // Older products may have only one aggregate balance. Never assign it to an
   // arbitrary color or size: show it explicitly as unallocated stock.
@@ -63,10 +67,10 @@ export function buildStockVariantRows(product: StockProduct, inventoryEntry?: In
       size: 'Não detalhado',
       physical: aggregateStock,
       reserved: quantity(inventoryEntry?.reservedQuantity),
-      available: quantity(inventoryEntry?.availableQuantity ?? aggregateStock),
+      available: classificationPending ? 0 : quantity(inventoryEntry?.availableQuantity ?? aggregateStock),
       minimum: quantity(product.minStock ?? 1),
       active: productActive,
-      status: productActive ? 'unallocated' : 'inactive',
+      status: !productActive ? 'inactive' : classificationPending ? 'classification_pending' : 'unallocated',
     }];
   }
 
@@ -77,10 +81,11 @@ export function buildStockVariantRows(product: StockProduct, inventoryEntry?: In
     const state = inventoryVariants[key];
     const physical = quantity(state?.physicalQuantity ?? (inventoryEntry ? 0 : mirror[key] ?? definition?.stock ?? sizeStock?.quantity));
     const reserved = quantity(state?.reservedQuantity ?? definition?.reserved ?? sizeStock?.reserved);
-    const available = quantity(state?.availableQuantity ?? physical - reserved);
+    const available = classificationPending ? 0 : quantity(state?.availableQuantity ?? physical - reserved);
     const minimum = quantity(definition?.minStock ?? sizeStock?.minStock ?? product.minStock ?? 1);
-    const active = productActive && definition?.active !== false;
-    const status: StockVariantStatus = !active ? 'inactive' : available === 0 ? 'out' : available <= minimum ? 'critical' : 'safe';
+    const colorDefinition = product.colors?.find(entry => normalize(entry.name) === normalize(color)) as any;
+    const active = productActive && definition?.active !== false && (state as any)?.active !== false && colorDefinition?.active !== false;
+    const status: StockVariantStatus = !active ? 'inactive' : classificationPending && physical > 0 ? 'classification_pending' : available === 0 ? 'out' : available <= minimum ? 'critical' : 'safe';
     return {
       key,
       sku: definition?.sku || `${baseSku}-${skuPart(color)}-${skuPart(size)}`,

@@ -8,6 +8,7 @@ const STATUS = {
   critical: { label: 'Crítico', style: 'border-amber-200 bg-amber-50 text-amber-900' },
   safe: { label: 'Seguro', style: 'border-emerald-200 bg-emerald-50 text-emerald-800' },
   unallocated: { label: 'Sem detalhamento', style: 'border-blue-200 bg-blue-50 text-blue-800' },
+  classification_pending: { label: 'Modelo a conferir', style: 'border-amber-200 bg-amber-50 text-amber-900' },
 } satisfies Record<StockVariantStatus, { label: string; style: string }>;
 
 export function StockVariantStatusSummary({ rows }: { rows: StockVariantRow[] }) {
@@ -19,6 +20,7 @@ export function StockVariantStatusSummary({ rows }: { rows: StockVariantRow[] })
       {summary.outCount > 0 && <span className="rounded-sm bg-rose-50 px-1.5 py-1 text-rose-800">{summary.outCount} esgotados</span>}
       {summary.inactiveCount > 0 && <span className="rounded-sm bg-neutral-100 px-1.5 py-1 text-neutral-600">{summary.inactiveCount} inativos</span>}
       {rows.some(row => row.status === 'unallocated') && <span className="rounded-sm bg-blue-50 px-1.5 py-1 text-blue-800">Sem detalhamento</span>}
+      {rows.some(row => row.status === 'classification_pending') && <span className="rounded-sm bg-amber-50 px-1.5 py-1 text-amber-900">Modelo a conferir</span>}
     </span>
   );
 }
@@ -53,6 +55,7 @@ export function StockVariantBreakdown({ rows }: { rows: StockVariantRow[] }) {
         </tbody>
       </table>
       {rows.some(row => row.status === 'unallocated') && <p className="border-t border-blue-100 bg-blue-50 px-3 py-2 text-[10px] text-blue-900">Este saldo antigo não informa cor e tamanho. Confira a matriz de estoque antes de distribuí-lo.</p>}
+      {rows.some(row => row.status === 'classification_pending') && <p className="border-t border-amber-100 bg-amber-50 px-3 py-2 text-xs text-amber-900">O saldo físico está preservado. Confira o modelo e a ficha antes de liberar estas peças para compra.</p>}
     </div>
   );
 }

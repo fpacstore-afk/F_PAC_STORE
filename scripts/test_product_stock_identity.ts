@@ -5,11 +5,11 @@ import { categoryForBaseModel, getStockCategory } from '../src/lib/stockCategory
 import { hasSharedProductSlug, resolveProductStockSlug, readProductVariantQuantity, hasConflictingProductSku, normalizeProductSku } from '../shared/productStockIdentity.ts';
 
 const first = { id: 'camaleao123', slug: 'camiseta-oversized-f-pac' };
-assert.equal(getStockCategory({ category: 'Camisetas', baseModel: 'Oversized Premium 240GSM', name: 'F PAC' }), 'Camisetas Oversized');
-assert.equal(getStockCategory({ category: 'Camisetas', baseModel: 'Tradicional Suedine', name: 'Camiseta Oversized antiga' }), 'Camisetas Tradicionais');
-assert.equal(getStockCategory({ category: 'Camisetas', name: 'Camiseta Tradicional F PAC' }), 'Camisetas Tradicionais');
-assert.equal(getStockCategory({ category: 'Cropped Oversized', baseModel: 'Cropped Oversized Feminino' }), 'Cropped Oversized');
-assert.equal(getStockCategory({ category: 'Bermudas', name: 'Bermuda Linho Cargo' }), 'Bermudas');
+assert.equal(getStockCategory({ category: 'Camisetas', baseModel: 'Oversized Premium 240GSM', name: 'F PAC' }), 'Camisa Oversized');
+assert.equal(getStockCategory({ category: 'Camisetas', baseModel: 'Tradicional Suedine', name: 'Camiseta Oversized antiga' }), 'Camisa Tradicional');
+assert.equal(getStockCategory({ category: 'Camisetas', name: 'Camiseta Tradicional F PAC' }), 'Camisa Tradicional');
+assert.equal(getStockCategory({ category: 'Cropped Oversized', baseModel: 'Cropped Oversized Feminino' }), 'Cropped Boxy Oversized');
+assert.equal(getStockCategory({ category: 'Bermudas', name: 'Bermuda Linho Cargo' }), 'Bermuda de Linho Cargo');
 assert.equal(getStockCategory({ category: 'Camisetas' }), 'Camisetas', 'ambiguous legacy items stay available for manual review');
 assert.equal(categoryForBaseModel('Tradicional Suedine'), 'Camisetas Tradicionais');
 assert.equal(categoryForBaseModel('Oversized Premium 240GSM'), 'Camisetas Oversized');

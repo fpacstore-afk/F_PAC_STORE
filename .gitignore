@@ -9,3 +9,6 @@ coverage/
 /dist/
 
 # Generated production build
+
+# Backend-only one-time maintenance commands
+/build-server/

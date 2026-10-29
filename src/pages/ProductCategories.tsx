@@ -10,25 +10,15 @@ import { productMatchesStorefrontCategory, buildSellableCatalog } from '../lib/c
 import { ProductMockupSprite } from '../components/ProductMockupSprite';
 import type { ProductVisualKind } from '../lib/productPresentation';
 import { subscribePublicProductSnapshot } from '../services/publicProducts';
+import { STOCK_FAMILIES } from '../../shared/stockFamilies';
 
 type CategoryCard = {
   slug: string;
   title: string;
   visualKind?: ProductVisualKind;
-  optional?: boolean;
 };
 
-const categories: CategoryCard[] = [
-  { slug: 'oversized', title: 'Oversized', visualKind: 'oversized' },
-  { slug: 'tradicional', title: 'Tradicional', visualKind: 'traditional' },
-  { slug: 'croppeds', title: 'Cropped', visualKind: 'cropped' },
-  { slug: 'casacos', title: 'Moletom / Casaco', visualKind: 'hoodie' },
-  { slug: 'bermudas', title: 'Bermuda', visualKind: 'shorts' },
-  { slug: 'bones', title: 'Boné', visualKind: 'cap' },
-  { slug: 'chinelos', title: 'Chinelos & Slides', optional: true },
-  { slug: 'kits', title: 'Kits F PAC', optional: true },
-  { slug: 'acessorios', title: 'Acessórios', optional: true },
-];
+const categories: CategoryCard[] = STOCK_FAMILIES.map(family => ({ slug: family.id, title: family.label, visualKind: family.visualKind }));
 
 export default function ProductCategories() {
   const [catalogError, setCatalogError] = useState(false);
@@ -42,26 +32,18 @@ export default function ProductCategories() {
     () => setCatalogError(true),
   ), []);
 
-  const categoryCounts = useMemo(() => new Map(categories.map(category => [
-    category.slug,
-    products.filter(product => productMatchesStorefrontCategory(product, category.slug)).length,
-  ])), [products]);
-
   const categoryProducts = useMemo(() => new Map(categories.map(category => [
     category.slug,
     products.find(product => productMatchesStorefrontCategory(product, category.slug)),
   ])), [products]);
 
-  const visibleCategories = useMemo(
-    () => categories.filter(category => !category.optional || (categoryCounts.get(category.slug) || 0) > 0),
-    [categoryCounts],
-  );
+  const visibleCategories = categories;
 
   return (
     <div data-density-page="categories" className="min-h-screen bg-[#f7f7f5] pb-20 md:pb-28">
       <Helmet>
         <title>Produtos | F PAC STORE</title>
-        <meta name="description" content="Explore os produtos F PAC STORE por categoria: camisetas oversized, tradicionais, casacos, bonés, chinelos, croppeds oversized, bermudas e mais." />
+        <meta name="description" content="Camisas oversized e tradicionais com gola tradicional ou alta, bermuda de linho cargo, regata, cropped boxy oversized, casaco de moletom e boné de telinha trucker." />
         <link rel="canonical" href="https://www.fpacstore.com.br/produtos" />
       </Helmet>
 
@@ -102,14 +84,14 @@ export default function ProductCategories() {
               className="group overflow-hidden rounded-xl md:rounded-2xl bg-white border border-black/10 shadow-sm hover:shadow-xl hover:-translate-y-0.5 transition-all duration-300"
             >
               <div className="aspect-square overflow-hidden bg-[#f4f3ef]">
-                {visualKind ? (
+                {visualKind === 'cap' ? <img src="/product-visuals/trucker-category.svg" alt="Ilustração de boné de telinha trucker" className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.03]" /> : visualKind ? (
                   <ProductMockupSprite kind={visualKind} className="h-full w-full" imageClassName="transition-transform duration-500 group-hover:scale-[1.03]" label={title} />
                 ) : (
                   <img src={image || '/estampas/logo-fpac.png'} alt={title} className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.03]" />
                 )}
               </div>
               <div className="flex items-center justify-between gap-2 p-3 md:p-4 text-black">
-                <div className="min-w-0"><h2 className="text-xs md:text-base leading-tight font-black uppercase">{title}</h2><p className="mt-0.5 text-[7px] md:text-[8px] font-black uppercase tracking-[0.12em] text-[#9a7100]">PRIME · MARK · FORCE</p></div>
+                <div className="min-w-0"><h2 className="text-xs md:text-base leading-tight font-black uppercase">{title}</h2><p className="mt-1 text-[8px] font-bold text-[#806000]">{slug === 'oversized' || slug === 'tradicional' ? 'Gola tradicional · Gola alta' : 'Confira as opções disponíveis'}</p></div>
                 <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-black text-white"><ArrowRight size={13} /></span>
               </div>
             </Link>
