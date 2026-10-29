@@ -7,6 +7,7 @@
 - Updated compatible dependency versions and patched transitive gRPC/basic-ftp dependencies without downgrading Firebase or changing framework major versions. `npm run security:audit` checks the production dependency tree in PR and deployment workflows.
 - Reject compressed JSON/raw artwork bodies, apply a cheap API entry limit before parsing, and return safe parser errors with the appropriate HTTP status.
 - Payment creation and lead ingestion have transactional Firestore request budgets shared across instances, in addition to process-local route limits. Counters store a hash and expiry, never the raw IP. Existing artwork and telemetry quotas are preserved.
+- Print previews use a same-origin script instead of inline scripts/onclick, preserving the manual 10×15 label action and image/font readiness for production tickets.
 - Production CSP restricts executable scripts to the app and required Firebase/Mercado Pago sources. Headers are consistent in Express, Firebase Hosting and Cloudflare assets. Inline event handlers in the entry HTML were removed.
 - Redact authorization strings, credential query parameters and sensitive object fields from logs; handle cyclic objects safely.
 - Add privacy and purchase-condition pages, links in the footer and checkout, and keyboard/focus handling for the returns dialog. Preserve separate optional choices for analytics and recovery messages.
