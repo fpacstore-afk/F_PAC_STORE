@@ -12,6 +12,10 @@
 - Redact authorization strings, credential query parameters and sensitive object fields from logs; handle cyclic objects safely.
 - Add privacy and purchase-condition pages, links in the footer and checkout, and keyboard/focus handling for the returns dialog. Preserve separate optional choices for analytics and recovery messages.
 
+## Runtime availability follow-up
+
+The authenticated deployment reported 1 CPU, 3 GiB memory, 0–13 instances and concurrency 1000 with only a TCP startup probe. The deployment now sets concurrency 80, an HTTP startup probe (up to 100 seconds) and HTTP liveness every 30 seconds (three failures). `/healthz` is a constant, uncached process-health response before body parsing, CORS and customer rate limits; it does not test Firestore or payment dependencies. This avoids a quota/database incident causing a restart loop. The candidate is checked through `/healthz` before promotion. CPU, memory and instance-count settings are preserved.
+
 ## Runtime verification and remaining configuration
 
 1. Verify normal Google management sign-in with the existing verified administrative account. An unverified email alone must not grant privileges. Server-defined `ADMIN_EMAILS` customizations apply to the API; custom administrators should use server-issued claims so API and rules agree.
