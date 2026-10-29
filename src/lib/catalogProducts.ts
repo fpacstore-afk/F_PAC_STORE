@@ -6,6 +6,7 @@ import {
 } from './productTaxonomy';
 import { getProductVisualKind } from './productPresentation';
 import { isProductPublished, normalizeProductStatus } from '../../shared/productPublication';
+import { stockFamily } from '../../shared/stockFamilies';
 
 export interface CatalogProductLike {
   id?: string;
@@ -72,30 +73,7 @@ export const productMatchesCommercialLine = (
 
 /** Shared by the home cards, category menu and FORCE/MARK category results. */
 export const productMatchesStorefrontCategory = (product: CatalogProductLike, category: string): boolean => {
-  const classify = (value: unknown): string | undefined => {
-    const text = normalizeCommercialText(value);
-    if (/cropped|boxy feminina|feminino/.test(text)) return 'croppeds';
-    if (/casaco|moletom|hoodie|jacket|jaqueta/.test(text)) return 'casacos';
-    if (/bermuda|\bshorts?\b|cargo/.test(text)) return 'bermudas';
-    if (/\bbones?\b|\bcaps?\b|chapeu/.test(text)) return 'bones';
-    if (/chinelo|slide|sandalia/.test(text)) return 'chinelos';
-    if (/\bkit\b/.test(text)) return 'kits';
-    if (/acessorio|accessory/.test(text)) return 'acessorios';
-    if (/tradicional|suedine|\bregular\b/.test(text)) return 'tradicional';
-    if (/oversized|boxy masculina/.test(text)) return 'oversized';
-    return undefined;
-  };
-  const type = getProductCategory(product);
-  const typeCategory: Record<string, string> = { cropped: 'croppeds', jacket: 'casacos', shorts: 'bermudas', cap: 'bones', kit: 'kits' };
-  const structuredCategory = typeCategory[type]
-    || classify(product.baseModel)
-    || classify(product.fit)
-    || classify(product.modeling);
-  const legacyCategory = classify([product.category, product.name, product.headline, ...(product.tags || [])].filter(Boolean).join(' '));
-  const resolved = structuredCategory || legacyCategory
-    || (type === 'accessory' ? 'acessorios' : undefined)
-    || (type === 'tshirt' && ['force', 'mark', 'prime'].includes(normalizeKey(product.parentSlug)) ? 'oversized' : undefined);
-  return resolved === category;
+  return stockFamily(product) === category;
 };
 
 export const isStructuralCatalogModel = (product: CatalogProductLike): boolean => {
@@ -186,6 +164,7 @@ export const applyCatalogImageFallbacks = <T extends CatalogProductLike>(product
 
 export const isSellableCatalogProduct = (product: CatalogProductLike): boolean => {
   if (isTestCatalogProduct(product) || isStructuralCatalogModel(product)) return false;
+  if (product.rangeArchived === true || product.mergedIntoProductId) return false;
   if (!isProductPublished(product)) return false;
   return Array.isArray(product.images) && product.images.filter(Boolean).length > 0;
 };

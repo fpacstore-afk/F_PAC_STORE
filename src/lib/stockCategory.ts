@@ -1,3 +1,4 @@
+import { stockFamily, stockFamilyDefinition } from '../../shared/stockFamilies';
 type StockCategoryProduct = {
   category?: unknown;
   baseModel?: unknown;
@@ -19,8 +20,8 @@ const normalize = (value: unknown): string => String(value ?? '')
 export function categoryForBaseModel(model: unknown): string | undefined {
   const value = normalize(model);
   if (/cropped|boxy feminina/.test(value)) return 'Cropped Oversized';
-  if (/tradicional|suedine|regular/.test(value)) return TRADITIONAL_CATEGORY;
   if (/oversized|boxy masculina/.test(value)) return OVERSIZED_CATEGORY;
+  if (/tradicional|suedine|regular/.test(value)) return TRADITIONAL_CATEGORY;
   if (/bermuda/.test(value)) return 'Bermudas';
   if (/moletom/.test(value)) return 'Moletons';
   if (/calca/.test(value)) return 'Calças';
@@ -33,6 +34,8 @@ export function categoryForBaseModel(model: unknown): string | undefined {
 
 /** Classify old generic shirt records for stock search without changing Firestore data. */
 export function getStockCategory(product: StockCategoryProduct): string {
+  const approved = stockFamilyDefinition(stockFamily(product));
+  if (approved) return approved.label;
   const savedCategory = String(product.category ?? '').trim();
   if (savedCategory && normalize(savedCategory) !== 'camisetas') return savedCategory;
 

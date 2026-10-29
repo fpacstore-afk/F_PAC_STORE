@@ -1,4 +1,5 @@
 import { compareInventorySizes, hasInventoryCount, selectInventoryRows, type InventoryAuditFilters } from '../../shared/inventoryAuditView';
+import { STOCK_FAMILIES, stockFamily, stockCollar, stockCollarLabel, stockFamilyDefinition } from '../../shared/stockFamilies';
 import { authenticatedFetch, parseApiJson } from '../lib/api';
 import React, { useEffect, useMemo, useState } from 'react';
 import { collection, onSnapshot } from 'firebase/firestore';
@@ -22,6 +23,8 @@ type InventoryRow = {
   availableQuantity: number;
   minimumQuantity: number;
   stockType: 'plain' | 'printed';
+  stockFamily?: string;
+  collar?: string;
 };
 
 type StockMovement = { id: string; productSlug?: string; variantKey?: string; type?: string; quantity?: number; createdAt?: unknown; timestamp?: unknown; reason?: string; };
@@ -72,12 +75,15 @@ export function InventoryAuditCenter({ operator = 'Administrador' }: { operator?
       // becomes countable only when it belongs to an identified product and
       // currently carries physical stock.
       if (!product) return;
+      if ((product.rangeArchived || product.status === 'archived' || product.mergedIntoProductId) && systemQuantity === 0 && !Number(variant?.reservedQuantity || 0)) return;
       const key = `${productSlug}:${variantKey}`;
       if (added.has(key)) return;
       added.add(key);
       entries.push({
         productSlug,
-        productName: String(product?.name || productSlug),
+        productName: [product?.name || productSlug, stockCollarLabel(product), product?.supplierName].filter(Boolean).join(' · '),
+        stockFamily: stockFamily(product) || '',
+        collar: stockCollar(product),
         // The name is intentionally human-readable, while this second line
         // exposes the real catalogue identity when many variants share it.
         productCode: String(product?.sku || product?.reference || product?.slug || product?.id || productSlug),
@@ -86,7 +92,7 @@ export function InventoryAuditCenter({ operator = 'Administrador' }: { operator?
         color: String(variant?.color || variantKey.split('_')[0] || 'Sem cor'),
         size: String(variant?.size || variantKey.split('_').slice(1).join('_') || 'Único'),
         systemQuantity,
-        countVerified: product?.productFinish !== 'printed' || variant?.physicalCountVerified === true,
+        countVerified: product?.productFinish === 'plain' || /\b(lisa|liso|base|sem estampa)\b/i.test(`${product?.name || ''} ${(product?.tags || []).join(' ')}`) || variant?.physicalCountVerified === true,
         reservedQuantity: Math.max(0, Number(variant?.reservedQuantity) || 0),
         availableQuantity: Math.max(0, systemQuantity - (Number(variant?.reservedQuantity) || 0)),
         minimumQuantity: Math.max(1, Number(product?.minStock) || 1),
@@ -108,7 +114,7 @@ export function InventoryAuditCenter({ operator = 'Administrador' }: { operator?
 
   const visibleRows = useMemo(() => selectInventoryRows(rows, filters, counts), [rows, filters, counts]);
   const filterOptions = useMemo(() => {
-    const typedRows = rows.filter(row => stockType === 'all' || row.stockType === stockType);
+    const typedRows = rows.filter(row => (stockType === 'all' || row.stockType === stockType) && (!filters.stockFamily || row.stockFamily === filters.stockFamily) && (!filters.collar || row.collar === filters.collar));
     const productRows = typedRows.filter(row => !filters.baseModel || row.baseModel === filters.baseModel);
     const productsBySlug = new Map(productRows.map(row => [row.productSlug, row]));
     const alphabetical = (values: string[]) => [...new Set(values)].sort((a, b) => a.localeCompare(b, 'pt-BR', { numeric: true }));
@@ -118,7 +124,7 @@ export function InventoryAuditCenter({ operator = 'Administrador' }: { operator?
       colors: alphabetical(typedRows.map(row => row.color)),
       sizes: [...new Set(typedRows.map(row => row.size))].sort(compareInventorySizes),
     };
-  }, [rows, stockType, filters.baseModel]);
+  }, [rows, stockType, filters.baseModel, filters.stockFamily, filters.collar]);
   const periodTotals = useMemo(() => {
     const now = Date.now();
     const periods = [7, 30, 90, 365];
@@ -258,6 +264,8 @@ export function InventoryAuditCenter({ operator = 'Administrador' }: { operator?
           <FilterButton active={stockType === 'all'} onClick={() => setStockType('all')}>Todos</FilterButton>
         </div>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <label className="text-xs font-bold">Tipo de produto<select value={filters.stockFamily || ''} onChange={event => setFilters(current => ({ ...current, stockFamily:event.target.value, collar:'', productSlug:'', baseModel:'', color:'', size:'' }))} className="mt-1 block w-full border border-black/20 px-3 py-2 font-normal"><option value="">Os 7 tipos e registros para conferência</option>{STOCK_FAMILIES.map(family => <option key={family.id} value={family.id}>{family.label}</option>)}</select></label>
+          <label className="text-xs font-bold">Gola<select value={filters.collar || ''} onChange={event => setFilters(current => ({ ...current, collar:event.target.value, productSlug:'', baseModel:'' }))} className="mt-1 block w-full border border-black/20 px-3 py-2 font-normal"><option value="">Todas / não se aplica</option><option value="classic_open">Gola tradicional</option><option value="high_closed">Gola alta</option><option value="unclassified">Gola a conferir</option></select></label>
           <label className="text-xs font-bold">Buscar no inventário<input type="search" value={filters.search} onChange={event => setFilters(current => ({ ...current, search: event.target.value }))} placeholder="Produto, referência ou cor" className="mt-1 block w-full border border-black/20 px-3 py-2 font-normal" /></label>
           <label className="text-xs font-bold">Modelo<select value={filters.baseModel} onChange={event => setFilters(current => ({ ...current, baseModel: event.target.value, productSlug: '' }))} className="mt-1 block w-full border border-black/20 px-3 py-2 font-normal"><option value="">Todos os modelos</option>{filterOptions.models.map(model => <option key={model} value={model}>{model}</option>)}</select></label>
           <label className="text-xs font-bold">Produto<select value={filters.productSlug} onChange={event => setFilters(current => ({ ...current, productSlug: event.target.value }))} className="mt-1 block w-full border border-black/20 px-3 py-2 font-normal"><option value="">Todos os produtos</option>{filterOptions.products.map(row => <option key={row.productSlug} value={row.productSlug}>{row.productName} · {row.productCode}</option>)}</select></label>

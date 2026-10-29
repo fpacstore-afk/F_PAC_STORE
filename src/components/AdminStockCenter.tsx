@@ -1,5 +1,7 @@
 import { isAdminIdentity } from '../../shared/adminIdentity';
 import { GarmentModelStockPanel } from './admin/GarmentModelStockPanel';
+import { StockFamilyOverview } from './admin/StockFamilyOverview';
+import { stockFamily, stockCollarLabel, isOperationalStockProduct, summarizeStockFamilies, type StockFamilyId } from '../../shared/stockFamilies';
 import { countedReadyInventory } from '../../shared/sharedGarmentStock';
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { db, handleFirestoreError, OperationType } from '../lib/firebase';
@@ -61,7 +63,7 @@ const inferStockGroup = (product: Partial<Product>, unifiedType: 'shirt' | 'prod
 export function AdminStockCenter() {
   const { formatMoney, formatPercent, maskFinancial, showFinancialValues } = useFinancialPrivacy();
   const { user } = useAuth();
-  const { inventory, loading: invLoading, updateVariantStock } = useInventory({ administrative: true });
+  const { inventory, loading: invLoading, error: inventoryError, updateVariantStock } = useInventory({ administrative: true });
 
   // Admin access validation (matches the AdminOrders restriction)
   const isDevBypass = import.meta.env.DEV && localStorage.getItem('admin_bypass') === 'true';
@@ -69,6 +71,7 @@ export function AdminStockCenter() {
 
   // Sub-tab: 'stock' (Unified Gestão de Estoque)
   const [activeSubTab, setActiveSubTab] = useState<'stock' | 'catalog'>('stock');
+  const [selectedFamily, setSelectedFamily] = useState<StockFamilyId | null>(null);
 
   // Integrated Product Management Drawer (6-tab full drawer)
   const [isProductDrawerOpen, setIsProductDrawerOpen] = useState(false);
@@ -276,17 +279,18 @@ export function AdminStockCenter() {
     // just-saved quantity in the management list only while no inventory
     // document exists yet; never use it to override an existing authority.
     const getDisplayedStock = (product: Partial<Product>) => {
+      const isPrinted = inferStockGroup(product, ['force','mark','prime'].includes(product.slug || '') ? 'shirt' : 'product') === 'printed';
       const hasInventoryDocument = Boolean(
         (product.slug && inventory[product.slug]) ||
         (product.id && inventory[product.id])
       );
       if (hasInventoryDocument) {
         const item = (product.slug && inventory[product.slug]) || (product.id && inventory[product.id]);
-        if (product.productFinish === 'printed') return Object.values(countedReadyInventory(item)?.variants || {}).reduce<number>((sum, v: any) => sum + (Number(v.physicalQuantity) || 0), 0);
+        if (isPrinted) return Object.values(countedReadyInventory(item)?.variants || {}).reduce<number>((sum, v: any) => sum + (Number(v.physicalQuantity) || 0), 0);
         return Math.max(0, Number(item?.physicalQuantity) || 0);
       }
 
-      if (product.productFinish === 'printed') return 0;
+      if (isPrinted) return 0;
       const variantTotal = Object.values(product.variantsStock || {}).reduce(
         (sum, quantity) => sum + Math.max(0, Number(quantity) || 0),
         0
@@ -295,7 +299,7 @@ export function AdminStockCenter() {
     };
 
     // 1. Basic T-Shirt Bases
-    const bases = products.filter(p => p.slug === 'force' || p.slug === 'mark' || p.slug === 'prime');
+    const bases = products.filter(p => isOperationalStockProduct(p) && (p.slug === 'force' || p.slug === 'mark' || p.slug === 'prime'));
     bases.forEach((b, idx) => {
       const consolidatedStock = getDisplayedStock(b);
       items.push({
@@ -314,7 +318,7 @@ export function AdminStockCenter() {
     });
 
     // 2. Catalog Products
-    const catalogProds = products.filter(p => p.slug !== 'force' && p.slug !== 'mark' && p.slug !== 'prime');
+    const catalogProds = products.filter(p => isOperationalStockProduct(p) && p.slug !== 'force' && p.slug !== 'mark' && p.slug !== 'prime');
     catalogProds.forEach((p, idx) => {
       const consolidatedStock = getDisplayedStock(p);
       items.push({
@@ -334,11 +338,18 @@ export function AdminStockCenter() {
 
     return items.map(item => ({
       ...item,
-      variantRows: buildStockVariantRows(item, item.productFinish === 'printed' ? countedReadyInventory((item.slug && inventory[item.slug]) || (item.id && inventory[item.id])) : (item.slug && inventory[item.slug]) || (item.id && inventory[item.id]) || undefined),
+      variantRows: buildStockVariantRows(item, item.stockGroup === 'printed' ? countedReadyInventory((item.slug && inventory[item.slug]) || (item.id && inventory[item.id])) : (item.slug && inventory[item.slug]) || (item.id && inventory[item.id]) || undefined),
       identity: stockProductIdentity(item, stockDesigns),
       duplicateReference: hasDuplicateProductReference(item.sku, duplicateReferences)
     }));
   }, [products, inventory, stockDesigns, duplicateReferences]);
+
+  const stockForReview = useMemo(() => Object.entries(inventory).flatMap(([slug, value]) => {
+    const product = products.find(p => p.slug === slug || p.id === slug);
+    if (product && isOperationalStockProduct(product)) return [];
+    if (!value.physicalQuantity && !value.reservedQuantity) return [];
+    return [{ slug, name:product?.name || slug, physical:value.physicalQuantity, reserved:value.reservedQuantity, reason:product ? 'Cadastro arquivado ou fora dos sete tipos' : 'Sem cadastro de produto vinculado' }];
+  }), [inventory,products]);
 
   // Keep registered products and their color/size variants as separate counts.
   const stats = useMemo(() => {
@@ -354,8 +365,7 @@ export function AdminStockCenter() {
     let outOfStockCount = 0;
 
     unifiedStockItems.forEach(item => {
-      totalStockVolume += Number(item.totalStock) || 0;
-      if (normalizeProductStatus(item.status) === 'active') activeProductsCount++;
+      if (normalizeProductStatus(item.status) === 'active' || item.stockGroup === 'plain' && normalizeProductStatus(item.status) === 'draft') activeProductsCount++;
       else inactiveProductsCount++;
       if (item.stockGroup === 'plain') plainProductsCount++;
       if (item.stockGroup === 'printed') printedProductsCount++;
@@ -367,6 +377,7 @@ export function AdminStockCenter() {
       outOfStockCount += variants.outCount;
     });
 
+    totalStockVolume = summarizeStockFamilies(unifiedStockItems).reduce((sum,family)=>sum+family.physical,0);
     return { totalItems: unifiedStockItems.length, plainProductsCount, printedProductsCount, totalStockVolume, skuCount, activeProductsCount, inactiveProductsCount, activeCount, inactiveCount, lowStockCount, outOfStockCount };
   }, [unifiedStockItems]);
 
@@ -384,6 +395,7 @@ export function AdminStockCenter() {
   // Main list filters
   const filteredItems = useMemo(() => {
     return unifiedStockItems.filter(item => {
+      if (!selectedFamily || stockFamily(item) !== selectedFamily) return false;
       // 1. Operational stock division: blank bases versus ready-to-sell printed products.
       if (stockGroupFilter !== 'all' && item.stockGroup !== stockGroupFilter) return false;
 
@@ -408,7 +420,7 @@ export function AdminStockCenter() {
 
       return true;
     });
-  }, [unifiedStockItems, stockGroupFilter, categoryFilter, lineFilter, stockStatusFilter, searchQuery]);
+  }, [unifiedStockItems, selectedFamily, stockGroupFilter, categoryFilter, lineFilter, stockStatusFilter, searchQuery]);
 
   // Chronological Logs Filtering
   const filteredMovements = useMemo(() => {
@@ -712,7 +724,6 @@ export function AdminStockCenter() {
 
   return (
     <div className="space-y-4">
-      <GarmentModelStockPanel />
       {/* 1. HERO HEADER - ESTAMPAS STANDARD PATTERN */}
       <div className="bg-black text-white px-4 md:px-8 py-4 md:py-6 border-b-2 border-[#eab308] relative overflow-hidden">
         <div className="absolute right-0 bottom-0 opacity-10 translate-x-12 translate-y-12 pointer-events-none">
@@ -773,9 +784,10 @@ export function AdminStockCenter() {
           <p>{costCompletion.updated} custos preenchidos com os cadastros de precificação. {costCompletion.preserved} valores existentes preservados. Os custos calculados são referências parciais; confira os componentes pendentes no produto.</p>
           {costCompletion.unresolved.length > 0 && <p className="mt-2">Sem regra compatível: {costCompletion.unresolved.map(item => item.name).join(', ')}.</p>}
         </div>}
+        {inventoryError && <p role="alert" className="mb-4 border border-red-300 bg-red-50 p-4 text-sm text-red-900">{inventoryError} Os totais não foram confirmados.</p>}
         {productLoadError && <p role="alert" className="mb-4 border border-red-300 bg-red-50 p-4 text-sm text-red-900">Não foi possível carregar os produtos. Os números abaixo podem estar incompletos. Atualize a página e confira sua sessão.</p>}
         {!loadingProducts && !productLoadError && products.length === 0 && <p role="status" className="mb-4 border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950">Nenhum produto cadastrado foi encontrado. Registros antigos de estoque e pedidos são preservados, mas não criam produtos automaticamente na loja.</p>}
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+        <div hidden={Boolean(inventoryError) || productLoadError} className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
           {([
             { label: 'Volume total', value: stats.totalStockVolume, unit: 'unidades', tone: 'text-black', filter: null },
             { label: 'SKUs / variações', value: `${stats.totalItems} / ${stats.skuCount}`, unit: 'produtos / cor + tamanho', tone: 'text-black', filter: null },
@@ -817,10 +829,13 @@ export function AdminStockCenter() {
         className="hidden"
       />
 
+      <StockFamilyOverview items={unifiedStockItems} selected={selectedFamily} loading={invLoading || loadingProducts || productLoadError || Boolean(inventoryError)} onSelect={family => { setSelectedFamily(family); setCategoryFilter('all'); setStockGroupFilter('all'); setLineFilter('all'); setStockStatusFilter('all'); setSearchQuery(''); }} />
+      {stockForReview.length > 0 && <details className="mx-auto max-w-7xl rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm"><summary className="cursor-pointer font-bold">{stockForReview.length} registros de saldo preservados para conferência</summary><p className="my-3 text-xs">Estes registros antigos não criam outros tipos de produto. Os saldos permanecem no banco e não foram transferidos, zerados ou somados automaticamente aos sete tipos.</p><div className="overflow-x-auto"><table className="w-full text-left text-xs"><thead><tr><th className="p-2">Referência</th><th className="p-2">Saldo registrado</th><th className="p-2">Reservado</th><th className="p-2">Conferência</th></tr></thead><tbody>{stockForReview.map(row => <tr key={row.slug}><td className="p-2">{row.name}<span className="block font-mono text-[10px]">{row.slug}</span></td><td className="p-2">{row.physical}</td><td className="p-2">{row.reserved}</td><td className="p-2">{row.reason}</td></tr>)}</tbody></table></div></details>}
+      <details className="mx-auto max-w-7xl rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm"><summary className="cursor-pointer font-bold">Conferência e separação de saldos por gola e fornecedor</summary><div className="mt-3"><GarmentModelStockPanel /></div></details>
       <div className="space-y-6 animate-fade-in">
 
           {/* SECTION 3: CORE STOCK TABLE AND GRID (UNIFIED VIEW) */}
-          <section id="inventory-list-section" className="bg-white border border-black/[0.08] shadow-sm p-6 space-y-6">
+          <section id="inventory-list-section" hidden={!selectedFamily || Boolean(inventoryError) || productLoadError} className="bg-white border border-black/[0.08] shadow-sm p-6 space-y-6">
             
             {/* Control Bar */}
             <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4 border-b border-black/[0.05] pb-5">
@@ -1019,7 +1034,7 @@ export function AdminStockCenter() {
                               <div>
                                 <h4 className="text-[11.5px] font-black text-black tracking-tight leading-snug group-hover:text-[#eab308] transition-colors break-words">{item.identity.displayName}</h4>
                                 {item.duplicateReference && <span className="block text-xs text-amber-800">SKU repetido — confira a estampa. ID: {item.id}</span>}
-                                <span className="text-[8px] text-gray-400 uppercase font-bold tracking-widest block mt-0.5">{item.displayCategory}</span>
+                                  <span className="text-[8px] text-gray-500 uppercase font-bold tracking-widest block mt-0.5">{stockCollarLabel(item) || item.displayCategory}</span>
                               </div>
                             </div>
                           </td>
@@ -1866,6 +1881,7 @@ export function AdminStockCenter() {
         product={selectedProductForDrawer}
         onSaveSuccess={() => {}}
         initialProductFinish={newProductFinish}
+        initialStockFamily={selectedFamily}
       />
 
       {/* Reset Catalog Confirmation Modal */}

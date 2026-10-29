@@ -5,6 +5,12 @@ on:
     branches:
       - main
   workflow_dispatch:
+    inputs:
+      reorganize_stock:
+        description: Run the idempotent seven-family stock reorganization
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -194,6 +200,25 @@ jobs:
           done
           echo "A revisão candidata não conseguiu consultar o Firestore."
           exit "$CATALOG_STATUS"
+
+      - name: Reorganize approved stock range in the existing runtime
+        if: (github.event_name == 'push' && contains(github.event.head_commit.message, '[stock-range-20261029]')) || inputs.reorganize_stock == true
+        run: |
+          IMAGE="$(gcloud run revisions describe "${{ steps.candidate.outputs.revision }}" \
+            --project "$GCP_PROJECT_ID" --region "$GCP_REGION" \
+            --format='value(spec.containers[0].image)')"
+          RUNTIME_SA="$(gcloud run services describe "$CLOUD_RUN_SERVICE" \
+            --project "$GCP_PROJECT_ID" --region "$GCP_REGION" \
+            --format='value(spec.template.spec.serviceAccountName)')"
+          test -n "$IMAGE"
+          test -n "$RUNTIME_SA"
+          gcloud run jobs deploy fpac-stock-range-20261029 \
+            --project "$GCP_PROJECT_ID" --region "$GCP_REGION" \
+            --image "$IMAGE" --service-account "$RUNTIME_SA" \
+            --command node --args build-server/reorganize-stock-range.cjs \
+            --set-env-vars="NODE_ENV=production,FIREBASE_PROJECT_ID=$GCP_PROJECT_ID,FIREBASE_DATABASE_ID=ai-studio-a7d50f8c-9b01-4490-9a13-dd8892e0c41a" \
+            --tasks=1 --max-retries=0 --task-timeout=180s \
+            --cpu=1 --memory=3Gi --execute-now --wait --quiet
 
       - name: Promote validated revision
         run: |

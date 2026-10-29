@@ -1,3 +1,4 @@
+import { STOCK_FAMILIES, stockFamily, stockFamilyDefinition } from '../../../../shared/stockFamilies';
 import { garmentFamily } from '../../../../shared/garmentModels';
 import { resolveGarmentBase, stockSlug } from '../../../../shared/sharedGarmentStock';
 import React, { useState, useEffect, useMemo, useRef } from 'react';
@@ -40,9 +41,10 @@ interface ProductManagementDrawerProps {
   product: Product | null;
   onSaveSuccess: () => void;
   initialProductFinish?: 'plain' | 'printed';
+  initialStockFamily?: string | null;
 }
 
-const CATEGORIES = [OVERSIZED_CATEGORY, TRADITIONAL_CATEGORY, 'Camisetas', 'Cropped Oversized', 'Bermudas', 'Moletons', 'Calças', 'Polos', 'Regatas', 'Bonés', 'Acessórios', 'Kit F PAC'];
+const CATEGORIES = STOCK_FAMILIES.map(family => family.label);
 const COMMERCIAL_LINES = ['TODOS', 'FORCE', 'MARK', 'PRIME'];
 const PRODUCT_SAVE_TIMEOUT_MS = 30_000;
 
@@ -67,28 +69,9 @@ function createStockSaveIdempotencyKey() {
   const randomPart = uuid || `${Date.now()}${Math.random().toString(36).slice(2)}`;
   return `stock_${randomPart}`;
 }
-const BASE_MODELS = [
-  'Oversized Premium 240GSM',
-  'Tradicional Suedine',
-  'Boxy Masculina',
-  'Boxy Feminina',
-  'Cropped Oversized Feminino',
-  'Moletom Canguru',
-  'Moletom Careca',
-  'Bermuda Linho Cargo',
-  'Bermuda Moletom',
-  'Calça',
-  'Polo',
-  'Regata',
-  'Boné',
-  'Kit F PAC',
-  'Outro / Sem modelo base'
-];
-const PRODUCT_NAME_SUGGESTIONS = [
-  'Camiseta Oversized F PAC', 'Camiseta Tradicional F PAC', 'Camiseta Boxy F PAC',
-  'Cropped Oversized F PAC', 'Moletom F PAC', 'Bermuda Cargo F PAC',
-  'Boné F PAC', 'Kit F PAC'
-];
+const BASE_MODELS = ['Oversized Premium 240GSM', 'Tradicional Suedine', 'Bermuda Linho Cargo', 'Regata', 'Cropped Oversized Feminino', 'Casaco de Moletom', 'Boné de Telinha Trucker'];
+const PRODUCT_NAME_SUGGESTIONS = STOCK_FAMILIES.map(family => family.label);
+
 const DEFAULT_SIZES = ['P', 'M', 'G', 'GG', 'XG'];
 const TECHNICAL_SPEC_OPTIONS = {
   fabric: [
@@ -136,19 +119,10 @@ const inferProductFinish = (product?: Partial<Product> | null): 'plain' | 'print
 };
 
 const inferBaseModel = (product?: Partial<Product> | null): string => {
-  if (product?.baseModel && BASE_MODELS.includes(product.baseModel)) return product.baseModel;
-  const source = `${product?.parentSlug || ''} ${product?.category || ''} ${product?.name || ''}`.toLowerCase();
-  if (source.includes('cropped')) return 'Cropped Oversized Feminino';
-  if (source.includes('bermuda') && source.includes('linho')) return 'Bermuda Linho Cargo';
-  if (source.includes('bermuda')) return 'Bermuda Moletom';
-  if (source.includes('moletom')) return 'Moletom Canguru';
-  if (source.includes('boxy') && source.includes('fem')) return 'Boxy Feminina';
-  if (source.includes('boxy')) return 'Boxy Masculina';
-  if (source.includes('tradicional') || source.includes('suedine')) return 'Tradicional Suedine';
-  if (source.includes('force') || source.includes('mark') || source.includes('prime') || source.includes('oversized')) return 'Oversized Premium 240GSM';
-  if (source.includes('boné') || source.includes('bone')) return 'Boné';
-  if (source.includes('kit')) return 'Kit F PAC';
-  return 'Outro / Sem modelo base';
+  if (product?.baseModel) return product.baseModel;
+  const family = stockFamily(product);
+  const map: Record<string,string> = { oversized:BASE_MODELS[0], tradicional:BASE_MODELS[1], bermudas:BASE_MODELS[2], regatas:BASE_MODELS[3], croppeds:BASE_MODELS[4], casacos:BASE_MODELS[5], bones:BASE_MODELS[6] };
+  return family ? map[family] : '';
 };
 
 interface VariantStockRow {
@@ -166,7 +140,8 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
   onClose,
   product,
   onSaveSuccess,
-  initialProductFinish = 'printed'
+  initialProductFinish = 'printed',
+  initialStockFamily = 'oversized'
 }) => {
   const { formatMoney, formatPercent, maskFinancial, showFinancialValues } = useFinancialPrivacy();
   const { inventory, products: inventoryProducts } = useInventory({ administrative: true });
@@ -247,11 +222,11 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
     setActiveTab('info');
 
     if (product) {
-      const colors = product.colors && product.colors.length > 0 
+      const colors = Array.isArray(product.colors)
         ? product.colors 
         : [{ name: 'Preto', hex: '#000000' }];
       
-      const sizes = product.sizes && product.sizes.length > 0 
+      const sizes = Array.isArray(product.sizes)
         ? product.sizes 
         : DEFAULT_SIZES;
 
@@ -316,24 +291,24 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
       setInitialVariantStock(initMap);
       setVariantRows(rows);
     } else {
-      // New product reset
-      const defaultColors = [
-        { name: 'Preto', hex: '#000000' },
-        { name: 'Off White', hex: '#FAF9F6' }
-      ];
-      const defaultSizes = DEFAULT_SIZES;
+      // New stock starts with the chosen family and an unfilled, zero grade.
+      const family = stockFamilyDefinition(initialStockFamily) || STOCK_FAMILIES[0];
+      const familyIndex = STOCK_FAMILIES.findIndex(item => item.id === family.id);
+      const defaultColors: {name:string;hex:string}[] = [];
+      const defaultSizes: string[] = [];
 
       setFormData({
         name: '',
         sku: `FPAC-PROD-${Math.floor(1000 + Math.random() * 9000)}`,
         slug: '',
         description: '',
-        price: initialProductFinish === 'plain' ? 0 : 99.90,
+        price: undefined,
         promotionalPrice: undefined,
         costPrice: undefined,
-        category: OVERSIZED_CATEGORY,
+        category:family.label,
+        stockFamily:family.id,
         collection: initialProductFinish === 'plain' ? 'TODOS' : 'FORCE',
-        baseModel: 'Oversized Premium 240GSM',
+        baseModel:BASE_MODELS[familyIndex],
         productFinish: initialProductFinish,
         stampIds: [],
         stampIdsByColor: {},
@@ -341,7 +316,7 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
         stampSizesByColor: {},
         primeBaseEnabled: initialProductFinish === 'plain',
         brand: 'F PAC STORE',
-        status: initialProductFinish === 'plain' ? 'draft' : 'active',
+        status:'draft',
         isNew: true,
         isBestseller: false,
         is_prime: false,
@@ -352,7 +327,7 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
         sizes: defaultSizes,
         colors: defaultColors,
         sizeStock: defaultSizes.map(s => ({ size: s, quantity: 0, minStock: 1, reserved: 0 })),
-        specs: ['100% Algodão Premium 240GSM', 'Ribana Canelada 3cm', 'Modelagem Oversized'],
+        specs:[],
         weight: 0.35,
         width: 25,
         height: 3,
@@ -383,7 +358,7 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
       setInitialVariantStock(initMap);
       setVariantRows(rows);
     }
-  }, [initialProductFinish, product, isOpen]);
+  }, [initialProductFinish, initialStockFamily, product, isOpen]);
 
   const automaticCostProfile = useMemo(() => {
     const profile = resolveForProduct(formData);
@@ -828,8 +803,16 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
         ...supportedFormData
       } = formData;
       const isPlainStockItem = formData.productFinish === 'plain';
+      const selectedFamily = stockFamily({ ...formData, stockFamily:undefined });
+      const familyDefinition = stockFamilyDefinition(selectedFamily);
+      if (!familyDefinition) throw new Error('Escolha um dos sete tipos de produto da F PAC antes de salvar.');
       const rawPayload = {
         ...supportedFormData,
+        stockFamily:selectedFamily,
+        category:familyDefinition.label,
+        productType:familyDefinition.productType,
+        modelSeparationRequired:Boolean(garmentFamily(formData)),
+        modelClassificationPending:Boolean(garmentFamily(formData) && !formData.garmentModelId),
         name: productName,
         sku: fallbackSku,
         slug: productSlug,
@@ -1161,11 +1144,11 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
                       Categoria
                     </label>
                     <select
-                      value={formData.category || OVERSIZED_CATEGORY}
-                      onChange={(e) => setFormData({ ...formData, category: e.target.value })}
+                      value={stockFamilyDefinition(stockFamily(formData))?.label || formData.category || CATEGORIES[0]}
+                      onChange={(e) => { const index = CATEGORIES.indexOf(e.target.value as any); const family = STOCK_FAMILIES[index]; if (!family) return; if (family.id === stockFamily(formData)) { setFormData({ ...formData, category:family.label }); return; } setFormData({ ...formData, category:family.label, stockFamily:family.id, baseModel:BASE_MODELS[index], garmentModelId:'', garmentModelName:'', neckline:undefined, stockBaseSlug:undefined }); }}
                       className="w-full p-3 bg-black/60 border border-white/15 rounded-xl text-xs text-white focus:outline-none focus:border-[#eab308] cursor-pointer"
                     >
-                      {CATEGORIES.map((c) => (
+                      {selectOptions(formData.category, CATEGORIES).map((c) => (
                         <option key={c} value={c}>{c === 'Camisetas' ? 'Camisetas (modelo não definido)' : c}</option>
                       ))}
                     </select>
@@ -1192,23 +1175,24 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
                       Modelo da Peça / Base Física
                     </label>
                     <select
-                      value={formData.baseModel || 'Outro / Sem modelo base'}
-                      onChange={(e) => setFormData({ ...formData, baseModel: e.target.value, category: categoryForBaseModel(e.target.value) || formData.category })}
+                      value={formData.baseModel || BASE_MODELS[0]}
+                      onChange={(e) => { const family = stockFamily({ baseModel:e.target.value }); setFormData({ ...formData, baseModel:e.target.value, stockFamily:family || undefined, category:stockFamilyDefinition(family)?.label || formData.category, garmentModelId:'', garmentModelName:'', neckline:undefined, stockBaseSlug:undefined }); }}
                       className="w-full p-3 bg-black/60 border border-white/15 rounded-xl text-xs text-white focus:outline-none focus:border-[#eab308] cursor-pointer font-mono"
                     >
-                      {BASE_MODELS.map((model) => <option key={model} value={model}>{model}</option>)}
+                      {selectOptions(formData.baseModel, BASE_MODELS).map((model) => <option key={model} value={model}>{model}</option>)}
                     </select>
                   </div>
 
 
                   {garmentFamily(formData) && <div className="rounded-xl border border-amber-400/40 p-3">
-                    <label className="mb-1 block text-xs font-bold">Fornecedor / modelo físico exato</label>
+                    <label className="mb-1 block text-xs font-bold">Gola e ficha técnica do fornecedor</label>
                     <select value={formData.garmentModelId || ''} onChange={event => {
                       const chosen = garmentModels.find(p => p.garmentModelId === event.target.value);
                       if (!chosen) { setFormData({ ...formData, garmentModelId: '', garmentModelName: '', modelSeparationRequired: true, stockBaseSlug: undefined, sizeChart: [] }); return; }
                       const { supplierName, sourceProductName, sourceCode, sourceColors, sourceRestrictions, ...profile } = chosen;
                       const base = inventoryProducts.find(p => p.productFinish === 'plain' && p.garmentModelId === chosen.garmentModelId);
                       setFormData({ ...formData, ...profile, supplierName, modelSeparationRequired: true, stockBaseSlug: isPlainProduct ? undefined : base ? stockSlug(base) : undefined });
+                      syncVariantRows(formData.colors || [], profile.sizes || []);
                     }} className="min-h-11 w-full rounded-lg border border-white/20 bg-black p-2 text-xs text-white">
                       <option value="">Modelo em conferência / estoque misturado</option>
                       {garmentModels.filter(p => p.garmentFamily === garmentFamily(formData)).map(p => <option key={p.garmentModelId} value={p.garmentModelId}>{p.supplierName} · {p.sourceProductName} · {p.garmentModelName}</option>)}

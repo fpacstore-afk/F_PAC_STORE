@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "NODE_ENV=development node --import tsx server.ts",
-    "build": "vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
+    "build": "vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs && esbuild scripts/reorganize_stock_range.ts --bundle --platform=node --format=cjs --packages=external --outfile=build-server/reorganize-stock-range.cjs",
     "start": "NODE_ENV=production node dist/server.cjs",
     "clean": "rm -rf dist",
     "lint": "tsc --noEmit",
@@ -90,7 +90,8 @@
     "test:mei-revenue-preview": "node --import tsx scripts/test_mei_revenue_preview.ts",
     "test:garment-models": "NODE_ENV=test node --import tsx scripts/test_garment_models.ts",
     "test:security-hardening": "NODE_ENV=test node --import tsx scripts/test_security_hardening.ts",
-    "security:audit": "npm audit --omit=dev --audit-level=high"
+    "security:audit": "npm audit --omit=dev --audit-level=high",
+    "test:stock-range": "NODE_ENV=test node --import tsx scripts/test_stock_range.ts"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

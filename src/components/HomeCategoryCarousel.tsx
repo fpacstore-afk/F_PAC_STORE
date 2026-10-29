@@ -14,18 +14,9 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { productMatchesStorefrontCategory } from '../lib/catalogProducts';
+import { STOCK_FAMILIES } from '../../shared/stockFamilies';
 
-const PRODUCT_CATEGORIES = [
-  { slug: 'oversized', title: 'Camisetas Oversized', eyebrow: 'Streetwear', icon: Shirt },
-  { slug: 'tradicional', title: 'Camisetas Tradicionais', eyebrow: 'Suedine', icon: Shirt },
-  { slug: 'croppeds', title: 'Croppeds Oversized', eyebrow: 'Feminino Oversized', icon: Scissors },
-  { slug: 'casacos', title: 'Casacos & Moletons', eyebrow: 'Camadas', icon: Layers3 },
-  { slug: 'bermudas', title: 'Bermudas', eyebrow: 'Cargo & Lifestyle', icon: PackageSearch },
-  { slug: 'bones', title: 'Bonés', eyebrow: 'Acessórios', icon: Crown },
-  { slug: 'chinelos', title: 'Chinelos & Slides', eyebrow: 'Lifestyle', icon: Footprints },
-  { slug: 'kits', title: 'Kits F PAC', eyebrow: 'Combinações', icon: Boxes },
-  { slug: 'acessorios', title: 'Acessórios', eyebrow: 'Complementos', icon: Sparkles },
-] as const;
+const PRODUCT_CATEGORIES = STOCK_FAMILIES.map(family => ({ slug: family.id, title: family.label, eyebrow: family.collars ? 'Gola tradicional · Gola alta' : 'F PAC STORE', icon: Shirt }));
 
 type CatalogProduct = {
   images?: string[];

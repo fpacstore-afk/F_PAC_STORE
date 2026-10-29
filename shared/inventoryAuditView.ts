@@ -10,6 +10,8 @@ export type InventoryAuditRow = {
   countVerified: boolean;
   reservedQuantity: number;
   stockType: 'plain' | 'printed';
+  stockFamily?: string;
+  collar?: string;
 };
 
 export type InventoryAuditFilters = {
@@ -21,6 +23,8 @@ export type InventoryAuditFilters = {
   size: string;
   situation: 'all' | 'positive' | 'zero' | 'reserved' | 'unverified' | 'counted' | 'uncounted' | 'difference';
   sortBy: 'product' | 'size';
+  stockFamily?: string;
+  collar?: string;
 };
 
 const collator = new Intl.Collator('pt-BR', { numeric: true, sensitivity: 'base' });
@@ -43,6 +47,8 @@ export function compareInventorySizes(left: string, right: string): number {
 export function selectInventoryRows<T extends InventoryAuditRow>(rows: T[], filters: InventoryAuditFilters, counts: Record<string, string>): T[] {
   const words = normalized(filters.search).split(/\s+/).filter(Boolean);
   return rows.filter(row => {
+    if (filters.stockFamily && row.stockFamily !== filters.stockFamily) return false;
+    if (filters.collar && row.collar !== filters.collar) return false;
     if (filters.stockType !== 'all' && row.stockType !== filters.stockType) return false;
     if (filters.productSlug && row.productSlug !== filters.productSlug) return false;
     if (filters.baseModel && row.baseModel !== filters.baseModel) return false;
