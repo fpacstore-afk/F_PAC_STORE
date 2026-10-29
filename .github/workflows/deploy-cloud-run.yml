@@ -76,6 +76,9 @@ jobs:
       - name: Setup Google Cloud
         uses: google-github-actions/setup-gcloud@v2
 
+      - name: Inspect provider authentication security configuration (read only)
+        run: python3 scripts/inspect_auth_security.py
+
       - name: Deploy candidate without traffic
         id: candidate
         run: |
