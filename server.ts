@@ -196,11 +196,11 @@ import { entryLimiter, ingestionLimiter } from './server/middleware/rateLimiter.
 
 const app = express();
 // Cloud Run probes must stay independent of customer quotas and database health.
-app.get('/healthz', (_req, res) => {
+app.get('/runtime-health', (_req, res) => {
   res.setHeader('Cache-Control', 'no-store');
   res.json({ status: 'ok' });
 });
-app.all('/healthz', (_req, res) => {
+app.all('/runtime-health', (_req, res) => {
   res.setHeader('Allow', 'GET, HEAD');
   res.sendStatus(405);
 });
