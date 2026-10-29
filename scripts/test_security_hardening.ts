@@ -93,6 +93,13 @@ const appServer = store.listen(0,'127.0.0.1');
 await new Promise<void>(resolve=>appServer.once('listening',resolve));
 const url=`http://127.0.0.1:${(appServer.address() as any).port}`;
 try {
+  await check('runtime liveness is uncached and independent of JSON parsing or customer routes', async () => {
+    const response = await fetch(url+'/healthz');
+    assert.equal(response.status, 200); assert.equal(response.headers.get('cache-control'), 'no-store');
+    assert.deepEqual(await response.json(), { status: 'ok' });
+    const invalid = await fetch(url+'/healthz', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{' });
+    assert.equal(invalid.status, 405); assert.equal(invalid.headers.get('allow'), 'GET, HEAD');
+  });
   await check('malformed, compressed and oversized bodies are rejected without exposing errors', async () => {
     const malformed=await fetch(url+'/api/health', { method:'POST', headers:{'Content-Type':'application/json'},body:'{"private-value":' });
     assert.equal(malformed.status,400); assert.doesNotMatch(await malformed.text(),/private-value|JSON|SyntaxError/);
