@@ -14,7 +14,7 @@
 
 ## Runtime availability follow-up
 
-The authenticated deployment reported 1 CPU, 3 GiB memory, 0–13 instances and concurrency 1000 with only a TCP startup probe. The deployment now sets concurrency 80, an HTTP startup probe (up to 100 seconds) and HTTP liveness every 30 seconds (three failures). `/healthz` is a constant, uncached process-health response before body parsing, CORS and customer rate limits; it does not test Firestore or payment dependencies. This avoids a quota/database incident causing a restart loop. The candidate is checked through `/healthz` before promotion. CPU, memory and instance-count settings are preserved.
+The authenticated deployment reported 1 CPU, 3 GiB memory, 0–13 instances and concurrency 1000 with only a TCP startup probe. The deployment now sets concurrency 80, an HTTP startup probe (up to 100 seconds) and HTTP liveness every 30 seconds (three failures). `/runtime-health` is a constant, uncached process-health response before body parsing, CORS and customer rate limits; it does not test Firestore or payment dependencies. This avoids a quota/database incident causing a restart loop. The candidate is checked through `/runtime-health` before promotion. CPU, memory and instance-count settings are preserved.
 
 ## Runtime verification and remaining configuration
 
@@ -30,3 +30,5 @@ The authenticated deployment reported 1 CPU, 3 GiB memory, 0–13 instances and 
 ## Validation
 
 `npm run test:security-hardening` exercises unverified-email denial, preserved verified/claim access, protected cancellation/returns, a concurrent budget across independent limiter instances, safe error handling for malformed/compressed/oversized bodies and log redaction. The emulator suite adds unverified-email denial and claim access checks for both Firestore and Storage. Run `npm run test:all`, `npm run lint`, `npm run build`, `npm run verify:security-rules` (Java 21+) and `npm run security:audit` before release. All fixtures must remain isolated; never use production records for these tests.
+
+The first candidate smoke check caught Google Frontend intercepting `/healthz` with a 404, before application routing. The endpoint uses `/runtime-health` to avoid [Cloud Run reserved URL paths](https://docs.cloud.google.com/run/docs/known-issues#reserved-url-paths); both internal probes and the public smoke check use the same route. The failed candidate received no customer traffic.

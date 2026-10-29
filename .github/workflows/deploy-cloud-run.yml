@@ -115,8 +115,8 @@ jobs:
             --region "$GCP_REGION" \
             --no-traffic \
             --concurrency=80 \
-            --startup-probe=httpGet.path=/healthz,httpGet.port=3000,periodSeconds=5,timeoutSeconds=5,failureThreshold=20 \
-            --liveness-probe=httpGet.path=/healthz,httpGet.port=3000,periodSeconds=30,timeoutSeconds=5,failureThreshold=3 \
+            --startup-probe=httpGet.path=/runtime-health,httpGet.port=3000,periodSeconds=5,timeoutSeconds=5,failureThreshold=20 \
+            --liveness-probe=httpGet.path=/runtime-health,httpGet.port=3000,periodSeconds=30,timeoutSeconds=5,failureThreshold=3 \
             --tag "$TAG" \
             --update-env-vars="FIREBASE_PROJECT_ID=$GCP_PROJECT_ID,FIREBASE_DATABASE_ID=ai-studio-a7d50f8c-9b01-4490-9a13-dd8892e0c41a,MERCADO_PAGO_WEBHOOK_URL=https://fpac-store62.web.app/api/webhook/mercadopago" \
             "${SECRET_ARGS[@]}" \
@@ -169,7 +169,7 @@ jobs:
       - name: HTTP liveness check candidate
         run: |
           curl --fail --silent --show-error \
-            "${{ steps.candidate.outputs.url }}/healthz"
+            "${{ steps.candidate.outputs.url }}/runtime-health"
 
       - name: Firestore catalog check candidate
         run: |
