@@ -1,3 +1,4 @@
+import { isAdminIdentity } from '../../shared/adminIdentity';
 import { compatibleGarmentSource } from '../../shared/sharedGarmentStock';
 import { garmentFamily, garmentTitle } from '../../shared/garmentModels';
 import { collection, deleteDoc, doc, getDoc, onSnapshot, orderBy, query, serverTimestamp, setDoc, updateDoc, writeBatch } from 'firebase/firestore';
@@ -562,7 +563,7 @@ function AdminOrdersInner() {
     }
   }, []);
 
-  const isAdmin = user?.email === 'fpacstore@gmail.com' || user?.email === 'atendimento@fpacstore.com.br' || hasBypass;
+  const isAdmin = isAdminIdentity(user) || hasBypass;
 
   useEffect(() => {
     if (authLoading || !user || !isAdmin || activeTab !== 'orders') return;

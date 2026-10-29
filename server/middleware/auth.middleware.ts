@@ -2,6 +2,14 @@ import { DecodedIdToken, getAuth } from 'firebase-admin/auth';
 import { Request, Response, NextFunction } from "express";
 import { getDb } from "../firebase.js";
 import { logger } from "../utils/logger.js";
+import { ADMIN_EMAILS, isAdminIdentity } from '../../shared/adminIdentity.js';
+import { timingSafeEqual } from 'node:crypto';
+
+export function matchesSecret(value: unknown, expected: string | undefined): boolean {
+  if (typeof value !== 'string' || !expected) return false;
+  const a = Buffer.from(value), b = Buffer.from(expected);
+  return a.length === b.length && timingSafeEqual(a, b);
+}
 
 export interface AuthenticatedRequest extends Request {
   user?: {
@@ -42,7 +50,7 @@ export async function authenticateAdmin(req: AuthenticatedRequest, res: Response
     const expectedSyncSecret = process.env.SHEETS_SYNC_SECRET;
 
     // 1a. Autenticação estrita por x-admin-api-key para chamadas de sistema/automação interna
-    if (adminApiKey && expectedAdminKey && adminApiKey === expectedAdminKey) {
+    if (matchesSecret(adminApiKey, expectedAdminKey)) {
       req.user = {
         uid: 'system-admin-key',
         email: 'system-admin@fpacstore.com.br',
@@ -53,8 +61,8 @@ export async function authenticateAdmin(req: AuthenticatedRequest, res: Response
 
     // 1b. Autenticação estrita por x-sync-secret EXCLUSIVAMENTE para a rota de sincronização do Google Sheets
     const currentUrl = req.originalUrl || req.url || '';
-    const isSheetsSyncRoute = typeof currentUrl === 'string' && currentUrl.includes('/sheets/sync-back');
-    if (isSheetsSyncRoute && syncSecret && expectedSyncSecret && syncSecret === expectedSyncSecret) {
+    const isSheetsSyncRoute = currentUrl.split('?')[0] === '/api/sheets/sync-back';
+    if (isSheetsSyncRoute && matchesSecret(syncSecret, expectedSyncSecret)) {
       req.user = {
         uid: 'sheets-sync-bot',
         email: 'sheets-sync@fpacstore.com.br',
@@ -87,7 +95,7 @@ export async function authenticateAdmin(req: AuthenticatedRequest, res: Response
         // exists before asking firebase-admin/auth for a verifier so a cold
         // instance does not reject a valid management session with 401.
         getDb();
-        decodedToken = await getAuth().verifyIdToken(token);
+        decodedToken = await getAuth().verifyIdToken(token, process.env.ADMIN_CHECK_REVOKED === 'true');
       }
     } catch (tokenErr: any) {
       logger.warn(`🔒 [AUTH-EXPIRED/INVALID] Token inválido em ${req.method} ${req.originalUrl}: ${tokenErr.message}`);
@@ -106,8 +114,8 @@ export async function authenticateAdmin(req: AuthenticatedRequest, res: Response
     }
 
     // b) Checa se o e-mail está na lista de admins configurada nas variáveis de ambiente
-    const envAdmins = (process.env.ADMIN_EMAILS || 'fpacstore@gmail.com').split(',').map(e => e.trim().toLowerCase());
-    if (email && envAdmins.includes(email.toLowerCase())) {
+    const envAdmins = (process.env.ADMIN_EMAILS || ADMIN_EMAILS.join(',')).split(',').map(e => e.trim().toLowerCase());
+    if (isAdminIdentity(decodedToken, envAdmins)) {
       isAdmin = true;
     }
 

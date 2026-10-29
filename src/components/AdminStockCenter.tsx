@@ -1,3 +1,4 @@
+import { isAdminIdentity } from '../../shared/adminIdentity';
 import { GarmentModelStockPanel } from './admin/GarmentModelStockPanel';
 import { countedReadyInventory } from '../../shared/sharedGarmentStock';
 import React, { useState, useEffect, useMemo, useRef } from 'react';
@@ -64,7 +65,7 @@ export function AdminStockCenter() {
 
   // Admin access validation (matches the AdminOrders restriction)
   const isDevBypass = import.meta.env.DEV && localStorage.getItem('admin_bypass') === 'true';
-  const isAdmin = user?.email === 'fpacstore@gmail.com' || user?.email === 'atendimento@fpacstore.com.br' || isDevBypass;
+  const isAdmin = isAdminIdentity(user) || isDevBypass;
 
   // Sub-tab: 'stock' (Unified Gestão de Estoque)
   const [activeSubTab, setActiveSubTab] = useState<'stock' | 'catalog'>('stock');

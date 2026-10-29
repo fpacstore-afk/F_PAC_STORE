@@ -16,8 +16,10 @@ try {
   });
   const guest = environment.unauthenticatedContext().firestore();
   const customer = environment.authenticatedContext('customer', { email: 'customer@example.invalid', email_verified: true }).firestore();
+  const unverified = environment.authenticatedContext('unverified-admin-email', { email: 'fpacstore@gmail.com', email_verified: false }).firestore();
+  const claimed = environment.authenticatedContext('claimed-admin', { admin: true }).firestore();
   const manager = environment.authenticatedContext('manager', { email: 'fpacstore@gmail.com', email_verified: true }).firestore();
-  for (const db of [guest, customer]) {
+  for (const db of [guest, customer, unverified]) {
     await assertFails(getDoc(doc(db, 'products/shirt')));
     await assertFails(getDocs(collection(db, 'products')));
     await assertFails(getDoc(doc(db, 'inventory/shirt')));
@@ -31,6 +33,7 @@ try {
     await assertFails(setDoc(doc(db, 'products/shirt'), { price: 1 }));
     await assertSucceeds(getDoc(doc(db, 'config/brand')));
   }
+  await assertSucceeds(getDoc(doc(claimed, 'products/shirt')));
   await assertSucceeds(getDoc(doc(manager, 'products/shirt')));
   await assertSucceeds(getDocs(collection(manager, 'products')));
   await assertSucceeds(getDoc(doc(manager, 'inventory/shirt')));
@@ -50,12 +53,12 @@ try {
   assert.ok(!storedPresets.data()?.colors.some(color => color.name === 'Preto'), 'removed presets must stay absent on a fresh read');
   assert.equal((await getDoc(doc(manager, 'inventory/shirt'))).data()?.stock, 10, 'preset deletion must preserve physical stock');
   assert.equal((await getDoc(doc(manager, 'products/shirt'))).data()?.name, 'Audit fixture', 'preset deletion must preserve products');
-  for (const db of [guest, customer]) {
+  for (const db of [guest, customer, unverified]) {
     await assertFails(getDoc(doc(db, 'settings', 'product_color_presets')));
     await assertFails(setDoc(doc(db, 'settings', 'product_color_presets'), { colors: [] }));
   }
   console.log('Quick-color presets persist with admin-only access and preserve product stock.');
-  for (const db of [guest, customer]) {
+  for (const db of [guest, customer, unverified]) {
     for (const path of ['customer_artworks/fixture', 'artwork_upload_limits/fixture']) {
       await assertFails(setDoc(doc(db, path), { tokenHash: 'forged' }));
       await assertFails(getDoc(doc(db, path)));
@@ -66,7 +69,7 @@ try {
       await uploadBytes(ref(context.storage(), name), new Uint8Array([1, 2, 3]));
     }
   });
-  for (const context of [environment.unauthenticatedContext(), environment.authenticatedContext('customer')]) {
+  for (const context of [environment.unauthenticatedContext(), environment.authenticatedContext('customer'), environment.authenticatedContext('unverified', { email: 'fpacstore@gmail.com', email_verified: false })]) {
     const storage = context.storage();
     await assertSucceeds(getMetadata(ref(storage, 'catalog-media/images/public.png')));
     await assertSucceeds(getMetadata(ref(storage, 'Musicas do Site/audio/public.mp3')));
@@ -76,13 +79,15 @@ try {
     await assertFails(uploadBytes(ref(storage, 'catalog-media/forged.png'), new Uint8Array([1])));
     await assertFails(uploadBytes(ref(storage, 'customer-artworks/forged.bin'), new Uint8Array([1])));
   }
+  const claimStorage = environment.authenticatedContext('claimed-admin', { admin: true }).storage();
+  await assertSucceeds(getMetadata(ref(claimStorage, 'customer-artworks/private.bin')));
   const adminStorage = environment.authenticatedContext('manager', { email: 'fpacstore@gmail.com', email_verified: true }).storage();
   await assertSucceeds(getMetadata(ref(adminStorage, 'customer-artworks/private.bin')));
   await assertSucceeds(listAll(ref(adminStorage, 'catalog-media')));
   console.log('8 private artwork Firestore and 16 real Storage rule checks passed.');
   for (const collectionName of ['visitor_sessions', 'identity_quiz_sessions', 'promotion_analytics', 'analytics_conversions', 'public_ingestion_limits']) {
     await environment.withSecurityRulesDisabled(async context => { await setDoc(doc(context.firestore(), collectionName, 'existing'), { protected: true }); });
-    for (const db of [guest, customer]) {
+    for (const db of [guest, customer, unverified]) {
       await assertFails(getDoc(doc(db, collectionName, 'existing')));
       await assertFails(setDoc(doc(db, collectionName, 'new'), { forged: true }));
       await assertFails(setDoc(doc(db, collectionName, 'existing'), { forged: true }, { merge: true }));

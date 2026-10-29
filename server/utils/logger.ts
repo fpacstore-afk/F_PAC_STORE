@@ -9,11 +9,22 @@ export enum LogLevel {
   AUDIT = 'AUDIT'
 }
 
-function sanitizeLogData(obj: any): any {
+export function redactLogText(value: string): string {
+  return value
+    .replace(/([?&](?:token|access_token|key|secret|signature|code|email|cpf|phone)=)[^&#\s]*/gi, '$1[REDACTED]')
+    .replace(/\bBearer\s+[A-Za-z0-9._~+/-]+=*/gi, 'Bearer [REDACTED]')
+    .replace(/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi, '[EMAIL]');
+}
+
+export function sanitizeLogData(obj: any, seen = new WeakSet<object>()): any {
+  if (typeof obj === 'string') return redactLogText(obj);
   if (!obj || typeof obj !== 'object') return obj;
-  if (Array.isArray(obj)) return obj.map(sanitizeLogData);
+  if (seen.has(obj)) return '[CIRCULAR]';
+  seen.add(obj);
+  if (Array.isArray(obj)) return obj.map(value => sanitizeLogData(value, seen));
+  if (obj instanceof Error) return { name: obj.name, message: redactLogText(obj.message) };
   
-  const sensitiveKeys = ['token', 'authorization', 'password', 'secret', 'cvv', 'cardnumber', 'card_number', 'access_token', 'apikey', 'api_key', 'private_key'];
+  const sensitiveKeys = ['token', 'authorization', 'password', 'secret', 'cvv', 'cardnumber', 'card_number', 'access_token', 'apikey', 'api_key', 'private_key', 'cpf', 'phone', 'email', 'address'];
   const clean: any = {};
   
   for (const key of Object.keys(obj)) {
@@ -21,9 +32,9 @@ function sanitizeLogData(obj: any): any {
     if (sensitiveKeys.some(s => lowerKey.includes(s))) {
       clean[key] = '[REDACTED]';
     } else if (typeof obj[key] === 'object' && obj[key] !== null) {
-      clean[key] = sanitizeLogData(obj[key]);
+      clean[key] = sanitizeLogData(obj[key], seen);
     } else {
-      clean[key] = obj[key];
+      clean[key] = sanitizeLogData(obj[key], seen);
     }
   }
   return clean;
@@ -33,7 +44,7 @@ export function log(level: LogLevel, message: string, data?: any) {
   const timestamp = new Date().toISOString();
   const sanitizedData = data ? sanitizeLogData(data) : null;
   
-  const logString = `[${timestamp}] [${level}] ${message} ${sanitizedData ? JSON.stringify(sanitizedData) : ''}\n`;
+  const logString = `[${timestamp}] [${level}] ${redactLogText(message)} ${sanitizedData ? JSON.stringify(sanitizedData) : ''}\n`;
   
   // Console logging for real-time monitoring
   if (level === LogLevel.ERROR) {

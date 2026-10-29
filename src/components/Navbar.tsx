@@ -1,3 +1,4 @@
+import { isAdminIdentity } from '../../shared/adminIdentity';
 import { observeHeaderCatalog, type HeaderCatalogState } from '../services/headerCatalog';
 import { matchesStorefrontSearch } from '../lib/storefrontSearch';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
@@ -403,7 +404,7 @@ export function Navbar() {
                 </div>
               </div>
 
-              {(user?.email === 'fpacstore@gmail.com' || user?.email === 'atendimento@fpacstore.com.br' || (import.meta.env.DEV && localStorage.getItem('admin_bypass') === 'true')) && (
+              {(isAdminIdentity(user) || (import.meta.env.DEV && localStorage.getItem('admin_bypass') === 'true')) && (
                 <Link to="/gestao" className="text-[10px] lg:text-xs font-black text-[#eab308] hover:text-white transition-colors uppercase tracking-[0.15em] whitespace-nowrap bg-white/5 px-3 py-1.5 rounded-lg border border-white/10 hover:border-[#eab308]">
                   GESTÃO
                 </Link>
@@ -462,7 +463,7 @@ export function Navbar() {
                               <User size={14} /> Minha Conta
                             </Link>
                             
-                            {(user.email === 'fpacstore@gmail.com' || user.email === 'atendimento@fpacstore.com.br') && (
+                            {(isAdminIdentity(user)) && (
                               <Link 
                                 to="/gestao" 
                                 onClick={() => setAuthMenuOpen(false)}
@@ -809,7 +810,7 @@ export function Navbar() {
                 </div>
               </section>
               
-              {(user?.email === 'fpacstore@gmail.com' || user?.email === 'atendimento@fpacstore.com.br' || (import.meta.env.DEV && localStorage.getItem('admin_bypass') === 'true')) && (
+              {(isAdminIdentity(user) || (import.meta.env.DEV && localStorage.getItem('admin_bypass') === 'true')) && (
                 <>
                   <Link 
                     id="nav-mobile-gestao"

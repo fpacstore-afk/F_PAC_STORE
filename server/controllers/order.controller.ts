@@ -6,6 +6,8 @@ import { releaseStockReservation } from '../services/store.service.js';
 import { releaseUnmanagedOrderStamps } from '../services/stampStock.service.js';
 import { logger } from '../utils/logger.js';
 import { recordAuditLog } from '../utils/auditLogger.js';
+import { ADMIN_EMAILS, isAdminIdentity } from '../../shared/adminIdentity.js';
+import { matchesSecret } from '../middleware/auth.middleware.js';
 import { isPaymentStatus } from '../services/stateMachine.service.js';
 
 export async function cancelOrderController(req: Request, res: Response) {
@@ -29,14 +31,14 @@ export async function cancelOrderController(req: Request, res: Response) {
       const token = authHeader.substring(7).trim();
       if (token) {
         try {
-          decodedToken = await getAuth().verifyIdToken(token);
+          decodedToken = await getAuth().verifyIdToken(token, process.env.ADMIN_CHECK_REVOKED === 'true');
           authEmail = decodedToken?.email?.trim().toLowerCase();
           authUid = decodedToken?.uid;
           isEmailVerified = decodedToken?.email_verified === true;
-          const envAdmins = (process.env.ADMIN_EMAILS || 'fpacstore@gmail.com')
+          const envAdmins = (process.env.ADMIN_EMAILS || ADMIN_EMAILS.join(','))
             .split(',')
             .map(e => e.trim().toLowerCase());
-          if (decodedToken?.admin === true || (authEmail && envAdmins.includes(authEmail))) {
+          if (isAdminIdentity(decodedToken, envAdmins)) {
             isUserAdmin = true;
           }
         } catch (err: any) {
@@ -45,7 +47,7 @@ export async function cancelOrderController(req: Request, res: Response) {
       }
     }
 
-    if (adminKey && process.env.ADMIN_API_KEY && adminKey === process.env.ADMIN_API_KEY) {
+    if (matchesSecret(adminKey, process.env.ADMIN_API_KEY)) {
       isUserAdmin = true;
     }
 
@@ -253,14 +255,14 @@ export async function requestOrderReturnController(req: Request, res: Response) 
       const token = authHeader.substring(7).trim();
       if (token) {
         try {
-          decodedToken = await getAuth().verifyIdToken(token);
+          decodedToken = await getAuth().verifyIdToken(token, process.env.ADMIN_CHECK_REVOKED === 'true');
           authEmail = decodedToken?.email?.trim().toLowerCase();
           authUid = decodedToken?.uid;
           isEmailVerified = decodedToken?.email_verified === true;
-          const envAdmins = (process.env.ADMIN_EMAILS || 'fpacstore@gmail.com')
+          const envAdmins = (process.env.ADMIN_EMAILS || ADMIN_EMAILS.join(','))
             .split(',')
             .map(e => e.trim().toLowerCase());
-          if (decodedToken?.admin === true || (authEmail && envAdmins.includes(authEmail))) {
+          if (isAdminIdentity(decodedToken, envAdmins)) {
             isUserAdmin = true;
           }
         } catch (err: any) {
@@ -269,7 +271,7 @@ export async function requestOrderReturnController(req: Request, res: Response) 
       }
     }
 
-    if (adminKey && process.env.ADMIN_API_KEY && adminKey === process.env.ADMIN_API_KEY) {
+    if (matchesSecret(adminKey, process.env.ADMIN_API_KEY)) {
       isUserAdmin = true;
     }
 

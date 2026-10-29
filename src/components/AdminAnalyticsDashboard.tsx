@@ -1,3 +1,4 @@
+import { isAdminIdentity } from '../../shared/adminIdentity';
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
   collection, 
@@ -310,8 +311,7 @@ export default function AdminAnalyticsDashboard({ embedded = false }: { embedded
   
   const isDevBypass = import.meta.env.DEV && localStorage.getItem('admin_bypass') === 'true';
   const isAdmin = (user && (
-    user.email === 'fpacstore@gmail.com' || 
-    user.email === 'atendimento@fpacstore.com.br'
+    isAdminIdentity(user)
   )) || isDevBypass;
 
   // Filtering & Settings

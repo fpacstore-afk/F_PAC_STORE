@@ -88,7 +88,9 @@
     "test:catalog-product-costs": "NODE_ENV=test node --import tsx scripts/test_catalog_product_costs.ts",
     "test:ranking-gifts": "NODE_ENV=test node --import tsx scripts/test_ranking_gifts.ts",
     "test:mei-revenue-preview": "node --import tsx scripts/test_mei_revenue_preview.ts",
-    "test:garment-models": "NODE_ENV=test node --import tsx scripts/test_garment_models.ts"
+    "test:garment-models": "NODE_ENV=test node --import tsx scripts/test_garment_models.ts",
+    "test:security-hardening": "NODE_ENV=test node --import tsx scripts/test_security_hardening.ts",
+    "security:audit": "npm audit --omit=dev --audit-level=high"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
@@ -124,7 +126,9 @@
   "overrides": {
     "gaxios@6": {
       "uuid": "11.1.1"
-    }
+    },
+    "@grpc/grpc-js": "^1.14.6",
+    "basic-ftp": "^6.2.3"
   },
   "devDependencies": {
     "@firebase/rules-unit-testing": "5.0.1",

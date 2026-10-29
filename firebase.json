@@ -29,26 +29,39 @@
         "source": "**",
         "headers": [
           {
-            "key": "Content-Security-Policy",
-            "value": "base-uri 'self'; object-src 'none'; frame-ancestors 'self'"
-          },
-          {
             "key": "Cache-Control",
             "value": "no-cache, max-age=0, must-revalidate"
+          },
+          {
+            "key": "Content-Security-Policy",
+            "value": "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'self'; script-src 'self' https://sdk.mercadopago.com https://*.mercadopago.com https://*.mercadopago.com.br https://*.mlstatic.com https://apis.google.com https://www.gstatic.com https://www.google.com https://www.recaptcha.net; script-src-attr 'none'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https:; media-src 'self' blob: https:; connect-src 'self' https://*.googleapis.com https://*.firebaseio.com wss://*.firebaseio.com https://*.firebasestorage.app https://fpac-store62.web.app https://f-pac-store-n-o-s-roupa-identidade-ooc3wzri3q-ue.a.run.app https://api.cloudinary.com https://viacep.com.br https://ipapi.co https://*.mercadopago.com https://*.mercadopago.com.br https://*.mercadolibre.com https://*.mlstatic.com https://script.google.com https://script.googleusercontent.com; frame-src 'self' blob: https://*.firebaseapp.com https://*.mercadopago.com https://*.mercadopago.com.br https://*.mercadolibre.com https://www.google.com https://www.recaptcha.net; worker-src 'self' blob:; form-action 'self' https://*.mercadopago.com https://*.mercadopago.com.br; upgrade-insecure-requests"
+          },
+          {
+            "key": "X-Content-Type-Options",
+            "value": "nosniff"
           },
           {
             "key": "Referrer-Policy",
             "value": "no-referrer"
           },
           {
-            "key": "Content-Security-Policy-Report-Only",
-            "value": "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'self'; script-src 'self' 'unsafe-inline' https://sdk.mercadopago.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; media-src 'self' blob: https:; connect-src 'self' https://firestore.googleapis.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://*.googleapis.com https://*.firebaseio.com https://*.firebasestorage.app https://api.cloudinary.com https://viacep.com.br https://ipapi.co; frame-src 'self' https://*.firebaseapp.com"
+            "key": "Strict-Transport-Security",
+            "value": "max-age=31536000"
+          },
+          {
+            "key": "Permissions-Policy",
+            "value": "camera=(), microphone=(), geolocation=()"
           }
         ]
       },
       {
         "source": "/assets/**",
-        "headers": [{ "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }]
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "public, max-age=31536000, immutable"
+          }
+        ]
       }
     ]
   },
@@ -60,7 +73,10 @@
     }
   ],
   "storage": [
-    { "bucket": "fpac-store62.firebasestorage.app", "rules": "storage.rules" }
+    {
+      "bucket": "fpac-store62.firebasestorage.app",
+      "rules": "storage.rules"
+    }
   ],
   "emulators": {
     "firestore": {

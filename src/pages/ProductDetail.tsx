@@ -1,3 +1,4 @@
+import { isAdminIdentity } from '../../shared/adminIdentity';
 import { GarmentModelSelector } from '../components/GarmentModelSelector';
 import { CatalogUnavailable } from '../components/CatalogUnavailable';
 import { getProductVisualKind } from '../lib/productPresentation';
@@ -150,8 +151,7 @@ export default function ProductDetail() {
     }
   }, [product]);
   const isAdmin =
-    user?.email === "fpacstore@gmail.com" ||
-    user?.email === "atendimento@fpacstore.com.br";
+    isAdminIdentity(user);
   const [myPostedReviews, setMyPostedReviews] = useState<string[]>([]);
   const [reviewToDelete, setReviewToDelete] = useState<string | null>(null);
 

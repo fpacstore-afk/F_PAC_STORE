@@ -1,0 +1,26 @@
+/** Resources used by Firebase Auth, Mercado Pago, catalog media and address lookup. */
+export const CONTENT_SECURITY_POLICY = [
+  "default-src 'self'",
+  "base-uri 'self'",
+  "object-src 'none'",
+  "frame-ancestors 'self'",
+  "script-src 'self' https://sdk.mercadopago.com https://*.mercadopago.com https://*.mercadopago.com.br https://*.mlstatic.com https://apis.google.com https://www.gstatic.com https://www.google.com https://www.recaptcha.net",
+  "script-src-attr 'none'",
+  "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+  "font-src 'self' data: https://fonts.gstatic.com",
+  "img-src 'self' data: blob: https:",
+  "media-src 'self' blob: https:",
+  "connect-src 'self' https://*.googleapis.com https://*.firebaseio.com wss://*.firebaseio.com https://*.firebasestorage.app https://fpac-store62.web.app https://f-pac-store-n-o-s-roupa-identidade-ooc3wzri3q-ue.a.run.app https://api.cloudinary.com https://viacep.com.br https://ipapi.co https://*.mercadopago.com https://*.mercadopago.com.br https://*.mercadolibre.com https://*.mlstatic.com https://script.google.com https://script.googleusercontent.com",
+  "frame-src 'self' blob: https://*.firebaseapp.com https://*.mercadopago.com https://*.mercadopago.com.br https://*.mercadolibre.com https://www.google.com https://www.recaptcha.net",
+  "worker-src 'self' blob:",
+  "form-action 'self' https://*.mercadopago.com https://*.mercadopago.com.br",
+  'upgrade-insecure-requests',
+].join('; ');
+
+export const SECURITY_HEADERS: Record<string, string> = {
+  'Content-Security-Policy': CONTENT_SECURITY_POLICY,
+  'X-Content-Type-Options': 'nosniff',
+  'Referrer-Policy': 'no-referrer',
+  'Strict-Transport-Security': 'max-age=31536000',
+  'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
+};

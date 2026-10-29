@@ -951,6 +951,7 @@ export default function Bag() {
                   {loadingCep ? 'Consultando o frete para liberar a finalização.' : shippingError || 'Informe o CEP e escolha uma forma de envio para continuar.'}
                 </p>
               )}
+              <p className="my-4 text-xs leading-relaxed text-white/80">Confira as <Link to="/termos" className="underline">condições de compra</Link> e a <Link to="/privacidade" className="underline">política de privacidade</Link> antes de concluir. Lembretes e estatísticas opcionais têm escolhas próprias.</p>
               <button 
                 onClick={handleCheckout}
                 disabled={items.length === 0 || loadingInventory || !!inventoryError || stockIssues.length > 0 || !shippingReady}
