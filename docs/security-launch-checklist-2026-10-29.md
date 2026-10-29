@@ -18,6 +18,8 @@ Esta revisão complementa `docs/security-hardening-2026-10-29.md`. A plataforma 
 7. Atualização de perfil só envia os campos de cadastro conhecidos. Regras do Firestore também limitam criação/alteração de perfis pelos próprios clientes a esses campos; senha, token e campos de privilégios não podem ser injetados. Metadados antigos não alterados são preservados e o acesso administrativo autorizado continua disponível.
 8. O formulário identifica corretamente senha nova e senha atual para o gerenciador de senhas do navegador.
 
+9. Após validar a candidata, o deploy remove somente tags de teste antigas geradas pelo CI (`c-<número>`), mantendo a tag da candidata atual e tags personalizadas. Confere a distribuição de tráfego antes/depois, não apaga revisões e não impede rollback por revisão. A limpeza é idempotente e se recusa a alterar tags quando a distribuição atual não puder ser confirmada.
+
 ## Comparação dos 20 itens
 
 | Item do vídeo | Situação e evidência |
@@ -53,6 +55,8 @@ Hash/sal e emissão/validação de links de recuperação ficam com o provedor. 
 
 Permanecem sem confirmação na conta do provedor: MFA, proteção de enumeração de e-mails, política de senha e proteção específica contra bots no login. Não foram acrescentados bloqueios apenas no navegador apresentados como segurança de servidor. A revisão não atesta esses recursos como ativos.
 
+Resultado da consulta na [publicação da PR 246](https://github.com/fpacstore-afk/F_PAC_STORE/actions/runs/40968829715): HTTP 403, configuração não verificada; a leitura requer `firebaseauth.configs.get`. A negação foi registrada sem imprimir o corpo da resposta, tokens ou dados de contas. Nenhuma permissão foi ampliada. A mesma publicação passou nas verificações de arquivos privados, negativa de acesso administrativo anônimo, erros mínimos e cabeçalhos na candidata, no endereço Firebase e no domínio da loja.
+
 Documentação primária consultada:
 
 - https://firebase.google.com/docs/projects/api-keys
@@ -61,6 +65,7 @@ Documentação primária consultada:
 - https://firebase.google.com/docs/auth/limits
 - https://expressjs.com/en/resources/middleware/serve-static/
 - https://vite.dev/config/shared-options
+- https://docs.cloud.google.com/sdk/gcloud/reference/run/services/update-traffic
 
 ## Validação e limites
 
