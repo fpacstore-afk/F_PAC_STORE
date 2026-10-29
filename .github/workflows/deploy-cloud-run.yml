@@ -212,12 +212,27 @@ jobs:
             --format='value(spec.template.spec.serviceAccountName)')"
           test -n "$IMAGE"
           test -n "$RUNTIME_SA"
+          # Match only the Firebase credential binding already used by this revision.
+          # Values stay in Secret Manager; payment/admin integration keys are not copied.
+          FIREBASE_JOB_SECRET="$(gcloud run revisions describe "${{ steps.candidate.outputs.revision }}" \
+            --project "$GCP_PROJECT_ID" --region "$GCP_REGION" --format=json | python3 -c '
+          import json,sys
+          data=json.load(sys.stdin); spec=data.get("spec",{}); env=spec.get("containers",[{}])[0].get("env",[])
+          entry=next((e for e in env if e.get("name")=="FIREBASE_SERVICE_ACCOUNT"),{}); ref=entry.get("valueFrom",{}).get("secretKeyRef",{})
+          name=ref.get("name",""); aliases=dict(part.split(":",1) for part in data.get("metadata",{}).get("annotations",{}).get("run.googleapis.com/secrets","").split(",") if ":" in part)
+          name=aliases.get(name,name)
+          print("FIREBASE_SERVICE_ACCOUNT="+name+":"+ref.get("key","latest") if name else "")')"
+          FIREBASE_JOB_ARGS=()
+          if [ -n "$FIREBASE_JOB_SECRET" ]; then
+            FIREBASE_JOB_ARGS=("--set-secrets=$FIREBASE_JOB_SECRET")
+          fi
           STOCK_JOB_STATUS=0
           gcloud run jobs deploy fpac-stock-range-20261029 \
             --project "$GCP_PROJECT_ID" --region "$GCP_REGION" \
             --image "$IMAGE" --service-account "$RUNTIME_SA" \
             --command /cnb/lifecycle/launcher --args node,build-server/reorganize-stock-range.cjs \
             --set-env-vars="NODE_ENV=production,FIREBASE_PROJECT_ID=$GCP_PROJECT_ID,FIREBASE_DATABASE_ID=ai-studio-a7d50f8c-9b01-4490-9a13-dd8892e0c41a" \
+            "${FIREBASE_JOB_ARGS[@]}" \
             --tasks=1 --max-retries=0 --task-timeout=180s \
             --cpu=1 --memory=3Gi --execute-now --wait --quiet || STOCK_JOB_STATUS=$?
           if [ "$STOCK_JOB_STATUS" -ne 0 ]; then
