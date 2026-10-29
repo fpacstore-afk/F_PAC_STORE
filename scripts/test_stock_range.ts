@@ -7,8 +7,10 @@ import { productMatchesStorefrontCategory } from '../src/lib/catalogProducts';
 assert.equal(STOCK_FAMILIES.length,7);
 assert.equal(stockFamily({name:'Camisa Oversized — Gola tradicional · Suedine',baseModel:'Oversized Suedine'}),'oversized');
 assert.equal(stockFamily({name:'Regata',productType:'tshirt'}),'regatas');
+assert.equal(stockFamily({baseModel:'Oversized Premium 240GSM',name:'Camiseta Calçada Urbana'}),'oversized','Artwork words do not create a trouser category');
 assert.equal(productMatchesStorefrontCategory({name:'Regata ZIMM',productType:'tshirt'},'regatas'),true);
 for(const name of ['Camiseta infantil','Camisa Polo','Calça','Kit F PAC','Chinelo']) assert.equal(stockFamily({name}),null);
+for(const item of [{baseModel:'Bermuda Moletom',stockFamily:'bermudas'},{name:'Boné Snapback'},{name:'Casaco Corta-Vento'},{name:'Cropped Baby Look'}]) assert.equal(stockFamily(item),null,'Explicitly different fabrics/styles must not be renamed into the approved range');
 assert.equal(stockCollar({baseModel:'Oversized Premium 240GSM',supplierName:'Tiggas'}),'unclassified','Supplier text alone must not classify mixed physical stock');
 assert.equal(stockCollar({baseModel:'Oversized Premium 240GSM',neckline:'classic_open'}),'classic_open');
 const grouped=summarizeStockFamilies([

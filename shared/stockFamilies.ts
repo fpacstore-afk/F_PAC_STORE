@@ -14,7 +14,7 @@ const normalized = (value: unknown) => String(value || '').normalize('NFD').repl
 
 function classify(value: unknown): StockFamilyId | null {
   const text = normalized(value);
-  if (/infantil|\bpolo\b|\bkit\b|chinelo|slide|calca|plus size/.test(text)) return null;
+  if (/infantil|\bpolo\b|\bkit\b|chinelo|slide|\bcalcas?\b|plus size/.test(text)) return null;
   if (/regata|\btank\b/.test(text)) return 'regatas';
   if (/cropped|boxy feminin/.test(text)) return 'croppeds';
   if (/moletom|casaco|hoodie/.test(text)) return 'casacos';
@@ -28,10 +28,17 @@ function classify(value: unknown): StockFamilyId | null {
 
 export function stockFamily(product: any): StockFamilyId | null {
   if (!product) return null;
+  const identity = normalized([product.baseModel,product.fit,product.category,product.name].filter(Boolean).join(' '));
+  // Do not relabel a different fabric/style as one of the approved pieces.
+  if (/infantil|\bpolo\b|\bkit\b|chinelo|slide|\bcalcas?\b|plus size/.test(identity)
+    || /(?:bermuda|shorts?).*(?:moletom|jeans|tactel|sarja)/.test(identity)
+    || /bone.*(?:snapback|baseball|aba reta)/.test(identity)
+    || /corta[\s-]*vento/.test(identity)
+    || /cropped.*(?:baby look|justo|justa|slim|regata)/.test(identity)) return null;
   const explicit = stockFamilyDefinition(product.stockFamily);
   if (explicit) return explicit.id;
   for (const value of [product.baseModel, product.fit, product.modeling, product.category, product.name]) {
-    if (/infantil|\bpolo\b|\bkit\b|chinelo|slide|calca|plus size/.test(normalized(value))) return null;
+    if (/infantil|\bpolo\b|\bkit\b|chinelo|slide|\bcalcas?\b|plus size/.test(normalized(value))) return null;
   }
   return classify(product.baseModel) || classify(product.fit) || classify(product.modeling)
     || classify(product.category) || classify(product.name)
