@@ -1,0 +1,35 @@
+name: Audit stock reorganization
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - scripts/audit_stock_reorganization.ts
+      - scripts/stock-reorganization-request.json
+      - .github/workflows/audit-stock-reorganization.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    env:
+      GCP_PROJECT_ID: fpac-store62
+      FIREBASE_DATABASE_ID: ai-studio-a7d50f8c-9b01-4490-9a13-dd8892e0c41a
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --include=dev
+      - name: Authenticate with the existing deployment identity
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: projects/1039063784001/locations/global/workloadIdentityPools/github-actions/providers/github-fpac-store
+          service_account: github-fpac-cicd@fpac-store62.iam.gserviceaccount.com
+      - name: Read-only audit with encrypted output
+        run: node --import tsx scripts/audit_stock_reorganization.ts
