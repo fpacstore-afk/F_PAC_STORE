@@ -2,7 +2,7 @@ module.exports = {
   apps: [
     {
       name: 'f-pac-store',
-      script: 'dist/server.cjs',
+      script: 'build-server/server.cjs',
       env: {
         NODE_ENV: 'production'
       }

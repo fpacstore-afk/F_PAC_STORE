@@ -13,6 +13,7 @@ import {
 import { doc, getDoc, setDoc, onSnapshot } from 'firebase/firestore';
 import { auth, db } from '../lib/firebase';
 import toast from 'react-hot-toast';
+import { authErrorCode, authErrorMessage, requestPrivatePasswordReset, profileUpdateFields } from '../lib/authSecurity';
 
 export interface UserProfile {
   name: string;
@@ -208,35 +209,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const resetPassword = async (email: string) => {
     try {
-      await sendPasswordResetEmail(auth, email);
-      toast.success("E-mail de redefinição enviado com sucesso!");
+      const notice = await requestPrivatePasswordReset(email, address => sendPasswordResetEmail(auth, address));
+      toast.success(notice);
     } catch (error: any) {
       handleAuthError(error);
     }
   };
 
   const handleAuthError = (error: any) => {
-    console.error("Erro de Autenticação:", error);
-    
-    // Check if it might be a configuration issue
-    if (error.message?.includes('API key') || error.code === 'auth/invalid-api-key') {
-      toast.error("❌ Chave API do Firebase inválida. Verifique as configurações (VITE_FIREBASE_API_KEY).");
-      return;
-    }
-    
-    if (error.code === 'auth/popup-blocked') {
-      toast.error("O popup de login foi bloqueado.");
-    } else if (error.code === 'auth/wrong-password' || error.code === 'auth/user-not-found' || error.code === 'auth/invalid-credential') {
-      toast.error("E-mail ou senha inválidos.");
-    } else if (error.code === 'auth/email-already-in-use') {
-      toast.error("Este e-mail já está em uso.");
-    } else if (error.code === 'auth/weak-password') {
-      toast.error("A senha deve ter pelo menos 6 caracteres.");
-    } else if (error.code === 'auth/unauthorized-domain') {
-      toast.error("⚠️ Este domínio não está autorizado no Firebase. Adicione " + window.location.hostname + " nas configurações de domínios autorizados do Firebase Auth.");
-    } else {
-      toast.error("Erro ao processar autenticação: " + (error.message || "Tente novamente."));
-    }
+    console.warn('Falha de autenticação:', authErrorCode(error));
+    toast.error(authErrorMessage(error));
   };
 
   const logout = async () => {
@@ -247,7 +229,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const updateProfile = async (data: Partial<UserProfile>) => {
     if (!user) return;
     const profileRef = doc(db, 'users', user.uid);
-    await setDoc(profileRef, { ...data, updatedAt: new Date().toISOString() }, { merge: true });
+    await setDoc(profileRef, { ...profileUpdateFields(data), updatedAt: new Date().toISOString() }, { merge: true });
   };
 
   return (

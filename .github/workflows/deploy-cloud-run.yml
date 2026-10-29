@@ -76,6 +76,9 @@ jobs:
       - name: Setup Google Cloud
         uses: google-github-actions/setup-gcloud@v2
 
+      - name: Inspect provider authentication security configuration (read only)
+        run: python3 scripts/inspect_auth_security.py
+
       - name: Deploy candidate without traffic
         id: candidate
         run: |
@@ -252,7 +255,15 @@ jobs:
             exit "$STOCK_JOB_STATUS"
           fi
 
+      - name: Verify candidate security boundaries
+        env:
+          PUBLIC_API_BASE_URL: ${{ steps.candidate.outputs.url }}
+          REQUIRE_PRIVATE_FILE_404: 'true'
+        run: node --import tsx scripts/verify_live_security.ts
+
       - name: Promote validated revision
+        # Security checks use read-only requests and never print artifact bodies.
+        # The one-time stock job above remains conditional on its explicit marker.
         run: |
           gcloud run services update-traffic "$CLOUD_RUN_SERVICE" \
             --project "$GCP_PROJECT_ID" \
@@ -282,6 +293,11 @@ jobs:
         env:
           PUBLIC_API_BASE_URL: https://fpacstore.com.br
         run: node --import tsx scripts/verify_live_api_routing.ts
+
+      - name: Verify canonical and store security boundaries
+        run: |
+          node --import tsx scripts/verify_live_security.ts
+          PUBLIC_API_BASE_URL=https://fpacstore.com.br node --import tsx scripts/verify_live_security.ts
 
       # Deploy only after the storefront has switched to the public projection.
       - name: Deploy validated Firebase rules

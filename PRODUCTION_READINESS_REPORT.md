@@ -80,7 +80,7 @@ Entre as correções normais, necessárias e reversíveis realizadas nas branche
 | Cloud Run Service | `f-pac-store-n-o-s-roupa-identidade` |
 | Cloud Run Region | `us-east1` |
 | Runtime | Node.js 22 / Express |
-| Build | Vite + esbuild → `dist/server.cjs` |
+| Build | Vite + esbuild → `build-server/server.cjs` |
 | Domínios CORS | `https://fpacstore.com.br` e `https://www.fpacstore.com.br` |
 | Webhook Mercado Pago | `https://fpacstore.com.br/api/webhook/mercadopago` |
 

@@ -19,6 +19,22 @@ try {
   const unverified = environment.authenticatedContext('unverified-admin-email', { email: 'fpacstore@gmail.com', email_verified: false }).firestore();
   const claimed = environment.authenticatedContext('claimed-admin', { admin: true }).firestore();
   const manager = environment.authenticatedContext('manager', { email: 'fpacstore@gmail.com', email_verified: true }).firestore();
+  const customerProfile = doc(customer, 'users/customer');
+  for (const field of ['password', 'token', 'role', 'isAdmin', 'admin']) {
+    await assertFails(setDoc(customerProfile, { name:'Fixture', [field]:'forged' }));
+  }
+  await assertSucceeds(setDoc(customerProfile, { name:'Fixture', email:'customer@example.invalid' }));
+  for (const field of ['password', 'token', 'role', 'isAdmin', 'admin']) {
+    await assertFails(setDoc(customerProfile, { [field]:'forged' }, { merge:true }));
+  }
+  await assertSucceeds(setDoc(customerProfile, { phone:'', updatedAt:'fixture' }, { merge:true }));
+  await environment.withSecurityRulesDisabled(async context => {
+    await setDoc(doc(context.firestore(),'users/customer'), { role:'customer', legacyField:'preserved' }, { merge:true });
+  });
+  await assertSucceeds(setDoc(customerProfile, { name:'Updated fixture' }, { merge:true }));
+  assert.equal((await getDoc(customerProfile)).data()?.legacyField,'preserved');
+  await assertFails(setDoc(customerProfile, { role:'admin' }, { merge:true }));
+  console.log('Profile allowlist rejects credential/privilege injection while preserving existing profile metadata.');
   for (const db of [guest, customer, unverified]) {
     await assertFails(getDoc(doc(db, 'products/shirt')));
     await assertFails(getDocs(collection(db, 'products')));

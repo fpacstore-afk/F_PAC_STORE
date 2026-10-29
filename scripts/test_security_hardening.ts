@@ -93,6 +93,12 @@ const appServer = store.listen(0,'127.0.0.1');
 await new Promise<void>(resolve=>appServer.once('listening',resolve));
 const url=`http://127.0.0.1:${(appServer.address() as any).port}`;
 try {
+  await check('unknown API routes never echo query credentials or user-controlled URLs', async () => {
+    const response = await fetch(url+'/api/unknown-route?token=private-fixture&email=fixture@example.invalid');
+    assert.equal(response.status, 404);
+    assert.equal(response.headers.get('cache-control'), 'no-store');
+    assert.deepEqual(await response.json(), { error: 'Rota de API não encontrada.' });
+  });
   await check('runtime liveness is uncached and independent of JSON parsing or customer routes', async () => {
     const response = await fetch(url+'/runtime-health');
     assert.equal(response.status, 200); assert.equal(response.headers.get('cache-control'), 'no-store');

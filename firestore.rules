@@ -77,6 +77,10 @@ service cloud.firestore {
     }
 
     match /users/{userId} {
+      function profileFields() {
+        return ['name', 'email', 'phone', 'phone2', 'cpf', 'address', 'number',
+                'complement', 'neighborhood', 'city', 'state', 'cep', 'createdAt', 'updatedAt'];
+      }
       allow get: if (isSignedIn() && request.auth.uid == userId) || isAdmin();
       allow list: if isAdmin();
 
@@ -84,10 +88,10 @@ service cloud.firestore {
       // Administrative authorization fields are server/admin controlled and can
       // never be created, changed or removed by the profile owner.
       allow create: if (isSignedIn() && request.auth.uid == userId &&
-                        !request.resource.data.keys().hasAny(['role', 'isAdmin']));
+                        request.resource.data.keys().hasOnly(profileFields()));
       allow update: if (isSignedIn() && request.auth.uid == userId &&
-                        !request.resource.data.diff(resource.data).affectedKeys()
-                          .hasAny(['role', 'isAdmin']));
+                        request.resource.data.diff(resource.data).affectedKeys()
+                          .hasOnly(profileFields()));
       allow delete: if (isSignedIn() && request.auth.uid == userId) || isAdmin();
 
       // Trusted admins retain profile-management access.
