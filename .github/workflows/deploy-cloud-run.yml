@@ -212,13 +212,30 @@ jobs:
             --format='value(spec.template.spec.serviceAccountName)')"
           test -n "$IMAGE"
           test -n "$RUNTIME_SA"
+          STOCK_JOB_STATUS=0
           gcloud run jobs deploy fpac-stock-range-20261029 \
             --project "$GCP_PROJECT_ID" --region "$GCP_REGION" \
             --image "$IMAGE" --service-account "$RUNTIME_SA" \
-            --command node --args build-server/reorganize-stock-range.cjs \
+            --command /cnb/lifecycle/launcher --args node,build-server/reorganize-stock-range.cjs \
             --set-env-vars="NODE_ENV=production,FIREBASE_PROJECT_ID=$GCP_PROJECT_ID,FIREBASE_DATABASE_ID=ai-studio-a7d50f8c-9b01-4490-9a13-dd8892e0c41a" \
             --tasks=1 --max-retries=0 --task-timeout=180s \
-            --cpu=1 --memory=3Gi --execute-now --wait --quiet
+            --cpu=1 --memory=3Gi --execute-now --wait --quiet || STOCK_JOB_STATUS=$?
+          if [ "$STOCK_JOB_STATUS" -ne 0 ]; then
+            LAST_STOCK_EXECUTION="$(gcloud run jobs executions list \
+              --job fpac-stock-range-20261029 --project "$GCP_PROJECT_ID" --region "$GCP_REGION" \
+              --sort-by='~metadata.creationTimestamp' --limit=1 --format='value(metadata.name)' 2>/dev/null || true)"
+            if [ -n "$LAST_STOCK_EXECUTION" ]; then
+              gcloud run jobs executions describe "$LAST_STOCK_EXECUTION" \
+                --project "$GCP_PROJECT_ID" --region "$GCP_REGION" \
+                --format='json(status.conditions,status.failedCount,status.succeededCount)' || true
+            fi
+            # This task logs only fixed diagnostics, never inventory rows or credentials.
+            gcloud logging read \
+              'resource.type="cloud_run_job" AND resource.labels.job_name="fpac-stock-range-20261029"' \
+              --project "$GCP_PROJECT_ID" --freshness=10m --limit=12 \
+              --format='value(textPayload)' || true
+            exit "$STOCK_JOB_STATUS"
+          fi
 
       - name: Promote validated revision
         run: |
