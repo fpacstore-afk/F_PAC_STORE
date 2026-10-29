@@ -5,7 +5,7 @@ import { applyStockRange, previewStockRange } from '../server/services/stockRang
 // No customer requests, authentication keys, IAM changes or startup DB dependency.
 if (process.env.NODE_ENV !== 'production' || process.env.FIREBASE_PROJECT_ID !== 'fpac-store62' || process.env.FIREBASE_DATABASE_ID !== 'ai-studio-a7d50f8c-9b01-4490-9a13-dd8892e0c41a' || process.env.USE_MOCK_DB === 'true') throw new Error('Unexpected stock reorganization environment.');
 async function main() {
-  const db=getDb(), requestId='stock-range-20261029-v1';
+  const db=getDb(), requestId='stock-range-20261029-v2';
   try {
     const prior=await db.collection('stock_range_events').doc(requestId).get();
     if (!prior.exists) {
