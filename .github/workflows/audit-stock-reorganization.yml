@@ -31,5 +31,6 @@ jobs:
         with:
           workload_identity_provider: projects/1039063784001/locations/global/workloadIdentityPools/github-actions/providers/github-fpac-store
           service_account: github-fpac-cicd@fpac-store62.iam.gserviceaccount.com
+      - uses: google-github-actions/setup-gcloud@v2
       - name: Read-only audit with encrypted output
         run: node --import tsx scripts/audit_stock_reorganization.ts
