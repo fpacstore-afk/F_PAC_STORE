@@ -31,7 +31,7 @@ export function planStockRange(products: any[], inventory: any[]) {
   }
   const inventoryTotals = inventory.reduce((acc, value) => { const n=qty(value); return { physical:acc.physical+n.physical, reserved:acc.reserved+n.reserved }; },{physical:0,reserved:0});
   const fingerprint = hash({ products:products.map(p=>p).sort((a,b)=>a.id.localeCompare(b.id)), inventory:inventory.map(p=>p).sort((a,b)=>a.id.localeCompare(b.id)) });
-  return { revision:'2026-10-29.1', fingerprint, updates, creates, inventoryTotals, families:STOCK_FAMILIES.map(f=>({ id:f.id,label:f.label })), archived:updates.filter(u=>u.patch.rangeArchived).map(u=>u.id) };
+  return { revision:'2026-10-29.2', fingerprint, updates, creates, inventoryTotals, families:STOCK_FAMILIES.map(f=>({ id:f.id,label:f.label })), archived:updates.filter(u=>u.patch.rangeArchived).map(u=>u.id) };
 }
 
 export async function previewStockRange(db: any) {
