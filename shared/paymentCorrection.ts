@@ -1,11 +1,15 @@
 import { getOrderPaidAmount, getOrderRefundedAmount, getOrderTotal } from './orderFinancialCore';
 
-export function canCorrectRecordedPayment(order: any): boolean {
+export function isManualReceiptOrder(order: any): boolean {
   const provider = String(order?.payment?.provider || order?.payment?.gateway || order?.paymentProvider || order?.gateway || '').trim().toLowerCase();
   const externalId = order?.payment?.providerPaymentId || order?.payment?.paymentId || order?.payment?.id || order?.providerPaymentId || order?.paymentId || order?.mercadoPagoId;
   return !!order && !externalId && !order.paymentCreationUncertain &&
     (!provider || ['manual', 'offline'].includes(provider)) &&
-    (order.isManual === true || ['manual', 'offline'].includes(provider) || order.paymentLogs?.some((log: any) => log.recordedBy)) &&
+    !!(order.isManual === true || ['manual', 'offline'].includes(provider) || order.paymentLogs?.some((log: any) => log.recordedBy));
+}
+
+export function canCorrectRecordedPayment(order: any): boolean {
+  return isManualReceiptOrder(order) &&
     !['cancelled', 'canceled', 'cancelado'].includes(String(order.status || '').toLowerCase()) &&
     getOrderTotal(order) > 0 && getOrderPaidAmount(order) > 0 && getOrderRefundedAmount(order) === 0;
 }

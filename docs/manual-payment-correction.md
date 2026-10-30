@@ -21,9 +21,13 @@ O ajuste retira primeiro valores sem data comprovada e depois os recebimentos ma
 
 Correções não contam como novos recebimentos no contador do ledger. São exibidas como **Correção de recebimento**, com diferença negativa; não como reembolso.
 
+A gaveta de Produção sinaliza quando há correções e mostra o recebido válido, o saldo devedor e os ajustes, para que os lançamentos originais preservados não sejam confundidos com o saldo atual.
+
 ## Fluxos antigos
 
 Os atalhos de reparo que zeravam o saldo ou alteravam o total da venda após reversão de estorno foram substituídos pela correção explícita. As rotas antigas respondem `409 PAYMENT_CORRECTION_REQUIRED`. Reverter um estorno de pagamento parcial passa a preservar o saldo devedor correto, em vez de forçar quitação.
+
+A reversão manual de estorno também recusa pagamentos vinculados ao provedor: uma devolução efetiva exige conciliação no gateway e não deve ser apresentada como dinheiro restaurado apenas por alteração cadastral.
 
 Retries de pagamento manual também passam a conferir pedido, valor e método da chave original e retornar os saldos atuais. A resposta inclui os dados financeiros atualizados para a gaveta não manter um saldo antigo enquanto aguarda o listener.
 

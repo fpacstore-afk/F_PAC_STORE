@@ -1,5 +1,5 @@
 import { PaymentCorrectionForm } from './admin/financial/PaymentCorrectionForm';
-import { canCorrectRecordedPayment } from '../../shared/paymentCorrection';
+import { canCorrectRecordedPayment, isManualReceiptOrder } from '../../shared/paymentCorrection';
 import React, { useState, useEffect, useMemo } from 'react';
 import { collection, onSnapshot } from 'firebase/firestore';
 import { db } from '../lib/firebase';
@@ -710,7 +710,7 @@ export default function AdminAccountsReceivable({ initialSearchTerm = '', onNavi
                             </button>
                           )}
 
-                          {refunded > 0 && pending <= 0 && (
+                          {refunded > 0 && pending <= 0 && isManualReceiptOrder(order) && (
                             <button
                               onClick={() => void handleReverseRefund(order)}
                               className="px-2 py-1 bg-purple-600 hover:bg-emerald-600 text-white transition-all text-[8px] font-black uppercase tracking-wider cursor-pointer flex items-center gap-1"

@@ -1,4 +1,5 @@
 import { financialPatch } from '../services/paymentCorrection.service.js';
+import { isManualReceiptOrder } from '../../shared/paymentCorrection.js';
 import { transferGarmentsToProduction } from '../services/productionStock.service.js';
 import { FieldValue } from 'firebase-admin/firestore';
 import { calculateCashForecast } from '../../shared/cashForecast';
@@ -2093,6 +2094,9 @@ export async function reverseOrderRefundController(req: Request, res: Response) 
         const err: any = new Error('Pedido não encontrado.'); err.code = 'ORDER_NOT_FOUND'; err.status = 404; throw err;
       }
       const order = orderSnap.data()!;
+      if (!isManualReceiptOrder(order)) {
+        throw Object.assign(new Error('Estornos de pagamentos vinculados ao provedor exigem conciliação; não podem ser revertidos como lançamento manual.'), { code:'PROVIDER_REFUND_RECONCILIATION_REQUIRED', status:409 });
+      }
       const paidAmount = getOrderPaidAmount(order);
       const refundedAmount = getOrderRefundedAmount(order);
       if (refundedAmount <= 0) {

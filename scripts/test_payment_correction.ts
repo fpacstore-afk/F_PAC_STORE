@@ -3,6 +3,7 @@ import { requireIsolatedTestDb } from './requireIsolatedTestDb';
 import { correctRecordedPayment } from '../server/services/paymentCorrection.service';
 import { paymentCorrectionRevision } from '../shared/paymentCorrection';
 import { summarizeReceipts, orderReceiptHistory } from '../shared/financialReceipts';
+import { financialDateKey } from '../shared/cashFlow';
 import { updateOrderPaymentStatus, processOrderRefundController, reverseOrderRefundController, registerManualPaymentController, repairRefundReversalBalanceController, correctRefundReversalOrderTotalController } from '../server/controllers/admin.controller';
 
 const db = requireIsolatedTestDb();
@@ -20,7 +21,7 @@ await ref.set({ id, isManual:true, customerName:'Cliente de teste', total:2565, 
   amountPaid:570, balanceDue:1995, paymentStatus:'partially_paid',
   payment:{paidAmount:570,pendingAmount:1995,status:'partially_paid',method:'PIX',
     installments:[{amount:1000,paidAmount:570,status:'pending',dueDate:'2026-11-01'},{amount:1565,paidAmount:0,status:'pending',dueDate:'2026-12-01'}]},
-  paymentLogs:[{id:'opening',amount:570,date:'2026-09-15T12:00:00Z',recordedBy:'fixture'}],
+  paymentLogs:[{id:'opening',amount:570,date:'2020-09-15T12:00:00Z',recordedBy:'fixture'}],
   history:[{type:'note',message:'preserve original audit'}] });
 await call(updateOrderPaymentStatus,id,{newStatus:'approved',reason:'Fixture mistaken settlement',idempotencyKey:'fixture-full'});
 await call(processOrderRefundController,id,{amount:1995,reason:'Fixture mistaken refund',idempotencyKey:'fixture-r1'});
@@ -45,7 +46,7 @@ const event = (await db.collection('financial_events').doc(result.eventId).get()
 assert.equal(event.type,'payment_correction');assert.equal(event.amount,-1995);assert.equal(event.newPendingAmount,1995);
 for(const [eventId,value] of priorLedger) assert.equal(JSON.stringify((await db.collection('financial_events').doc(eventId).get()).data()),value);
 assert.equal(summarizeReceipts([saved]).netReceived,570);
-assert.equal(summarizeReceipts([saved],{start:'2026-09-01',end:'2026-09-30'}).netReceived,570);
+assert.equal(summarizeReceipts([saved],{start:'2020-09-01',end:'2020-09-30'}).netReceived,570);
 assert.equal(orderReceiptHistory(saved).conflict,false);
 assert.equal((await correctRecordedPayment(input,db)).idempotentReplay,true);
 console.log('PASS mistaken settlement/refunds/reversal correct to actual partial receipt, preserve total, original events, delivery, installment dates and original receipt date.');
@@ -58,8 +59,9 @@ assert.equal(JSON.stringify((await ref.get()).data()),protectedSnapshot,'obsolet
 await call(registerManualPaymentController,id,{amount:100,method:'PIX',reason:'Fixture next payment',idempotencyKey:'fixture-next'});
 saved=(await ref.get()).data();
 assert.equal(summarizeReceipts([saved]).netReceived,670);
-assert.equal(summarizeReceipts([saved],{start:'2026-09-01',end:'2026-09-30'}).netReceived,570);
-assert.equal(summarizeReceipts([saved],{start:'2026-10-01',end:'2026-10-31'}).netReceived,100);
+assert.equal(summarizeReceipts([saved],{start:'2020-09-01',end:'2020-09-30'}).netReceived,570);
+const laterDate = financialDateKey(saved.paymentLogs.at(-1).date)!;
+assert.equal(summarizeReceipts([saved],{start:laterDate,end:laterDate}).netReceived,100);
 assert.equal((await correctRecordedPayment(input,db)).order.payment.paidAmount,670,'replay returns current financial truth');
 await assert.rejects(correctRecordedPayment({...input,idempotencyKey:'fixture-stale'},db),(error:any)=>error.code==='PAYMENT_CORRECTION_STALE');
 const retry = await call(registerManualPaymentController,id,{amount:100,method:'PIX',reason:'Fixture next payment',idempotencyKey:'fixture-next'});
@@ -76,6 +78,7 @@ await db.collection('orders').doc(protectedId).set({...saved,id:protectedId,paym
 const protectedOrder=(await db.collection('orders').doc(protectedId).get()).data();
 await assert.rejects(correctRecordedPayment({...input,orderId:protectedId,idempotencyKey:'provider-correction',expectedRevision:paymentCorrectionRevision(protectedOrder)},db),(error:any)=>error.code==='PAYMENT_CORRECTION_NOT_ALLOWED');
 await assert.rejects(correctRecordedPayment({...input,orderId:protectedId},db),(error:any)=>error.code==='IDEMPOTENCY_CONFLICT');
+await call(reverseOrderRefundController,protectedId,{reason:'Fixture provider reversal must fail',idempotencyKey:'provider-reverse'},409);
 await call(processOrderRefundController,id,{amount:20,reason:'Fixture real refund',idempotencyKey:'real-refund'});
 saved=(await ref.get()).data();
 await assert.rejects(correctRecordedPayment({...input,idempotencyKey:'active-refund',expectedRevision:paymentCorrectionRevision(saved)},db),(error:any)=>error.code==='PAYMENT_CORRECTION_NOT_ALLOWED');

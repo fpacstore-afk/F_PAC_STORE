@@ -1020,6 +1020,11 @@ export const OrderProductionDrawer: React.FC<OrderProductionDrawerProps> = ({
               <h5 className="text-[11px] font-black uppercase tracking-wider text-[#eab308] flex items-center gap-2 border-b border-zinc-800 pb-2">
                 <DollarSign size={14} /> Histórico de Pagamentos Parciais ({Array.isArray(order.paymentLogs) ? order.paymentLogs.length : 0})
               </h5>
+              {order.paymentCorrections?.length > 0 && <div className="border border-amber-700 bg-amber-950 p-3 text-xs text-amber-100 space-y-2">
+                <p>Recebimento corrigido. Total válido: <strong>R$ {getOrderAmountPaid(order).toLocaleString('pt-BR',{minimumFractionDigits:2})}</strong>. Saldo devedor: <strong>R$ {getOrderBalanceDue(order).toLocaleString('pt-BR',{minimumFractionDigits:2})}</strong>.</p>
+                <p>Os pagamentos abaixo são os registros originais e incluem lançamentos corrigidos. A Central Financeira mostra o histórico completo.</p>
+                {order.paymentCorrections.map((correction: any) => <p key={correction.eventId}>Correção: <strong>R$ {Number(correction.amount).toLocaleString('pt-BR',{minimumFractionDigits:2})}</strong> · {correction.reason}</p>)}
+              </div>}
               <div className="space-y-1.5 max-h-48 overflow-y-auto">
                 {Array.isArray(order.paymentLogs) && order.paymentLogs.length > 0 ? (
                   order.paymentLogs.map((pay: any, pIdx: number) => (
