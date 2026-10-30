@@ -80,7 +80,7 @@ export function FinancialLedgerView({ orders, onOpenOrderDrawer }: FinancialLedg
 
     events.forEach(evt => {
       totalMoved += Number(evt.amount || 0);
-      if (matchesFinancialEventGroup(evt.type, 'PAYMENT')) paymentCount += 1;
+      if (evt.type !== 'payment_correction' && matchesFinancialEventGroup(evt.type, 'PAYMENT')) paymentCount += 1;
       if (matchesFinancialEventGroup(evt.type, 'REFUND')) refundCount += 1;
     });
 
@@ -245,7 +245,7 @@ export function FinancialLedgerView({ orders, onOpenOrderDrawer }: FinancialLedg
                           ? 'bg-emerald-50 text-emerald-700 border-emerald-200' 
                           : 'bg-gray-100 text-gray-700 border-gray-300'
                       }`}>
-                        {evt.type}
+                        {evt.type === 'payment_correction' ? 'Correção de recebimento' : evt.type}
                       </span>
                     </td>
                     <td className="p-3">
@@ -257,7 +257,7 @@ export function FinancialLedgerView({ orders, onOpenOrderDrawer }: FinancialLedg
                       </button>
                     </td>
                     <td className="p-3 text-right font-black font-mono">
-                      {evt.amount > 0 ? (
+                      {evt.type === 'payment_correction' ? <span className="text-amber-700">{formatMoney(evt.amount)}</span> : evt.amount > 0 ? (
                         <span className={isRef ? 'text-purple-700' : isPay ? 'text-emerald-700' : 'text-black'}>
                           {isRef ? `- ${formatMoney(evt.amount)}` : `+ ${formatMoney(evt.amount)}`}
                         </span>

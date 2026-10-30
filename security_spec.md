@@ -10,7 +10,13 @@
   2. Priority 2 (Email Fallback): If order is a guest order without `userId`, email matching is permitted ONLY IF `decodedToken.email_verified === true`. Unverified tokens are rejected with 403 EMAIL_NOT_VERIFIED.
 - Order cancellation (`order.status = 'cancelled'`) never erases financial history (`paidAmount`). Order cancellation is distinct from payment refund (`ORDER CANCELLED != PAYMENT REFUNDED`). Manual admin payment status transitions to `cancelled`/`rejected`/`expired` when `paidAmount > 0` are rejected with HTTP 400.
 
+### Manual receipt corrections
+
+- An authenticated admin may correct an erroneous manual receipt through the explicit `payment-correction` endpoint, with a confirmed actual received total, reason, idempotency key and current financial revision.
+- A correction preserves the sale total, physical/order lifecycle and original events. It appends a signed corrective event and an audit record atomically with the balance update; it does not initiate a provider refund or send customer messages.
+- Provider-linked payments, uncertain charges, active refunds and stale previews are rejected. Correction to zero reopens the debt instead of cancelling the order. Old shortcuts cannot clear debt or reduce the sale total to manufacture settlement.
 ## 2. Shipping, Label, Tracking & Return Invariants (Fase 8.5 & 8.6)
+
 - **Zero Public Label/Shipping Calls**: Calling Melhor Envio APIs, label endpoints or manual status updates without authenticated admin rights is strictly forbidden.
 - **Return Request Security**: Client return requests (`POST /api/orders/:orderId/return-request`) require authenticated user credentials (Firebase Auth ID Token) with strict UID matching or verified email ownership. Unauthenticated requests are blocked (401 UNAUTHORIZED). Direct client mutations on Firestore `orders` are forbidden in `firestore.rules`.
 - **Return Quantity Limits**: Physical return reception enforces strict quantity limits against original order items minus prior returns (`INVALID_RETURN_QUANTITY`).

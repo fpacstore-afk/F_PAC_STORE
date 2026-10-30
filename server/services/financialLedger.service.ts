@@ -7,6 +7,7 @@ export type FinancialEventType =
   | 'payment_approved'
   | 'partial_payment'
   | 'manual_payment'
+  | 'payment_correction'
   | 'refund'
   | 'partial_refund'
   | 'refund_reversal'

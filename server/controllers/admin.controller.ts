@@ -1,3 +1,5 @@
+import { financialPatch } from '../services/paymentCorrection.service.js';
+import { isManualReceiptOrder } from '../../shared/paymentCorrection.js';
 import { transferGarmentsToProduction } from '../services/productionStock.service.js';
 import { FieldValue } from 'firebase-admin/firestore';
 import { calculateCashForecast } from '../../shared/cashForecast';
@@ -1664,18 +1666,22 @@ export async function registerManualPaymentController(req: Request, res: Respons
       const eventSnap = await transaction.get(eventRef);
       if (eventSnap.exists) {
         const existingEvent = eventSnap.data() as FinancialEvent;
+        if (existingEvent.orderId !== orderId || !['payment_approved','partial_payment'].includes(existingEvent.type) || existingEvent.amount !== parsedAmount ||
+            (method && existingEvent.paymentMethod !== String(method).trim().toUpperCase())) {
+          throw Object.assign(new Error('Esta chave já foi usada em outro recebimento.'), { status: 409, code: 'IDEMPOTENCY_CONFLICT' });
+        }
         const orderSnap = await transaction.get(orderRef);
         const orderData = orderSnap.exists ? orderSnap.data()! : {};
         return {
           idempotentReplay: true,
           success: true,
           orderId,
-          paymentStatus: existingEvent.newStatus || getOrderPaymentStatus(orderData),
-          paidAmount: existingEvent.newPaidAmount ?? getOrderPaidAmount(orderData),
-          pendingAmount: existingEvent.newPendingAmount ?? getOrderPendingAmount(orderData),
-          amountPaid: existingEvent.newPaidAmount ?? getOrderPaidAmount(orderData),
-          balanceDue: existingEvent.newPendingAmount ?? getOrderPendingAmount(orderData),
-          eventId: eventRef.id
+          paymentStatus: getOrderPaymentStatus(orderData),
+          paidAmount: getOrderPaidAmount(orderData),
+          pendingAmount: getOrderPendingAmount(orderData),
+          amountPaid: getOrderPaidAmount(orderData),
+          balanceDue: getOrderPendingAmount(orderData),
+          eventId: eventRef.id, order: financialPatch(orderId, orderData)
         };
       }
 
@@ -1809,7 +1815,14 @@ export async function registerManualPaymentController(req: Request, res: Respons
         balanceDue: newPendingAmount,
         eventId: eventRef.id,
         paymentMethodUsed,
-        effectiveReason
+        effectiveReason,
+        order: financialPatch(orderId, { ...orderData,
+          payment: { ...(orderData.payment || {}), paidAmount: newPaidAmount, pendingAmount: newPendingAmount, status: newStatus, method: paymentMethodUsed,
+            ...(newStatus === 'approved' ? { paidAt: timestamp } : {}),
+            ...(updatePayload['payment.installments'] ? { installments: updatePayload['payment.installments'] } : {}) },
+          amountPaid: newPaidAmount, balanceDue: newPendingAmount, paymentStatus: newStatus,
+          ...(updatePayload.installments ? { installments: updatePayload.installments } : {}),
+          paymentLogs: [...(orderData.paymentLogs || []), paymentLogEntry] })
       };
     });
 
@@ -2081,6 +2094,9 @@ export async function reverseOrderRefundController(req: Request, res: Response) 
         const err: any = new Error('Pedido não encontrado.'); err.code = 'ORDER_NOT_FOUND'; err.status = 404; throw err;
       }
       const order = orderSnap.data()!;
+      if (!isManualReceiptOrder(order)) {
+        throw Object.assign(new Error('Estornos de pagamentos vinculados ao provedor exigem conciliação; não podem ser revertidos como lançamento manual.'), { code:'PROVIDER_REFUND_RECONCILIATION_REQUIRED', status:409 });
+      }
       const paidAmount = getOrderPaidAmount(order);
       const refundedAmount = getOrderRefundedAmount(order);
       if (refundedAmount <= 0) {
@@ -2093,34 +2109,36 @@ export async function reverseOrderRefundController(req: Request, res: Response) 
       const timestamp = new Date().toISOString();
       const currentStatus = getOrderPaymentStatus(order);
       const pendingAmount = getOrderPendingAmount(order);
+      const restoredStatus = paidAmount >= getOrderTotal(order) ? 'approved' : paidAmount > 0 ? 'partially_paid' : 'pending';
+      const restoredPending = getOrderPendingAmount({ ...order, payment: { ...order.payment, status: restoredStatus, refundedAmount: 0 } });
       const effectiveReason = String(reason || '').trim() || `Correção de estorno lançado por engano — pedido #${orderId}`;
       const paymentMethod = order.payment?.method || order.paymentMethod || 'MANUAL';
-      const historyEntry = { eventId, type: 'refund_reversal', amount: refundedAmount, status: 'approved', timestamp, message: effectiveReason, operator: user?.email || user?.uid || 'Admin' };
+      const historyEntry = { eventId, type: 'refund_reversal', amount: refundedAmount, status: restoredStatus, timestamp, message: effectiveReason, operator: user?.email || user?.uid || 'Admin' };
 
       transaction.update(orderRef, {
         'payment.refundedAmount': 0,
-        'payment.status': 'approved',
-        'payment.pendingAmount': 0,
+        'payment.status': restoredStatus,
+        'payment.pendingAmount': restoredPending,
         'payment.refundReversedAt': timestamp,
         'payment.refundReversalReason': effectiveReason,
         refundedAmount: 0,
-        paymentStatus: 'approved',
+        paymentStatus: restoredStatus,
         amountPaid: paidAmount,
-        balanceDue: 0,
+        balanceDue: restoredPending,
         updatedAt: FieldValue.serverTimestamp(),
         history: FieldValue.arrayUnion(historyEntry)
       });
       transaction.set(eventRef, {
         id: eventRef.id, orderId, type: 'refund_reversal', amount: refundedAmount,
-        previousStatus: currentStatus, newStatus: 'approved',
+        previousStatus: currentStatus, newStatus: restoredStatus,
         previousPaidAmount: paidAmount, newPaidAmount: paidAmount,
-        previousPendingAmount: pendingAmount, newPendingAmount: 0,
+        previousPendingAmount: pendingAmount, newPendingAmount: restoredPending,
         previousRefundedAmount: refundedAmount, newRefundedAmount: 0,
         paymentMethod, provider: 'manual', actorId: user?.uid, actorEmail: user?.email,
         reason: effectiveReason, idempotencyKey: idempotencyKey.trim(), createdAt: timestamp,
         recordedAt: FieldValue.serverTimestamp()
       });
-      return { idempotentReplay: false, success: true, orderId, paymentStatus: 'approved', paidAmount, refundedAmount: 0, eventId: eventRef.id, reversalAmount: refundedAmount, effectiveReason };
+      return { idempotentReplay: false, success: true, orderId, paymentStatus: restoredStatus, paidAmount, refundedAmount: 0, eventId: eventRef.id, reversalAmount: refundedAmount, effectiveReason };
     });
 
     if (!result.idempotentReplay) {
@@ -2137,88 +2155,13 @@ export async function reverseOrderRefundController(req: Request, res: Response) 
 }
 
 /** Corrige um saldo residual de uma reversão já registrada, sem nova movimentação financeira. */
-export async function repairRefundReversalBalanceController(req: Request, res: Response) {
-  try {
-    const orderId = req.params.orderId || req.params.id;
-    const { idempotencyKey } = req.body;
-    const user = (req as any).user;
-    if (!orderId || !idempotencyKey || typeof idempotencyKey !== 'string' || !idempotencyKey.trim()) {
-      return res.status(400).json({ error: 'IDEMPOTENCY_KEY_REQUIRED', message: 'Pedido e chave de idempotência são obrigatórios.' });
-    }
-    const db = getDb(), eventId = deriveLedgerEventId(idempotencyKey.trim());
-    const eventRef = db.collection('financial_events').doc(eventId), orderRef = db.collection('orders').doc(orderId);
-    const result = await db.runTransaction(async transaction => {
-      const existing = await transaction.get(eventRef);
-      if (existing.exists) return { idempotentReplay: true, success: true, orderId, eventId };
-      const snap = await transaction.get(orderRef);
-      if (!snap.exists) { const err: any = new Error('Pedido não encontrado.'); err.code = 'ORDER_NOT_FOUND'; err.status = 404; throw err; }
-      const order = snap.data()!;
-      const pendingAmount = getOrderPendingAmount(order), paidAmount = getOrderPaidAmount(order), refundedAmount = getOrderRefundedAmount(order);
-      if (!order.payment?.refundReversedAt || pendingAmount <= 0 || paidAmount <= 0 || refundedAmount > 0) {
-        const err: any = new Error('O pedido não possui saldo residual elegível para correção de reversão.'); err.code = 'NO_REFUND_REVERSAL_RESIDUAL'; err.status = 400; throw err;
-      }
-      const timestamp = new Date().toISOString();
-      const reason = `Reconciliação de saldo residual após reversão de estorno — pedido #${orderId}`;
-      transaction.update(orderRef, {
-        'payment.pendingAmount': 0, 'payment.status': 'approved', paymentStatus: 'approved', balanceDue: 0,
-        updatedAt: FieldValue.serverTimestamp(),
-        history: FieldValue.arrayUnion({ eventId, type: 'refund_reversal_balance_repair', amount: 0, status: 'approved', timestamp, message: reason, operator: user?.email || user?.uid || 'Admin' })
-      });
-      transaction.set(eventRef, { id: eventId, orderId, type: 'manual_adjustment', amount: 0, previousStatus: getOrderPaymentStatus(order), newStatus: 'approved', previousPaidAmount: paidAmount, newPaidAmount: paidAmount, previousPendingAmount: pendingAmount, newPendingAmount: 0, previousRefundedAmount: 0, newRefundedAmount: 0, provider: 'manual', actorId: user?.uid, actorEmail: user?.email, reason, idempotencyKey: idempotencyKey.trim(), createdAt: timestamp, recordedAt: FieldValue.serverTimestamp() });
-      return { idempotentReplay: false, success: true, orderId, eventId, paymentStatus: 'approved', paidAmount, pendingAmount: 0 };
-    });
-    if (!result.idempotentReplay) await recordAuditLog({ userId: user?.uid, userEmail: user?.email, action: 'REPAIR_REFUND_REVERSAL_BALANCE', resource: 'orders', resourceId: orderId, metadata: { eventId, idempotencyKey: idempotencyKey.trim() }, ip: req.ip });
-    return res.json(result);
-  } catch (error: any) {
-    if (error.code === 'ORDER_NOT_FOUND') return res.status(404).json({ error: error.code, message: error.message });
-    if (error.code === 'NO_REFUND_REVERSAL_RESIDUAL') return res.status(400).json({ error: error.code, message: error.message });
-    logger.error(`❌ [REFUND-REVERSAL-REPAIR-ERR] ${error.message}`, error);
-    return res.status(error.status || 500).json({ error: error.code || 'INTERNAL_ERROR', message: error.message || 'Erro ao reconciliar saldo.' });
-  }
+export async function repairRefundReversalBalanceController(_req: Request, res: Response) {
+  return res.status(409).json({ error: 'PAYMENT_CORRECTION_REQUIRED', message: 'Use Corrigir valor recebido e informe o total realmente recebido. O total do pedido deve ser preservado.' });
 }
 
 /** Corrige o total cadastrado de um pedido cuja reversão confirmou o valor efetivamente pago. */
-export async function correctRefundReversalOrderTotalController(req: Request, res: Response) {
-  try {
-    const orderId = req.params.orderId || req.params.id;
-    const { correctedTotal, idempotencyKey } = req.body;
-    const user = (req as any).user;
-    const amount = Number(correctedTotal);
-    if (!orderId || !idempotencyKey || typeof idempotencyKey !== 'string' || !idempotencyKey.trim() || !Number.isFinite(amount) || amount <= 0) {
-      return res.status(400).json({ error: 'INVALID_TOTAL_CORRECTION', message: 'Pedido, valor positivo e chave de idempotência são obrigatórios.' });
-    }
-    const db = getDb(), eventId = deriveLedgerEventId(idempotencyKey.trim());
-    const eventRef = db.collection('financial_events').doc(eventId), orderRef = db.collection('orders').doc(orderId);
-    const result = await db.runTransaction(async transaction => {
-      const existing = await transaction.get(eventRef);
-      if (existing.exists) return { idempotentReplay: true, success: true, orderId, eventId };
-      const snap = await transaction.get(orderRef);
-      if (!snap.exists) { const err: any = new Error('Pedido não encontrado.'); err.code = 'ORDER_NOT_FOUND'; err.status = 404; throw err; }
-      const order = snap.data()!;
-      const paidAmount = getOrderPaidAmount(order), refundedAmount = getOrderRefundedAmount(order);
-      if (!order.payment?.refundReversedAt || refundedAmount > 0 || Math.abs(amount - paidAmount) > 0.005) {
-        const err: any = new Error('A correção deve corresponder exatamente ao valor pago após a reversão de estorno.'); err.code = 'INVALID_REFUND_REVERSAL_TOTAL'; err.status = 400; throw err;
-      }
-      const timestamp = new Date().toISOString();
-      const reason = `Correção do total para o valor efetivamente pago após reversão de estorno — pedido #${orderId}`;
-      transaction.update(orderRef, {
-        total: amount, totalAmount: amount, 'pricing.total': amount,
-        'payment.paidAmount': paidAmount, 'payment.pendingAmount': 0, 'payment.status': 'approved',
-        amountPaid: paidAmount, balanceDue: 0, paymentStatus: 'approved',
-        updatedAt: FieldValue.serverTimestamp(),
-        history: FieldValue.arrayUnion({ eventId, type: 'refund_reversal_total_correction', amount, status: 'approved', timestamp, message: reason, operator: user?.email || user?.uid || 'Admin' })
-      });
-      transaction.set(eventRef, { id: eventId, orderId, type: 'manual_adjustment', amount: 0, previousStatus: getOrderPaymentStatus(order), newStatus: 'approved', previousPaidAmount: paidAmount, newPaidAmount: paidAmount, previousPendingAmount: getOrderPendingAmount(order), newPendingAmount: 0, previousRefundedAmount: 0, newRefundedAmount: 0, provider: 'manual', actorId: user?.uid, actorEmail: user?.email, reason, idempotencyKey: idempotencyKey.trim(), createdAt: timestamp, recordedAt: FieldValue.serverTimestamp() });
-      return { idempotentReplay: false, success: true, orderId, eventId, correctedTotal: amount, paymentStatus: 'approved' };
-    });
-    if (!result.idempotentReplay) await recordAuditLog({ userId: user?.uid, userEmail: user?.email, action: 'CORRECT_REFUND_REVERSAL_ORDER_TOTAL', resource: 'orders', resourceId: orderId, metadata: { correctedTotal: amount, idempotencyKey: idempotencyKey.trim() }, ip: req.ip });
-    return res.json(result);
-  } catch (error: any) {
-    if (error.code === 'ORDER_NOT_FOUND') return res.status(404).json({ error: error.code, message: error.message });
-    if (error.code === 'INVALID_REFUND_REVERSAL_TOTAL') return res.status(400).json({ error: error.code, message: error.message });
-    logger.error(`❌ [REFUND-REVERSAL-TOTAL-ERR] ${error.message}`, error);
-    return res.status(error.status || 500).json({ error: error.code || 'INTERNAL_ERROR', message: error.message || 'Erro ao corrigir total do pedido.' });
-  }
+export async function correctRefundReversalOrderTotalController(_req: Request, res: Response) {
+  return res.status(409).json({ error: 'PAYMENT_CORRECTION_REQUIRED', message: 'Use Corrigir valor recebido e informe o total realmente recebido. O total do pedido deve ser preservado.' });
 }
 
 /**
