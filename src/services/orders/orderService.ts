@@ -286,6 +286,17 @@ export async function processRefund(
   return payload;
 }
 
+export async function correctRecordedPayment(orderId: string, input: {
+  correctedPaidAmount: number; reason: string; expectedRevision: string; confirmed: boolean; idempotencyKey: string;
+}) {
+  const response = await authenticatedFetch(`/api/admin/orders/${encodeURIComponent(orderId)}/payment-correction`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input)
+  });
+  const payload = await parseApiJson<any>(response);
+  if (!response.ok) throw new Error(payload.message || 'Não foi possível corrigir o recebimento.');
+  return payload;
+}
+
 export async function reverseOrderRefund(orderId: string, reason: string, idempotencyKey: string) {
   if (!orderId) throw new Error('ID do pedido não fornecido.');
   if (!reason?.trim()) throw new Error('REFUND_REVERSAL_REASON_REQUIRED');

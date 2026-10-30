@@ -37,6 +37,8 @@ import {
 import { FinancialEvent } from '../../../types/financial';
 import { parseCurrencyInput } from '../../../../shared/currencyInput';
 import { OrderCostSummary } from '../OrderCostSummary';
+import { PaymentCorrectionForm } from './PaymentCorrectionForm';
+import { canCorrectRecordedPayment } from '../../../../shared/paymentCorrection';
 
 interface OrderFinancialDrawerProps {
   order: any | null;
@@ -54,7 +56,7 @@ export function OrderFinancialDrawer({
   const { formatMoney, showFinancialValues } = useFinancialPrivacy();
 
   // Sub-views / active action mode inside drawer
-  const [activeAction, setActiveAction] = useState<'overview' | 'pay' | 'refund'>('overview');
+  const [activeAction, setActiveAction] = useState<'overview' | 'pay' | 'refund' | 'correct'>('overview');
 
   // Payment Form State
   const [paymentAmount, setPaymentAmount] = useState<string>('');
@@ -354,6 +356,7 @@ export function OrderFinancialDrawer({
 
           {/* Action Selector Bar */}
           <div className="flex flex-wrap items-center gap-1.5 border-b border-black/10 pb-2">
+            {canCorrectRecordedPayment(order) && <button onClick={() => setActiveAction('correct')} className="px-3 py-2 text-[10px] font-black border border-amber-400 bg-amber-50 text-amber-900">Corrigir valor recebido</button>}
             <button
               onClick={() => setActiveAction('overview')}
               className={`px-3 py-1.5 text-[8.5px] font-black uppercase tracking-wider border cursor-pointer transition-all ${
@@ -393,6 +396,8 @@ export function OrderFinancialDrawer({
           </div>
 
           {/* Action Views */}
+          {activeAction === 'correct' && <PaymentCorrectionForm key={order.id} order={order}
+            onClose={()=>setActiveAction('overview')} onUpdated={patch=>{onOrderUpdated?.(patch); void loadEvents(order.id);}} />}
           {activeAction === 'pay' && (
             <motion.form
               initial={{ opacity: 0, y: 5 }}
@@ -605,8 +610,8 @@ export function OrderFinancialDrawer({
               <div className="space-y-2">
                 {events.map((evt, idx) => {
                   const dateStr = evt.createdAt ? new Date(evt.createdAt).toLocaleString('pt-BR') : '—';
-                  const isPay = evt.type?.includes('PAYMENT');
-                  const isRef = evt.type?.includes('REFUND');
+                  const isPay = evt.type?.toUpperCase().includes('PAYMENT');
+                  const isRef = evt.type?.toUpperCase().includes('REFUND');
 
                   return (
                     <div 
@@ -621,14 +626,14 @@ export function OrderFinancialDrawer({
                             ? 'bg-emerald-50 text-emerald-700 border-emerald-200' 
                             : 'bg-gray-100 text-gray-700 border-gray-300'
                         }`}>
-                          {evt.type}
+                          {evt.type === 'payment_correction' ? 'Correção de recebimento' : evt.type}
                         </span>
                         <span className="text-[8px] font-mono text-gray-400">{dateStr}</span>
                       </div>
 
                       <div className="flex items-center justify-between pt-0.5">
                         <span className="text-xs font-black font-mono text-black">
-                          {evt.amount > 0 ? `R$ ${evt.amount.toFixed(2)}` : 'R$ 0.00'}
+                          {formatMoney(evt.amount)}
                         </span>
                         <div className="text-[8px] font-bold text-gray-500 uppercase">
                           {evt.previousStatus || '—'} <span className="text-gray-300">➔</span> <span className="font-black text-black">{evt.newStatus}</span>

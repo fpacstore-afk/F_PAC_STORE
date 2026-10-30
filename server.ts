@@ -1,5 +1,6 @@
 import { SECURITY_HEADERS } from './shared/securityHeaders.js';
 import { denyPrivateFiles } from './server/middleware/privateFiles.js';
+import { correctRecordedPaymentController } from './server/controllers/paymentCorrection.controller.js';
 import { sharedRequestLimit, safeApiError } from './server/middleware/requestSecurity.js';
 import { getInventoryOverview, saveInventoryCount } from './server/controllers/inventoryCount.controller.js';
 import { getEmailDeliveryHistory } from './server/services/emailDelivery.service.js';
@@ -550,6 +551,7 @@ apiRouter.post("/admin/orders/:orderId/production-notes", adminApiLimiter, authe
 apiRouter.post("/admin/orders/:orderId/notes", adminApiLimiter, authenticateAdmin, addOrderShippingNote);
 apiRouter.post("/admin/orders/:orderId/payment-status", adminApiLimiter, authenticateAdmin, updateOrderPaymentStatus);
 apiRouter.post("/admin/orders/:orderId/manual-payment", adminApiLimiter, authenticateAdmin, registerManualPaymentController);
+apiRouter.post("/admin/orders/:orderId/payment-correction", adminApiLimiter, authenticateAdmin, correctRecordedPaymentController);
 apiRouter.post("/admin/orders/:orderId/refund", adminApiLimiter, authenticateAdmin, processOrderRefundController);
 apiRouter.post("/admin/orders/:orderId/reverse-refund", adminApiLimiter, authenticateAdmin, reverseOrderRefundController);
 apiRouter.post("/admin/orders/:orderId/repair-refund-reversal", adminApiLimiter, authenticateAdmin, repairRefundReversalBalanceController);

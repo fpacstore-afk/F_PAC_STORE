@@ -1,3 +1,5 @@
+import { PaymentCorrectionForm } from './admin/financial/PaymentCorrectionForm';
+import { canCorrectRecordedPayment } from '../../shared/paymentCorrection';
 import React, { useState, useEffect, useMemo } from 'react';
 import { collection, onSnapshot } from 'firebase/firestore';
 import { db } from '../lib/firebase';
@@ -5,8 +7,6 @@ import {
   registerManualPayment, 
   processRefund, 
   reverseOrderRefund,
-  repairRefundReversalBalance,
-  correctRefundReversalOrderTotal,
   getOrderFinancialEvents 
 } from '../services/orders/orderService';
 import { useFinancialPrivacy } from '../context/FinancialPrivacyContext';
@@ -64,6 +64,7 @@ export function getOrderAmountPaid(order: any): number {
 
 export default function AdminAccountsReceivable({ initialSearchTerm = '', onNavigateOrder }: AdminAccountsReceivableProps) {
   const { formatMoney } = useFinancialPrivacy();
+  const [correctionOrder, setCorrectionOrder] = useState<any | null>(null);
   const [orders, setOrders] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState(initialSearchTerm);
@@ -340,17 +341,6 @@ export default function AdminAccountsReceivable({ initialSearchTerm = '', onNavi
     } catch (err: any) {
       console.error(err);
       toast.error(err.message || 'Erro ao reverter estorno.');
-    }
-  };
-
-  const handleCorrectRefundReversalTotal = async (order: any) => {
-    try {
-      const key = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `refund_reversal_repair_${order.id}_${Date.now()}`;
-      const paidAmount = getOrderPaidAmount(order);
-      await correctRefundReversalOrderTotal(order.id, paidAmount, key);
-      toast.success('Total corrigido para o valor pago; pedido quitado.');
-    } catch (err: any) {
-      console.error(err); toast.error(err.message || 'Erro ao corrigir saldo residual.');
     }
   };
 
@@ -730,11 +720,9 @@ export default function AdminAccountsReceivable({ initialSearchTerm = '', onNavi
                             </button>
                           )}
 
-                          {refunded <= 0 && pending > 0 && order.payment?.refundReversedAt && (
-                            <button onClick={() => void handleCorrectRefundReversalTotal(order)} className="px-2 py-1 bg-amber-600 hover:bg-emerald-600 text-white transition-all text-[8px] font-black uppercase tracking-wider cursor-pointer flex items-center gap-1" title="Corrigir total para o valor pago após reversão">
-                              <CheckCircle size={10} /> Corrigir total
-                            </button>
-                          )}
+                          {canCorrectRecordedPayment(order) && <button onClick={() => setCorrectionOrder(order)}
+                            className="px-2 py-1 bg-amber-50 border border-amber-400 text-amber-900 text-[8px] font-black whitespace-nowrap"
+                            title="Corrigir baixa lançada por engano e manter o saldo devedor">Corrigir recebido</button>}
 
                           {/* Histórico / Ledger */}
                           <button
@@ -930,6 +918,13 @@ export default function AdminAccountsReceivable({ initialSearchTerm = '', onNavi
         )}
       </AnimatePresence>
 
+      {correctionOrder && <div role="dialog" aria-modal="true" aria-label="Corrigir valor recebido" className="fixed inset-0 z-[80] bg-black/60 flex items-center justify-center p-4">
+        <div className="bg-white w-full max-w-xl max-h-[90dvh] overflow-y-auto p-3">
+          <p className="p-2 font-black text-sm">Pedido #{correctionOrder.id} · {correctionOrder.customerName || 'Cliente'}</p>
+          <PaymentCorrectionForm key={correctionOrder.id} order={correctionOrder} onClose={()=>setCorrectionOrder(null)}
+            onUpdated={patch=>setOrders(previous=>previous.map(order=>order.id===patch.id ? {...order,...patch} : order))} />
+        </div>
+      </div>}
       {/* 5. MODAL: REEMBOLSO / ESTORNO */}
       <AnimatePresence>
         {refundModalOrder && (
@@ -1113,14 +1108,14 @@ export default function AdminAccountsReceivable({ initialSearchTerm = '', onNavi
                         <div key={evt.id || idx} className="bg-gray-50 border border-black/10 p-3 space-y-1.5">
                           <div className="flex items-center justify-between">
                             <span className="text-[8px] font-black uppercase tracking-widest bg-black text-[#eab308] px-1.5 py-0.5 font-mono">
-                              {evt.type}
+                              {evt.type === 'payment_correction' ? 'Correção de recebimento' : evt.type}
                             </span>
                             <span className="text-[8.5px] font-mono text-gray-400">{dateStr}</span>
                           </div>
 
                           <div className="flex items-center justify-between pt-1">
                             <span className="text-xs font-black font-mono text-black">
-                              {evt.amount > 0 ? `R$ ${evt.amount.toFixed(2)}` : 'R$ 0.00'}
+                              {formatMoney(evt.amount)}
                             </span>
                             <div className="text-[8px] font-bold text-gray-500 uppercase">
                               {evt.previousStatus || '—'} ➔ <span className="font-black text-black">{evt.newStatus}</span>

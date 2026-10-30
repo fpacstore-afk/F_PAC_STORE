@@ -47,9 +47,37 @@ export function orderReceiptHistory(order: any) {
     : history.filter((e: any) => ['manual_payment', 'payment_approved', 'partial_payment'].includes(e.financialType || e.type) && e.amount !== undefined);
   const refundLogs = Array.isArray(order.refundLogs) && order.refundLogs.length ? order.refundLogs
     : history.filter((e: any) => ['refund', 'partial_refund'].includes(e.financialType || e.type) && e.amount !== undefined);
-  const incoming = datedFinancialMovements(paid, paymentLogs, order.payment?.paidAt || order.paidAt || order.data_pagamento);
+  const basis = order.paymentReceiptBasis;
+  const basisValid = basis && Number.isInteger(basis.paymentLogCount) && basis.paymentLogCount >= 0 &&
+    basis.paymentLogCount <= (order.paymentLogs?.length || 0) && Array.isArray(basis.movements) && positive(basis.undated);
+  const incoming = basis
+    ? basisValid ? datedFinancialMovements(paid, [
+        ...basis.movements.map((movement: any, index: number) => ({ ...movement, id: `basis-${basis.eventId}-${index}` })),
+        ...(basis.undated > 0 ? [{ amount: basis.undated }] : []),
+        ...(order.paymentLogs || []).slice(basis.paymentLogCount)
+      ], null) : { movements: [] as Movement[], undated: paid, conflict: true }
+    : datedFinancialMovements(paid, paymentLogs, order.payment?.paidAt || order.paidAt || order.data_pagamento);
   const outgoing = datedFinancialMovements(refunded, refundLogs, order.payment?.refundedAt || order.refundedAt);
   return { paid, refunded, incoming, outgoing, conflict: incoming.conflict || outgoing.conflict || refunded > paid + 0.005 };
+}
+
+/** Correct erroneous receipts from the latest entry backwards, keeping original logs immutable. */
+export function correctedReceiptBasis(order: any, targetPaid: number, eventId: string) {
+  const incoming = orderReceiptHistory(order).incoming;
+  let remaining = Math.round((getOrderPaidAmount(order) - targetPaid) * 100);
+  let undated = Math.round(incoming.undated * 100);
+  const removeUndated = Math.min(undated, remaining);
+  undated -= removeUndated; remaining -= removeUndated;
+  const movements = incoming.movements.map(movement => ({ ...movement })).sort((a,b) => a.date.localeCompare(b.date));
+  for (let index = movements.length - 1; index >= 0 && remaining > 0; index--) {
+    const current = Math.round(movements[index].amount * 100);
+    const reduction = Math.min(current, remaining);
+    movements[index].amount = (current - reduction) / 100;
+    remaining -= reduction;
+  }
+  if (remaining > 0) throw new Error('RECEIPT_ALLOCATION_CONFLICT');
+  return { eventId, movements: movements.filter(movement => movement.amount > 0), undated: undated / 100,
+    paymentLogCount: order.paymentLogs?.length || 0 };
 }
 
 /** Calendar cash receipts, independent of order creation and delivery. */
