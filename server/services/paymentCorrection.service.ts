@@ -47,7 +47,7 @@ export async function correctRecordedPayment(input: {
     const payment = { ...(order.payment || {}), paidAmount: correctedPaidAmount, pendingAmount: pending, status, paidAt: null };
     const originalInstallments = Array.isArray(order.payment?.installments) ? order.payment.installments : Array.isArray(order.installments) ? order.installments : null;
     let installments: any[] | null = null;
-    if (originalInstallments) {
+    if (originalInstallments?.length) {
       let available = Math.round(correctedPaidAmount * 100);
       installments = originalInstallments.map((installment: any) => {
         const amount = Math.round(Number(installment.amount) * 100);

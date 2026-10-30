@@ -87,12 +87,14 @@ saved=(await ref.get()).data();assert.equal(saved.payment.status,'partially_paid
 console.log('PASS invalid amounts, missing confirmation/reason, cross-order replay, provider payments and active refunds cannot be silently changed; reversal of partial refund preserves unpaid debt.');
 
 const concurrentId='concurrent-receipt-correction-fixture';
-await db.collection('orders').doc(concurrentId).set({id:concurrentId,isManual:true,total:100,payment:{paidAmount:100,status:'approved'},status:'received',paymentLogs:[{id:'a',amount:100,date:'2026-09-01'}]});
+await db.collection('orders').doc(concurrentId).set({id:concurrentId,isManual:true,total:100,payment:{paidAmount:100,status:'approved',installments:[]},installments:[],status:'received',paymentLogs:[{id:'a',amount:100,date:'2026-09-01'}]});
 const concurrentOrder=(await db.collection('orders').doc(concurrentId).get()).data();
 const outcomes=await Promise.allSettled([20,40].map((target,index)=>correctRecordedPayment({...input,orderId:concurrentId,correctedPaidAmount:target,idempotencyKey:'concurrent-'+index,expectedRevision:paymentCorrectionRevision(concurrentOrder)},db)));
 assert.equal(outcomes.filter(outcome=>outcome.status==='fulfilled').length,1);
 assert.equal(outcomes.filter(outcome=>outcome.status==='rejected').length,1);
 const current=(await db.collection('orders').doc(concurrentId).get()).data();
+assert.deepEqual(current.payment.installments,[]);
+assert.deepEqual(current.installments,[]);
 await correctRecordedPayment({...input,orderId:concurrentId,correctedPaidAmount:0,idempotencyKey:'zero-correction',expectedRevision:paymentCorrectionRevision(current)},db);
 const zero=(await db.collection('orders').doc(concurrentId).get()).data();
 assert.equal(zero.balanceDue,100);assert.equal(zero.payment.status,'pending');assert.equal(summarizeReceipts([zero]).netReceived,0);
