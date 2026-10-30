@@ -84,7 +84,7 @@ export default function ProductCategories() {
               className="group overflow-hidden rounded-xl md:rounded-2xl bg-white border border-black/10 shadow-sm hover:shadow-xl hover:-translate-y-0.5 transition-all duration-300"
             >
               <div className="aspect-square overflow-hidden bg-[#f4f3ef]">
-                {visualKind === 'cap' ? <img src="/product-visuals/trucker-category.svg" alt="Ilustração de boné de telinha trucker" className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.03]" /> : visualKind ? (
+                {visualKind ? (
                   <ProductMockupSprite kind={visualKind} className="h-full w-full" imageClassName="transition-transform duration-500 group-hover:scale-[1.03]" imageStyle={visualKind === 'regata' ? { clipPath: 'inset(0 0 14% 0)' } : undefined} label={title} />
                 ) : (
                   <img src={image || '/estampas/logo-fpac.png'} alt={title} className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.03]" />
