@@ -41,6 +41,12 @@ export function resetAuthForTesting() {
  * ou uma chave secreta no cabeçalho `x-admin-api-key` / `x-sync-secret` (para scripts/integradores confiáveis).
  */
 export async function authenticateAdmin(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+  // Both authorized data and access failures must stay out of browser/shared caches.
+  res.setHeader('Cache-Control', 'private, no-store');
+  res.vary('Authorization');
+  res.vary('x-admin-api-key');
+  res.vary('x-api-key');
+  res.vary('x-sync-secret');
   try {
     const authHeader = req.headers.authorization;
     const adminApiKey = (req.headers['x-admin-api-key'] || req.headers['x-api-key']) as string;

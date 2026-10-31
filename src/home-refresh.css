@@ -35,7 +35,7 @@
 .fpac-detail-link { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; margin-top: 12px; font-size: 12px; font-weight: 700; }
 .fpac-detail-images { display: grid; grid-template-columns: 1.5fr 1fr; grid-template-rows: 1fr 1fr; gap: 12px; height: 360px; min-width: 0; }
 .fpac-detail-images img { min-width: 0; min-height: 0; width: 100%; height: 100%; object-fit: cover; }
-.fpac-detail-main { grid-row: span 2; border-radius: 6px; }
+.fpac-detail-main { grid-row: span 2; border-radius: 6px; overflow: hidden; min-height: 0; }
 .fpac-detail-images figure { position: relative; overflow: hidden; min-height: 0; }
 .fpac-detail-images figure img { position: absolute; object-position: center 58%; transform: scale(1.35); }
 .fpac-detail-images figcaption { position: absolute; left: 8px; right: 8px; bottom: 8px; background: #fffdf3; padding: 7px; font-size: 9px; text-transform: uppercase; }

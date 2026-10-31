@@ -9,10 +9,29 @@ export enum LogLevel {
   AUDIT = 'AUDIT'
 }
 
+function sensitiveLogKey(key: string): boolean {
+  const normalized = key.toLowerCase().replace(/[^a-z0-9]/g, '');
+  return ['token', 'authorization', 'password', 'secret', 'cvv', 'cardnumber',
+    'apikey', 'privatekey', 'serviceaccount', 'cookie', 'cpf', 'phone', 'email', 'address']
+    .some(part => normalized.includes(part));
+}
+
 export function redactLogText(value: string): string {
   return value
-    .replace(/([?&](?:token|access_token|key|secret|signature|code|email|cpf|phone)=)[^&#\s]*/gi, '$1[REDACTED]')
     .replace(/\bBearer\s+[A-Za-z0-9._~+/-]+=*/gi, 'Bearer [REDACTED]')
+    .replace(/\bBasic\s+[A-Za-z0-9+/]+=*/gi, 'Basic [REDACTED]')
+    .replace(/(^|[\r\n])((?:cookie|set-cookie)\s*:\s*)[^\r\n]*/gi, '$1$2[REDACTED]')
+    .replace(/([?&])([^=&#\s]+)=([^&#\s]*)/g, (match, separator, name) => {
+      let decoded: string;
+      try { decoded = decodeURIComponent(name.replace(/\+/g, ' ')); }
+      catch { return separator + '[REDACTED]'; }
+      return sensitiveLogKey(decoded) || /^(?:key|signature|code)$/i.test(decoded)
+        ? `${separator}${name}=[REDACTED]` : match;
+    })
+    .replace(/(["']?([A-Za-z][A-Za-z0-9_-]*)["']?\s*[:=]\s*)(?:"[^"\r\n]*"|'[^'\r\n]*'|[^\s,;&}]+)/g,
+      (match, prefix, name) => sensitiveLogKey(name) || /^(?:key|signature|code)$/i.test(name)
+        ? prefix + '[REDACTED]' : match)
+    .replace(/-----BEGIN (?:RSA |EC |OPENSSH |DSA |ENCRYPTED )?PRIVATE KEY-----[\s\S]*?(?:-----END (?:RSA |EC |OPENSSH |DSA |ENCRYPTED )?PRIVATE KEY-----|$)/g, '[PRIVATE KEY REDACTED]')
     .replace(/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi, '[EMAIL]');
 }
 
@@ -24,12 +43,10 @@ export function sanitizeLogData(obj: any, seen = new WeakSet<object>()): any {
   if (Array.isArray(obj)) return obj.map(value => sanitizeLogData(value, seen));
   if (obj instanceof Error) return { name: obj.name, message: redactLogText(obj.message) };
   
-  const sensitiveKeys = ['token', 'authorization', 'password', 'secret', 'cvv', 'cardnumber', 'card_number', 'access_token', 'apikey', 'api_key', 'private_key', 'cpf', 'phone', 'email', 'address'];
   const clean: any = {};
   
   for (const key of Object.keys(obj)) {
-    const lowerKey = key.toLowerCase();
-    if (sensitiveKeys.some(s => lowerKey.includes(s))) {
+    if (sensitiveLogKey(key)) {
       clean[key] = '[REDACTED]';
     } else if (typeof obj[key] === 'object' && obj[key] !== null) {
       clean[key] = sanitizeLogData(obj[key], seen);

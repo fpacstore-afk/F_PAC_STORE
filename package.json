@@ -95,6 +95,7 @@
     "verify:public-build": "node --import tsx scripts/verify_public_build.ts",
     "test:public-build-security": "NODE_ENV=test node --import tsx scripts/test_public_build_security.ts",
     "test:auth-security": "node --import tsx scripts/test_auth_security.ts",
+    "test:reel-security": "NODE_ENV=test node --import tsx scripts/test_reel_security.ts",
     "test:preview-tags": "python3 scripts/test_preview_tags.py",
     "test:payment-correction": "NODE_ENV=test node --import tsx scripts/test_payment_correction.ts"
   },
@@ -114,6 +115,7 @@
     "firebase": "^12.18.0",
     "firebase-admin": "^14.5.0",
     "framer-motion": "^11.18.2",
+    "gsap": "3.15.0",
     "helmet": "^8.1.0",
     "lucide-react": "^0.546.0",
     "mercadopago": "^3.6.1",
