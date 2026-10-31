@@ -26,7 +26,7 @@ export function HomeIdentityJourney({ image, detailImage }: { image?: string; de
           <Link to="/catalog/all" className="fpac-detail-link">Explore as peças <ArrowUpRight size={16} /></Link>
         </div>
         <div className="fpac-detail-images" data-motion-reveal="image">
-          <img className="fpac-detail-main" src={image || fallback} alt="Peça da coleção F PAC" loading="lazy" decoding="async" onError={handleError} />
+          <div className="fpac-detail-main"><img data-motion-image-depth src={image || fallback} alt="Peça da coleção F PAC" loading="lazy" decoding="async" onError={handleError} /></div>
           <figure><img src={image || fallback} alt="Aproximação da peça F PAC" loading="lazy" decoding="async" onError={handleError} /><figcaption>Detalhe da peça</figcaption></figure>
           <figure><img src={detailImage || image || fallback} alt="Visual da coleção F PAC" loading="lazy" decoding="async" onError={handleError} /><figcaption>Estampa em foco</figcaption></figure>
         </div>

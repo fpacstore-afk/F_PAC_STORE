@@ -15,6 +15,10 @@ for (const route of ['/server.cjs', '/server.cjs.map', '/build-server/server.cjs
 const protectedRoute = await request('/api/admin/garment-models/range-preview');
 await protectedRoute.body?.cancel();
 if (![401,403].includes(protectedRoute.status)) throw new Error(`Administrative endpoint did not deny anonymous access (${protectedRoute.status}).`);
+if (!protectedRoute.headers.get('cache-control')?.includes('no-store') ||
+    !protectedRoute.headers.get('vary')?.toLowerCase().includes('authorization')) {
+  throw new Error('Administrative access responses must disable caching and vary by authentication.');
+}
 
 const missing = await request('/api/security-check-unknown?token=fpac-public-test&email=fixture@example.invalid');
 if (missing.status !== 404 || missing.headers.get('cache-control') !== 'no-store') throw new Error('Unknown API route must be an uncached 404.');

@@ -313,8 +313,8 @@ const getMPEnvInfo = () => {
   const hasLegacyAT = !!process.env.MP_ACCESS_TOKEN;
 
   return {
-    pk: { mode: pkMode, prefix: pk.substring(0, 11), length: pk.length },
-    at: { mode: atMode, prefix: at.substring(0, 11), length: at.length },
+    pk: { mode: pkMode },
+    at: { mode: atMode },
     isCompatible: pkMode === atMode && pkMode !== 'EMPTY' && pkMode !== 'UNKNOWN',
     hasLegacyConflict: hasLegacyAT
   };
@@ -323,8 +323,8 @@ const getMPEnvInfo = () => {
 const envCheck = getMPEnvInfo();
 console.log('----------------------------------------------------');
 console.log('🚀 [STARTUP] AUDITORIA DE INFRAESTRUTURA');
-console.log(`MODO FRONTEND (PK): ${envCheck.pk.mode} [${envCheck.pk.prefix}...]`);
-console.log(`MODO BACKEND  (AT): ${envCheck.at.mode} [${envCheck.at.prefix}...]`);
+console.log(`MODO FRONTEND (PK): ${envCheck.pk.mode}`);
+console.log(`MODO BACKEND  (AT): ${envCheck.at.mode}`);
 
 if (envCheck.hasLegacyConflict) {
   console.warn('⚠️ AVISO: Você ainda tem a secret legada MP_ACCESS_TOKEN. Remova-a nos Secrets!');
