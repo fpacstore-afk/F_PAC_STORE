@@ -47,6 +47,7 @@ export function InventoryAuditCenter({ operator = 'Administrador' }: { operator?
   const [savingCount, setSavingCount] = useState(false);
   const [resettingStock, setResettingStock] = useState(false);
   const [resetProgress, setResetProgress] = useState('');
+  const [preparingModels, setPreparingModels] = useState(false);
   const [movements, setMovements] = useState<StockMovement[]>([]);
 
   useEffect(() => onSnapshot(collection(db, 'stock_movements'), snapshot => {
@@ -65,15 +66,18 @@ export function InventoryAuditCenter({ operator = 'Administrador' }: { operator?
   }, [reference, inventory, resettingStock]);
 
   const rows = useMemo<InventoryRow[]>(() => {
-    const knownProducts = new Map(products.map((product: any) => [String(product.slug || product.id), product]));
+    const knownProducts = new Map<string, any>();
+    products.forEach((product: any) => {
+      if (product.id) knownProducts.set(String(product.id), product);
+      if (product.slug) knownProducts.set(String(product.slug), product);
+    });
     const entries: InventoryRow[] = [];
     const added = new Set<string>();
 
     const addRow = (productSlug: string, product: any, variantKey: string, quantity: unknown, variant?: any) => {
       const systemQuantity = Math.max(0, Number(quantity) || 0);
-      // The initial audit must not resurrect old placeholder matrices. A row
-      // becomes countable only when it belongs to an identified product and
-      // currently carries physical stock.
+      // A zero is countable when the model setup explicitly prepared that
+      // color/size row. Empty legacy placeholders are not recreated here.
       if (!product) return;
       if ((product.rangeArchived || product.status === 'archived' || product.mergedIntoProductId) && systemQuantity === 0 && !Number(variant?.reservedQuantity || 0)) return;
       const key = `${productSlug}:${variantKey}`;
@@ -92,7 +96,7 @@ export function InventoryAuditCenter({ operator = 'Administrador' }: { operator?
         color: String(variant?.color || variantKey.split('_')[0] || 'Sem cor'),
         size: String(variant?.size || variantKey.split('_').slice(1).join('_') || 'Único'),
         systemQuantity,
-        countVerified: product?.productFinish === 'plain' || /\b(lisa|liso|base|sem estampa)\b/i.test(`${product?.name || ''} ${(product?.tags || []).join(' ')}`) || variant?.physicalCountVerified === true,
+        countVerified: variant?.physicalCountVerified === false ? false : product?.productFinish === 'plain' || /\b(lisa|liso|base|sem estampa)\b/i.test(`${product?.name || ''} ${(product?.tags || []).join(' ')}`) || variant?.physicalCountVerified === true,
         reservedQuantity: Math.max(0, Number(variant?.reservedQuantity) || 0),
         availableQuantity: Math.max(0, systemQuantity - (Number(variant?.reservedQuantity) || 0)),
         minimumQuantity: Math.max(1, Number(product?.minStock) || 1),
@@ -204,6 +208,18 @@ export function InventoryAuditCenter({ operator = 'Administrador' }: { operator?
     setCounts(next);
   };
 
+  const prepareGarmentModels = async () => {
+    setPreparingModels(true);
+    try {
+      const response = await authenticatedFetch('/api/admin/garment-models/initialize', { method: 'POST' });
+      const data = await parseApiJson<any>(response);
+      if (!response.ok) throw new Error(data.error || data.message || 'Não foi possível preparar os modelos.');
+      toast.success(`${data.prepared || 0} bases preparadas · ${data.variantsAdded || 0} variações adicionadas para contagem.`);
+    } catch (error: any) {
+      toast.error(error.message || 'Não foi possível preparar os modelos para o inventário.');
+    } finally { setPreparingModels(false); }
+  };
+
   const saveRow = async (row: InventoryRow) => {
     const key = `${row.productSlug}:${row.variantKey}`;
     const counted = numberOrZero(counts[key]);
@@ -242,6 +258,13 @@ export function InventoryAuditCenter({ operator = 'Administrador' }: { operator?
       </header>
 
       <div className="border border-amber-200 bg-amber-50 p-4 text-xs text-amber-950">Conte as lisas uma única vez por modelo, cor e tamanho. A capacidade compartilhada dos desenhos não entra na soma física. Peças enviadas à estamparia aparecem em produção, separadamente. Quantidades antigas de estampadas ficam fora do saldo físico confirmado até a contagem; informe zero quando não existir peça pronta.</div>
+      <section className="border border-black/10 bg-white p-4 space-y-2">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div><h2 className="text-sm font-black uppercase">Modelos e golas no inventário</h2><p className="mt-1 text-xs text-gray-600">Prepara as grades separadas por fornecedor, modelagem e gola, incluindo as variações zeradas para a contagem. Os saldos atuais não são copiados.</p></div>
+          <button type="button" disabled={preparingModels || loading} onClick={prepareGarmentModels} className="shrink-0 bg-black px-4 py-3 text-xs font-black uppercase text-[#eab308] disabled:opacity-50">{preparingModels ? 'Preparando grades...' : 'Preparar modelos para contagem'}</button>
+        </div>
+        <p className="text-[11px] text-amber-800">Se há peças em um cadastro misto, transfira somente as unidades conferidas fisicamente para o modelo correto. Esta ação não duplica nem classifica saldos existentes.</p>
+      </section>
       <details className="border border-black/10 bg-white p-4 space-y-2">
         <summary className="cursor-pointer text-xs font-black uppercase">Reinício dos saldos — uso eventual</summary>
         <button type="button" disabled={loading || resettingStock || savingCount || savingKey !== null} onClick={resetStockForInitialCount} className="border border-black px-4 py-3 text-xs font-black uppercase disabled:opacity-40">{resettingStock ? 'Zerando saldos...' : 'Zerar saldos para reinício'}</button>

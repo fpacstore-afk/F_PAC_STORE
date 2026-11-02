@@ -67,9 +67,14 @@ export async function initializeGarmentModels(db: any, actor: string) {
     const profiles = garmentProfiles(config.data()?.catalog);
     if (!profiles.length) throw new Error('Cadastre as fichas dos fornecedores antes de preparar as bases.');
     const existingProducts = await tx.get(db.collection('products'));
-    const refs = profiles.map(profile => ({ profile, product: db.collection('products').doc(garmentBaseId(profile.garmentModelId)), inventory: db.collection('inventory').doc(garmentBaseId(profile.garmentModelId)) }));
-    const snapshots = await Promise.all(refs.map(async entry => ({ ...entry, productSnap: await tx.get(entry.product), inventorySnap: await tx.get(entry.inventory) })));
-    const now = new Date().toISOString(); let created = 0;
+    const refs = profiles.map(profile => ({ profile, product: db.collection('products').doc(garmentBaseId(profile.garmentModelId)) }));
+    const productsWithSnapshots = await Promise.all(refs.map(async entry => ({ ...entry, productSnap: await tx.get(entry.product) })));
+    const snapshots = await Promise.all(productsWithSnapshots.map(async entry => {
+      const id = entry.productSnap.exists ? entry.productSnap.data().slug || entry.productSnap.id : entry.product.id;
+      const inventory = db.collection('inventory').doc(id);
+      return { ...entry, inventory, inventorySnap: await tx.get(inventory) };
+    }));
+    const now = new Date().toISOString(); let created = 0, variantsAdded = 0, prepared = 0;
     const oldCatalog = config.data()?.catalog;
     const nextCatalog = oldCatalog && { ...oldCatalog, entries: oldCatalog.entries.map((entry: any) => entry.kind === 'product' ? applyVerifiedGarmentSpecs(entry) : entry) };
     if (nextCatalog && JSON.stringify(nextCatalog) !== JSON.stringify(oldCatalog)) {
@@ -78,15 +83,51 @@ export async function initializeGarmentModels(db: any, actor: string) {
     }
     for (const product of existingProducts.docs) if (garmentFamily(product.data()) && !product.data().modelSeparationRequired) tx.update(product.ref, { modelSeparationRequired: true, updatedAt: now });
     for (const entry of snapshots) {
-      if (entry.productSnap.exists) continue;
-      if (entry.inventorySnap.exists) throw new Error('Já existe saldo sem ficha para este modelo. Confira o cadastro antes de iniciar.');
       const p = entry.profile, id = entry.product.id;
-      tx.set(entry.product, clean({ ...p, modelSeparationRequired: true, id, slug: id, sku: `FPAC-${p.sourceCode}`, name: `${p.garmentFamily === 'regata' ? 'Regata' : p.garmentFamily === 'oversized' ? 'Camiseta Oversized' : 'Camiseta Tradicional'} F PAC — ${p.garmentModelName}`, baseModel: p.garmentFamily === 'regata' ? 'Regata' : p.garmentFamily === 'oversized' ? 'Oversized Premium 240GSM' : 'Tradicional Suedine', category: p.garmentFamily === 'regata' ? 'Regatas' : p.garmentFamily === 'oversized' ? 'Camiseta Oversized F PAC' : 'Camiseta Tradicional F PAC', productType: 'tshirt', productFinish: 'plain', status: 'draft', primeBaseEnabled: true, collection: 'TODOS', price: 0, sizes: p.sizes, variants: p.sourceColors.flatMap((colorName: string) => p.sizes.map((size: string) => ({ sku: `${p.sourceCode}-${colorName}-${size}`, colorName, size, active: !p.sourceRestrictions.some((rule: any) => rule.colors.includes(colorName) && !rule.sizes.includes(size)) }))), colors: p.sourceColors.map((name: string) => DEFAULT_PRODUCT_COLOR_PRESETS.find(color => color.name.toLowerCase() === name.toLowerCase()) || { name, hex: '#808080' }), images: [], specs: [], createdAt: now, updatedAt: now }));
-      tx.set(entry.inventory, { productId: id, productSlug: id, name: p.garmentModelName, variants: {}, ...totals({}), createdAt: now, updatedAt: now });
-      created++;
+      if (entry.productSnap.exists) {
+        const current = entry.productSnap.data();
+        if (current.mergedIntoProductId || current.rangeArchived || ['archived', 'inactive'].includes(current.status)) continue;
+      } else if (entry.inventorySnap.exists) {
+        throw new Error(`Existe saldo sem ficha para ${p.garmentModelName}. Confira o cadastro antes de preparar o inventário.`);
+      }
+      const product = entry.productSnap.exists ? entry.productSnap.data() : clean({ ...p, modelSeparationRequired: true, id, slug: id, sku: `FPAC-${p.sourceCode}`, name: `${p.garmentFamily === 'regata' ? 'Regata' : p.garmentFamily === 'oversized' ? 'Camiseta Oversized' : 'Camiseta Tradicional'} F PAC — ${p.garmentModelName}`, baseModel: p.garmentFamily === 'regata' ? 'Regata' : p.garmentFamily === 'oversized' ? 'Oversized Premium 240GSM' : 'Tradicional Suedine', category: p.garmentFamily === 'regata' ? 'Regatas' : p.garmentFamily === 'oversized' ? 'Camiseta Oversized F PAC' : 'Camiseta Tradicional F PAC', productType: 'tshirt', productFinish: 'plain', status: 'draft', primeBaseEnabled: true, collection: 'TODOS', price: 0, sizes: p.sizes, variants: p.sourceColors.flatMap((colorName: string) => p.sizes.map((size: string) => ({ sku: `${p.sourceCode}-${colorName}-${size}`, colorName, size, active: isGarmentVariantAllowed({ sizes: p.sizes, colors: p.sourceColors.map((name: string) => ({ name })), sourceRestrictions: p.sourceRestrictions }, `${colorName}_${size}`) }))), colors: p.sourceColors.map((name: string) => DEFAULT_PRODUCT_COLOR_PRESETS.find(color => color.name.toLowerCase() === name.toLowerCase()) || { name, hex: '#808080' }), images: [], specs: [], createdAt: now, updatedAt: now });
+      if (!entry.productSnap.exists) {
+        tx.set(entry.product, product);
+        created++;
+      }
+
+      const currentInventory = entry.inventorySnap.data() || {};
+      const variants = { ...(currentInventory.variants || {}) };
+      const currentTotals = totals(variants);
+      const aggregatePhysical = [currentInventory.stock, currentInventory.physicalQuantity, currentInventory.totalPhysicalStock].filter(value => value !== undefined && Number.isFinite(Number(value)));
+      const aggregateReserved = [currentInventory.reservedQuantity, currentInventory.totalReservedStock].filter(value => value !== undefined && Number.isFinite(Number(value)));
+      if (aggregatePhysical.some(value => Number(value) !== currentTotals.totalPhysicalStock) || aggregateReserved.some(value => Number(value) !== currentTotals.totalReservedStock)) {
+        throw new Error(`O saldo agregado de ${p.garmentModelName} não corresponde às variações. Confira essa base antes de preparar o inventário.`);
+      }
+      let addedForModel = 0;
+      for (const colorName of p.sourceColors) for (const size of p.sizes) {
+        const variantKey = `${colorName}_${size}`;
+        if (variants[variantKey] || !isGarmentVariantAllowed({ sizes: p.sizes, colors: p.sourceColors.map((name: string) => ({ name })), sourceRestrictions: p.sourceRestrictions }, variantKey)) continue;
+        variants[variantKey] = { color: colorName, size, physicalQuantity: 0, stock: 0, reservedQuantity: 0, availableQuantity: 0, active: true, available: false, physicalCountVerified: false };
+        addedForModel++;
+      }
+      if (!entry.inventorySnap.exists || addedForModel) {
+        tx.set(entry.inventory, {
+          ...currentInventory,
+          productId: entry.productSnap.exists ? entry.productSnap.id : id,
+          productSlug: product.slug || id,
+          name: product.garmentModelName || p.garmentModelName,
+          variants,
+          ...totals(variants),
+          ...(!entry.inventorySnap.exists ? { createdAt: now } : {}),
+          updatedAt: now,
+        });
+        variantsAdded += addedForModel;
+        prepared++;
+      }
     }
-    if (created) tx.set(db.collection('garment_model_events').doc(randomUUID()), { type: 'initialize', created, actor, createdAt: now });
-    return { created, total: profiles.length };
+    if (created || variantsAdded) tx.set(db.collection('garment_model_events').doc(randomUUID()), { type: 'initialize', created, variantsAdded, prepared, actor, createdAt: now });
+    return { created, variantsAdded, prepared, total: profiles.length };
   });
 }
 
