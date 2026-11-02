@@ -37,10 +37,26 @@ await db.collection('products').doc('mixed').set(mixed);
 await db.collection('products').doc('design').set(print);
 await db.collection('inventory').doc('mixed-pool').set({variants:{Preto_M:{physicalQuantity:10,reservedQuantity:2,stock:10,available:true}}});
 assert.equal((await initializeGarmentModels(db,'isolated')).created,4);
-assert.equal((await initializeGarmentModels(db,'isolated')).created,0,'Initialization is repeatable');
+const repeatedInitialization = await initializeGarmentModels(db,'isolated');
+assert.equal(repeatedInitialization.created,0,'Initialization is repeatable');
+assert.equal(repeatedInitialization.variantsAdded,0,'Complete variant matrices are not rewritten');
 const inv = async (id: string) => (await db.collection('inventory').doc(id).get()).data();
 assert.equal((await inv('mixed-pool')).variants.Preto_M.physicalQuantity,10);
-assert.deepEqual((await inv('garment-zim-004')).variants,{});
+for (const id of ['zim-004','tig-002','zim-009','tig-006']) {
+  const inventory = await inv(`garment-${id}`);
+  const profile = garmentProfiles({entries}).find(item => item.garmentModelId.toLowerCase() === id)!;
+  const expectedVariants = profile.sourceColors.flatMap(color => profile.sizes.map(size => `${color}_${size}`).filter(key => isGarmentVariantAllowed({ sizes: profile.sizes, colors: profile.sourceColors.map(name => ({name})), sourceRestrictions: profile.sourceRestrictions }, key))).sort();
+  assert.deepEqual(Object.keys(inventory.variants).sort(), expectedVariants);
+  assert.ok(Object.values(inventory.variants).every((variant: any) => variant.physicalQuantity === 0 && variant.reservedQuantity === 0 && variant.physicalCountVerified === false), `${id} is initialized as zero, uncounted inventory`);
+}
+assert.equal((await db.collection('products').doc('garment-zim-004').get()).data().neckline,'high_closed');
+assert.equal((await db.collection('products').doc('garment-tig-002').get()).data().neckline,'classic_open');
+const damagedMatrix = (await inv('garment-zim-009')).variants;
+delete damagedMatrix.Preto_GG;
+await db.collection('inventory').doc('garment-zim-009').update({ variants: damagedMatrix });
+const repairedMatrix = await initializeGarmentModels(db,'isolated');
+assert.equal(repairedMatrix.variantsAdded,1,'Initialization backfills a missing zero row on an existing model');
+assert.equal((await inv('garment-zim-009')).variants.Preto_GG.physicalQuantity,0);
 let catalog = await loadPublicCatalog(db);
 assert.equal(catalog.availability['mixed-pool'].availableQuantity,0,'Mixed stock is preserved privately, not offered as a known supplier');
 assert.equal(catalog.products[0]!.garmentOptions.length,2,'Both exact traditional source models offered separately');

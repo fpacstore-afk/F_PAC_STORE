@@ -9,11 +9,19 @@ assert.deepEqual(ordered.map(item => `${item.productCode}:${item.size}`), ['ARTE
 assert.deepEqual(selectInventoryRows(mixed, { ...filters, sortBy: 'size' }, {}).map(item => item.size), ['P', 'P', 'M', 'M', 'G', 'G', 'GG', 'GG']);
 assert.deepEqual(['12', '2', '10', '4', '6'].sort(compareInventorySizes), ['2', '4', '6', '10', '12']);
 const plain = row('LISA', 'M', { productName: 'Camiseta Águia', stockType: 'plain', countVerified: true, color: 'Azul Marinho', systemQuantity: 3 });
-const data = [...mixed, plain, row('CROPPED', 'P', { baseModel: 'Cropped Oversized Feminino', color: 'Branco', systemQuantity: 2, reservedQuantity: 1 })];
+const necklineRows = [
+  row('TRAD-ALTA', 'M', { stockType: 'plain', stockFamily: 'tradicional', collar: 'high_closed' }),
+  row('TRAD-CLASSICA', 'M', { stockType: 'plain', stockFamily: 'tradicional', collar: 'classic_open' }),
+  row('OVER-ALTA', 'M', { stockType: 'plain', stockFamily: 'oversized', collar: 'high_closed' }),
+  row('OVER-CLASSICA', 'M', { stockType: 'plain', stockFamily: 'oversized', collar: 'classic_open' }),
+];
+assert.deepEqual(selectInventoryRows(necklineRows, { ...filters, stockType: 'plain', stockFamily: 'tradicional', collar: 'high_closed' }, {}).map(item => item.productSlug), ['TRAD-ALTA']);
+assert.deepEqual(selectInventoryRows(necklineRows, { ...filters, stockType: 'plain', stockFamily: 'oversized', collar: 'classic_open' }, {}).map(item => item.productSlug), ['OVER-CLASSICA']);
+const data = [...mixed, plain, ...necklineRows, row('CROPPED', 'P', { baseModel: 'Cropped Oversized Feminino', color: 'Branco', systemQuantity: 2, reservedQuantity: 1 })];
 assert.deepEqual(selectInventoryRows(data, { ...filters, stockType: 'plain', baseModel: 'Tradicional Suedine', productSlug: 'LISA', color: 'Azul Marinho', size: 'M', search: 'AGUIA azul', situation: 'positive' }, {}), [plain]);
 assert.equal(selectInventoryRows(data, { ...filters, stockType: 'plain', color: 'Branco' }, {}).length, 0);
 assert.equal(selectInventoryRows(data, { ...filters, situation: 'reserved' }, {}).length, 1);
-assert.equal(selectInventoryRows(data, { ...filters, situation: 'unverified' }, {}).some(item => item.stockType === 'plain'), false);
+assert.equal(selectInventoryRows(data, { ...filters, situation: 'unverified' }, {}).some(item => item.productSlug === 'LISA'), false);
 const counts = { [inventoryCountKey(plain)]: '0', [inventoryCountKey(mixed[0])]: '' };
 assert.equal(hasInventoryCount(plain, counts), true, 'explicit zero is a physical count');
 assert.equal(hasInventoryCount(mixed[0], counts), false, 'clearing an input never manufactures a zero count');
