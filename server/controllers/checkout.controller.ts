@@ -282,7 +282,7 @@ async function processPayment(req: Request, res: Response) {
     return res.status(201).json(response);
 
   } catch (err: any) {
-    if (err.status === 403) return res.status(403).json({ error: 'FORBIDDEN', message: 'Tentativa não autorizada.' });
+    if (err.status === 403 && !providerSubmitted) return res.status(403).json({ error: 'FORBIDDEN', message: 'Tentativa não autorizada.' });
     if (attempt?.fresh && (!providerSubmitted || providerRefused)) {
       try {
         if (providerRefused) await checkoutAttempts.rejectSubmission(key);
