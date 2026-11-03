@@ -76,6 +76,7 @@ export interface CartStore {
   coupon: string | null;
   customerCouponRate?: number;
   postPurchaseMarketingConsent?: boolean;
+  postPurchaseEmailConsent?: boolean;
   shipping: number;
   quotedShipping?: number;
   observations: string;

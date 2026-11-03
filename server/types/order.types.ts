@@ -184,6 +184,10 @@ export interface OrderCanonical {
   processedEvents?: string[];
   postPurchaseMarketingConsent?: boolean;
   postPurchaseMarketingConsentAt?: string | null;
+  postPurchaseWhatsAppConsent?: boolean;
+  postPurchaseWhatsAppConsentAt?: string | null;
+  postPurchaseEmailConsent?: boolean;
+  postPurchaseEmailConsentAt?: string | null;
   createdAt: any;
   updatedAt: any;
 }

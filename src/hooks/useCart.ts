@@ -30,6 +30,7 @@ let store: CartStore = {
   coupon: null,
   customerCouponRate: 0,
   postPurchaseMarketingConsent: false,
+  postPurchaseEmailConsent: false,
   shipping: 0,
   observations: '',
   paymentMethod: 'CREDIT_CARD',
@@ -65,7 +66,7 @@ function persistCheckoutDetails() {
       sessionStorage.removeItem(CHECKOUT_DETAILS_KEY);
       return;
     }
-    sessionStorage.setItem(CHECKOUT_DETAILS_KEY, JSON.stringify({ customerInfo: store.customerInfo, observations: store.observations, shipping: store.shipping, quotedShipping: store.quotedShipping, coupon: store.coupon, customerCouponRate: store.customerCouponRate || 0, checkout_session_id: store.checkout_session_id, recoveryConsent: store.recoveryConsent === true, postPurchaseMarketingConsent: store.postPurchaseMarketingConsent === true, leadAccessToken, expiresAt: Date.now() + CHECKOUT_SESSION_TTL }));
+    sessionStorage.setItem(CHECKOUT_DETAILS_KEY, JSON.stringify({ customerInfo: store.customerInfo, observations: store.observations, shipping: store.shipping, quotedShipping: store.quotedShipping, coupon: store.coupon, customerCouponRate: store.customerCouponRate || 0, checkout_session_id: store.checkout_session_id, recoveryConsent: store.recoveryConsent === true, postPurchaseMarketingConsent: store.postPurchaseMarketingConsent === true, postPurchaseEmailConsent: store.postPurchaseEmailConsent === true, leadAccessToken, expiresAt: Date.now() + CHECKOUT_SESSION_TTL }));
   } catch { /* Private checkout details stay in memory when storage is unavailable. */ }
 }
 
@@ -99,6 +100,7 @@ const loadInitial = () => {
       leadAccessToken = /^[a-f0-9]{64}$/.test(privateData.leadAccessToken || '') ? privateData.leadAccessToken : '';
       store.recoveryConsent = privateData.recoveryConsent === true && !!leadAccessToken;
       store.postPurchaseMarketingConsent = privateData.postPurchaseMarketingConsent === true;
+      store.postPurchaseEmailConsent = privateData.postPurchaseEmailConsent === true;
       calculateTotals();
     } else sessionStorage.removeItem(CHECKOUT_DETAILS_KEY);
   } catch { /* Leave customer details empty on an invalid/expired session. */ }
@@ -321,7 +323,7 @@ if (typeof window !== 'undefined') {
 
 if (typeof window !== 'undefined') window.addEventListener('fpac:clear-checkout-details', () => {
   revokeRecoveryConsent(); leadAccessToken = '';
-  store = { ...store, customerInfo: { ...emptyCustomerInfo }, observations: '', shipping: 0, quotedShipping: 0, checkout_session_id: null, recoveryConsent: false, postPurchaseMarketingConsent: false, customerCouponRate: 0, coupon: null };
+  store = { ...store, customerInfo: { ...emptyCustomerInfo }, observations: '', shipping: 0, quotedShipping: 0, checkout_session_id: null, recoveryConsent: false, postPurchaseMarketingConsent: false, postPurchaseEmailConsent: false, customerCouponRate: 0, coupon: null };
   if (saveTimeout) clearTimeout(saveTimeout);
   calculateTotals(); emit();
 });
@@ -340,6 +342,9 @@ export const cartActions = {
   },
   setPostPurchaseMarketingConsent: (consent: boolean) => {
     store = { ...store, postPurchaseMarketingConsent: consent === true }; emit();
+  },
+  setPostPurchaseEmailConsent: (consent: boolean) => {
+    store = { ...store, postPurchaseEmailConsent: consent === true }; emit();
   },
   setPaymentMethod: (method: 'PIX' | 'CREDIT_CARD' | 'DEBIT_CARD') => {
     store = { ...store, paymentMethod: method };

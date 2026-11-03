@@ -18,12 +18,13 @@ interface PaymentFormProps {
   items: any[];
   customerInfo: any;
   postPurchaseMarketingConsent?: boolean;
+  postPurchaseEmailConsent?: boolean;
   onSuccess: (result: any) => void;
   userId?: string;
   initialPaymentMethod?: 'credit_card' | 'pix';
 }
 
-export function PaymentForm({ total, items, customerInfo, postPurchaseMarketingConsent = false, onSuccess, userId, initialPaymentMethod }: PaymentFormProps) {
+export function PaymentForm({ total, items, customerInfo, postPurchaseMarketingConsent = false, postPurchaseEmailConsent = false, onSuccess, userId, initialPaymentMethod }: PaymentFormProps) {
   const navigate = useNavigate();
   const { clearCart, coupon, customerCouponRate, refreshCheckoutPrices, checkout_session_id, shipping, subtotal, couponDiscount, pixDiscount, flashSaleDiscount, weeklyPromotionDiscount } = useCart();
   const cardInfoRef = useRef<any>(null);
@@ -173,6 +174,7 @@ export function PaymentForm({ total, items, customerInfo, postPurchaseMarketingC
         couponCode: coupon,
         customerCouponRate,
         postPurchaseMarketingConsent,
+        postPurchaseEmailConsent,
         shipping: Number(shipping || 0),
         subtotal: Number(subtotal || 0),
         couponDiscount: Number(couponDiscount || 0),
@@ -198,7 +200,7 @@ export function PaymentForm({ total, items, customerInfo, postPurchaseMarketingC
       inFlight.current = false;
       setIsProcessing(false);
     }
-  }, [total, items, customerInfo, postPurchaseMarketingConsent, userId, onSuccess, coupon, customerCouponRate, checkout_session_id, shipping, subtotal, couponDiscount, pixDiscount, flashSaleDiscount, weeklyPromotionDiscount]);
+  }, [total, items, customerInfo, postPurchaseMarketingConsent, postPurchaseEmailConsent, userId, onSuccess, coupon, customerCouponRate, checkout_session_id, shipping, subtotal, couponDiscount, pixDiscount, flashSaleDiscount, weeklyPromotionDiscount]);
 
   const handleCardSubmit = useCallback(async (param: any) => {
     const formData = param.formData || param;
@@ -233,6 +235,7 @@ export function PaymentForm({ total, items, customerInfo, postPurchaseMarketingC
         couponCode: coupon,
         customerCouponRate,
         postPurchaseMarketingConsent,
+        postPurchaseEmailConsent,
           shipping: Number(shipping || 0),
           subtotal: Number(subtotal || 0),
           couponDiscount: Number(couponDiscount || 0),
