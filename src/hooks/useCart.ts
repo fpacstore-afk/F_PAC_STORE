@@ -28,6 +28,8 @@ let store: CartStore = {
   shippingDiscount: 0,
   total: 0,
   coupon: null,
+  customerCouponRate: 0,
+  postPurchaseMarketingConsent: false,
   shipping: 0,
   observations: '',
   paymentMethod: 'CREDIT_CARD',
@@ -63,7 +65,7 @@ function persistCheckoutDetails() {
       sessionStorage.removeItem(CHECKOUT_DETAILS_KEY);
       return;
     }
-    sessionStorage.setItem(CHECKOUT_DETAILS_KEY, JSON.stringify({ customerInfo: store.customerInfo, observations: store.observations, shipping: store.shipping, quotedShipping: store.quotedShipping, checkout_session_id: store.checkout_session_id, recoveryConsent: store.recoveryConsent === true, leadAccessToken, expiresAt: Date.now() + CHECKOUT_SESSION_TTL }));
+    sessionStorage.setItem(CHECKOUT_DETAILS_KEY, JSON.stringify({ customerInfo: store.customerInfo, observations: store.observations, shipping: store.shipping, quotedShipping: store.quotedShipping, coupon: store.coupon, customerCouponRate: store.customerCouponRate || 0, checkout_session_id: store.checkout_session_id, recoveryConsent: store.recoveryConsent === true, postPurchaseMarketingConsent: store.postPurchaseMarketingConsent === true, leadAccessToken, expiresAt: Date.now() + CHECKOUT_SESSION_TTL }));
   } catch { /* Private checkout details stay in memory when storage is unavailable. */ }
 }
 
@@ -93,9 +95,10 @@ const loadInitial = () => {
   try {
     const privateData = JSON.parse(sessionStorage.getItem(CHECKOUT_DETAILS_KEY) || 'null');
     if (validCheckoutSession(privateData)) {
-      store = { ...store, customerInfo: { ...emptyCustomerInfo, ...privateData.customerInfo }, observations: privateData.observations || '', shipping: Number(privateData.shipping) || 0, quotedShipping: Number(privateData.quotedShipping ?? privateData.shipping) || 0, checkout_session_id: privateData.checkout_session_id || null };
+      store = { ...store, customerInfo: { ...emptyCustomerInfo, ...privateData.customerInfo }, observations: privateData.observations || '', shipping: Number(privateData.shipping) || 0, quotedShipping: Number(privateData.quotedShipping ?? privateData.shipping) || 0, coupon: privateData.coupon || store.coupon, customerCouponRate: Number(privateData.customerCouponRate) || 0, checkout_session_id: privateData.checkout_session_id || null };
       leadAccessToken = /^[a-f0-9]{64}$/.test(privateData.leadAccessToken || '') ? privateData.leadAccessToken : '';
       store.recoveryConsent = privateData.recoveryConsent === true && !!leadAccessToken;
+      store.postPurchaseMarketingConsent = privateData.postPurchaseMarketingConsent === true;
       calculateTotals();
     } else sessionStorage.removeItem(CHECKOUT_DETAILS_KEY);
   } catch { /* Leave customer details empty on an invalid/expired session. */ }
@@ -220,7 +223,7 @@ const calculateTotals = (refreshPromotion = true) => {
 
   const money = calculateStorefrontTotals({
     items: store.items, promotion: activePromotion, shipping: store.quotedShipping ?? store.shipping,
-    coupon: store.coupon, pixEnabled: store.paymentMethod === 'PIX', city: store.customerInfo.city || 'Joinville',
+    coupon: store.coupon, customerCouponRate: store.customerCouponRate, pixEnabled: store.paymentMethod === 'PIX', city: store.customerInfo.city || 'Joinville',
   });
   const activePixRate = money.pixDiscountRate;
   const nextPromoLabel = money.weeklyPromotionLabel;
@@ -318,7 +321,7 @@ if (typeof window !== 'undefined') {
 
 if (typeof window !== 'undefined') window.addEventListener('fpac:clear-checkout-details', () => {
   revokeRecoveryConsent(); leadAccessToken = '';
-  store = { ...store, customerInfo: { ...emptyCustomerInfo }, observations: '', shipping: 0, quotedShipping: 0, checkout_session_id: null, recoveryConsent: false };
+  store = { ...store, customerInfo: { ...emptyCustomerInfo }, observations: '', shipping: 0, quotedShipping: 0, checkout_session_id: null, recoveryConsent: false, postPurchaseMarketingConsent: false, customerCouponRate: 0, coupon: null };
   if (saveTimeout) clearTimeout(saveTimeout);
   calculateTotals(); emit();
 });
@@ -334,6 +337,9 @@ export const cartActions = {
     if (!consent) revokeRecoveryConsent();
     if (consent && !store.recoveryConsent) { store = { ...store, checkout_session_id: null }; leadAccessToken = ''; }
     store = { ...store, recoveryConsent: consent }; emit();
+  },
+  setPostPurchaseMarketingConsent: (consent: boolean) => {
+    store = { ...store, postPurchaseMarketingConsent: consent === true }; emit();
   },
   setPaymentMethod: (method: 'PIX' | 'CREDIT_CARD' | 'DEBIT_CARD') => {
     store = { ...store, paymentMethod: method };
@@ -401,8 +407,8 @@ export const cartActions = {
     emit();
   },
 
-  setCoupon: (code: string | null) => {
-    store = { ...store, coupon: code };
+  setCoupon: (code: string | null, customerCouponRate = 0) => {
+    store = { ...store, coupon: code, customerCouponRate: code ? customerCouponRate : 0 };
     calculateTotals();
     emit();
   },

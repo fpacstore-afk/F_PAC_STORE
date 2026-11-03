@@ -10,6 +10,7 @@ import { qualifiesForFreeShipping } from './shippingThreshold';
 export function calculateStorefrontTotals(input: {
   items: CartItem[]; promotion: WeeklyPromotion | null; shipping: number;
   coupon?: string | null; pixEnabled: boolean; city: string; now?: number;
+  customerCouponRate?: number;
 }) {
   const now = input.now ?? Date.now();
   const promotion = input.promotion ? selectActivePromotion([input.promotion], now) : null;
@@ -24,6 +25,7 @@ export function calculateStorefrontTotals(input: {
       couponRate = promotion.discount_value === null ? 0 : promotion.discount_value ?? 5;
     }
   } else if (cleanCoupon && cleanCoupon === getDailyPromoCode(new Date(now))) couponRate = 5;
+  if (Number.isFinite(input.customerCouponRate) && Number(input.customerCouponRate) > 0) couponRate = Math.min(50, Number(input.customerCouponRate));
   let pixDiscountRate = 5;
   if (promotion?.discount_type === 'pix_discount') {
     pixDiscountRate = promotion.pix_discount === null ? 0

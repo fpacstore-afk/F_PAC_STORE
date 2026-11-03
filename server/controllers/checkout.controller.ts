@@ -7,6 +7,7 @@ import { logger } from '../utils/logger.js';
 import { OrderCanonical } from '../types/order.types.js';
 import { hashTrackingToken } from '../services/tracking.service.js';
 import { checkoutAttempts, checkoutTrackingToken, validCheckoutKey } from '../services/checkoutAttempts.service.js';
+import { reserveRepurchaseCoupon, releaseRepurchaseCoupon } from '../services/postPurchase.service.js';
 
 export function createCheckoutControllers(deps = { mpService, storeService, calculateOrderPricing, sendOrderReceivedEmail, checkoutAttempts }) {
 const { mpService, storeService, calculateOrderPricing, sendOrderReceivedEmail, checkoutAttempts } = deps;
@@ -25,6 +26,7 @@ async function processPayment(req: Request, res: Response) {
   let attempt: any;
   let reservedItems: any[] = [];
   let providerSubmitted = false;
+  let reservedRepurchaseCoupon = false;
   
   // 1. Inputs Normalization
   const payment_method_id = body.payment_method_id;
@@ -90,7 +92,9 @@ async function processPayment(req: Request, res: Response) {
         cep: customerInfo.cep,
         city: customerInfo.city,
         state: customerInfo.state,
-        shippingServiceId: customerInfo.shippingServiceId
+        shippingServiceId: customerInfo.shippingServiceId,
+        phone: customerInfo.phone,
+        email: customerInfo.email
       },
       couponCode,
       paymentMethodId: payment_method_id
@@ -189,12 +193,16 @@ async function processPayment(req: Request, res: Response) {
       shippingStatus: 'pending',
 
       createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
+      updatedAt: new Date().toISOString(),
+      postPurchaseMarketingConsent: body.postPurchaseMarketingConsent === true,
+      postPurchaseMarketingConsentAt: body.postPurchaseMarketingConsent === true ? new Date().toISOString() : null,
     };
 
     const trackingAccessToken = checkoutTrackingToken(key);
     const trackingAccessTokenHash = hashTrackingToken(trackingAccessToken);
     (canonicalOrder as any).trackingAccessTokenHash = trackingAccessTokenHash;
+
+    reservedRepurchaseCoupon = await reserveRepurchaseCoupon(couponCode, customerInfo.phone, email, orderId);
 
     // Save the order record and reserve stock in the SAME Firestore transaction.
     // If inventory validation fails, neither the order nor any reservation is persisted.
@@ -270,6 +278,7 @@ async function processPayment(req: Request, res: Response) {
     if (err.status === 403) return res.status(403).json({ error: 'FORBIDDEN', message: 'Tentativa não autorizada.' });
     if (attempt?.fresh && !providerSubmitted) {
       try {
+        if (reservedRepurchaseCoupon) await releaseRepurchaseCoupon(couponCode, attempt.orderId, false);
         if (reservedItems.length) {
           const orderId = attempt.orderId, verifiedItems = reservedItems;
           await storeService.updateOrderPaymentSnapshot(orderId, 'rejected', { stockReverted: true, stockRevertedAcknowledged: false });

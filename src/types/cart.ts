@@ -74,6 +74,8 @@ export interface CartStore {
   flashSaleDiscount: number;
   total: number;
   coupon: string | null;
+  customerCouponRate?: number;
+  postPurchaseMarketingConsent?: boolean;
   shipping: number;
   quotedShipping?: number;
   observations: string;

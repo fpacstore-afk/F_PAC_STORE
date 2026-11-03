@@ -30,7 +30,7 @@ export default function Bag() {
     items, subtotal, couponDiscount, pixDiscount, pixDiscountRate, flashSaleDiscount, weeklyPromotionDiscount, weeklyPromotionLabel, total, coupon, shipping, observations, paymentMethod,
     customerInfo,
     addItem, removeItem, updateQuantity, setCoupon, setShipping, setObservations, setPaymentMethod,
-    updateCustomer, recoveryConsent, setRecoveryConsent, recoveryCancellationPending, retryRecoveryCancellation
+    updateCustomer, recoveryConsent, setRecoveryConsent, postPurchaseMarketingConsent, setPostPurchaseMarketingConsent, recoveryCancellationPending, retryRecoveryCancellation
   } = useCart();
   const { user, profile } = useAuth();
 
@@ -332,7 +332,7 @@ export default function Bag() {
     updateCustomer({ cpf: masked });
   };
 
-  const handleApplyCoupon = () => {
+  const handleApplyCoupon = async () => {
     const code = String(couponInput || '').toUpperCase().trim().replace(/\s/g, '');
     const dailyCode = getDailyPromoCode();
     
@@ -343,7 +343,16 @@ export default function Bag() {
     } else if (code.startsWith('FPAC')) {
       toast.error("Este cupom não é mais válido hoje.");
     } else {
-      toast.error("Cupom inválido");
+      try {
+        const response = await fetch(getPublicApiUrl('/api/post-purchase/coupon/validate'), {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ code, phone: customerInfo.phone, email: customerInfo.email }),
+        });
+        const data = await response.json();
+        if (!response.ok || !data.valid) throw new Error(data.error || 'Cupom inválido.');
+        setCoupon(code, Number(data.discountPercent));
+        toast.success(`Cupom de ${data.discountPercent}% aplicado!`);
+      } catch (error: any) { toast.error(error.message || 'Cupom inválido.'); }
     }
   };
 
@@ -934,6 +943,10 @@ export default function Bag() {
               <label className="mb-5 flex min-h-11 cursor-pointer items-start gap-3 rounded-lg border border-white/15 p-3 text-xs leading-relaxed text-white/75">
                 <input type="checkbox" checked={recoveryConsent === true} onChange={event => setRecoveryConsent(event.target.checked)} className="mt-1 h-4 w-4 shrink-0 accent-[#eab308]" />
                 Quero receber lembretes desta sacola por WhatsApp ou e-mail se eu não concluir a compra. Opcional; posso desmarcar para cancelar.
+              </label>
+              <label className="mb-5 flex min-h-11 cursor-pointer items-start gap-3 rounded-lg border border-white/15 p-3 text-xs leading-relaxed text-white/75">
+                <input type="checkbox" checked={postPurchaseMarketingConsent === true} onChange={event => setPostPurchaseMarketingConsent(event.target.checked)} className="mt-1 h-4 w-4 shrink-0 accent-[#eab308]" />
+                Quero receber pelo WhatsApp uma pesquisa rápida após a compra e ofertas de recompra. Opcional; posso desmarcar.
               </label>
 
               {recoveryCancellationPending && <p role="status" className="mb-5 text-sm text-amber-200">O cancelamento dos lembretes ainda precisa ser confirmado pela conexão. <button type="button" onClick={() => void retryRecoveryCancellation()} className="min-h-11 font-bold underline">Tentar novamente</button></p>}

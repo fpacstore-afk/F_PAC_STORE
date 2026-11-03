@@ -11,6 +11,7 @@ import { getDb } from '../firebase.js';
 import { OrderItem, OrderPricingSnapshot } from '../types/order.types.js';
 import { quoteCheckoutDelivery, type DeliveryDependencies } from './checkoutDelivery.service.js';
 import { logger } from '../utils/logger.js';
+import { validateRepurchaseCoupon } from './postPurchase.service.js';
 import { loadPrivateProductCost, mergePrivateProductCost } from '../utils/productCosts.js';
 import { FINANCIAL_DEFAULTS, roundMoney } from '../../shared/financialDefaults.js';
 import { getCustomizationProfileByCartSlug } from '../../shared/customizationProfiles.js';
@@ -65,6 +66,8 @@ interface PricingInput {
     city?: string;
     state?: string;
     shippingServiceId?: number;
+    phone?: string;
+    email?: string;
   };
   couponCode?: string;
   paymentMethodId?: string;
@@ -368,8 +371,10 @@ export async function calculateOrderPricing(input: PricingInput, context: Partia
   const delivery = context.priceOnly ? { destination: { city: '', state: '', neighborhood: '' }, shipping: 0 } : await quoteCheckoutDelivery(input.customerInfo, verifiedItems, context);
   const campaigns = await db.collection('weekly_promotions').where('active', '==', true).get();
   const promotion = selectActivePromotion(campaigns.docs.map(doc => ({ ...doc.data(), id: doc.id } as WeeklyPromotion)), context.now);
+  const customerCoupon = input.couponCode ? await validateRepurchaseCoupon(input.couponCode, input.customerInfo.phone, input.customerInfo.email) : null;
   const money = calculateStorefrontTotals({
     items: storefrontItems, promotion, shipping: delivery.shipping, coupon: input.couponCode,
+    customerCouponRate: customerCoupon?.discountPercent,
     pixEnabled: input.paymentMethodId === 'pix', city: delivery.destination.city, now: context.now,
   });
   return {
@@ -378,6 +383,7 @@ export async function calculateOrderPricing(input: PricingInput, context: Partia
       promotionalDiscount: roundMoney(money.promotionDiscount + money.flashSaleDiscount),
       weeklyPromotionDiscount: money.promotionDiscount, flashSaleDiscount: money.flashSaleDiscount,
       pixDiscount: money.pixDiscount, shipping: money.shipping, total: money.total, currency: 'BRL',
+      couponCode: input.couponCode ? String(input.couponCode).toUpperCase().replace(/\s/g, '') : undefined,
     },
     verifiedItems,
   };

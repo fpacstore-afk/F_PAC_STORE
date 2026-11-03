@@ -7,6 +7,7 @@ import { getEmailDeliveryHistory } from './server/services/emailDelivery.service
 import { saveCompanyMovementFromSheet } from './server/services/companyMovementSheet.service';
 import { editManualCustomOrderController, getManualOrderEditHistoryController } from './server/controllers/manualOrderEdit.controller.js';
 import { FieldValue } from 'firebase-admin/firestore';
+import { getPostPurchaseDashboard, savePostPurchaseSettings, preparePostPurchaseMessage, saveSurveyResponse, validateRepurchaseCoupon, runPostPurchaseAutomations } from './server/services/postPurchase.service.js';
 import express from "express";
 import crypto from "crypto";
 import path from "path";
@@ -477,6 +478,35 @@ apiRouter.get("/automation/email-deliveries", adminApiLimiter, authenticateAdmin
 apiRouter.get("/automation/dashboard", adminApiLimiter, authenticateAdmin, getAutomationDashboard);
 apiRouter.post("/checkout/trigger-cron", adminApiLimiter, authenticateAdmin, triggerCronCheck);
 apiRouter.post("/automation/resend", adminApiLimiter, authenticateAdmin, manualResendAutomation);
+
+apiRouter.get('/admin/post-purchase', adminApiLimiter, authenticateAdmin, async (_req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  try { res.json(await getPostPurchaseDashboard()); }
+  catch { res.status(503).json({ error: 'Não foi possível carregar a pesquisa pós-compra.' }); }
+});
+apiRouter.post('/admin/post-purchase/settings', adminApiLimiter, authenticateAdmin, async (req, res) => {
+  try { res.json(await savePostPurchaseSettings(req.body)); }
+  catch { res.status(400).json({ error: 'Não foi possível salvar as configurações.' }); }
+});
+apiRouter.post('/admin/post-purchase/:orderId/send/:kind', adminApiLimiter, authenticateAdmin, async (req, res) => {
+  try {
+    const kind = req.params.kind;
+    if (kind !== 'survey' && kind !== 'repurchase') return res.status(400).json({ error: 'Mensagem inválida.' });
+    res.json(await preparePostPurchaseMessage(req.params.orderId, kind, true));
+  } catch (error: any) { res.status(400).json({ error: error.message || 'Não foi possível preparar a mensagem.' }); }
+});
+apiRouter.post('/admin/post-purchase/:orderId/survey', adminApiLimiter, authenticateAdmin, async (req, res) => {
+  try { res.json(await saveSurveyResponse(req.params.orderId, req.body)); }
+  catch (error: any) { res.status(400).json({ error: error.message || 'Não foi possível salvar a pesquisa.' }); }
+});
+apiRouter.post('/post-purchase/coupon/validate', publicApiLimiter, async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  try {
+    const coupon = await validateRepurchaseCoupon(req.body?.code, req.body?.phone, req.body?.email);
+    if (!coupon) return res.status(404).json({ error: 'Cupom inválido, expirado ou não vinculado a este cliente.' });
+    res.json({ valid: true, discountPercent: coupon.discountPercent });
+  } catch { res.status(503).json({ error: 'Não foi possível validar o cupom.' }); }
+});
 
 apiRouter.get("/automation/production-settings", adminApiLimiter, authenticateAdmin, getProductionSettings);
 apiRouter.post("/automation/production-settings", adminApiLimiter, authenticateAdmin, async (req, res, next) => {
@@ -2270,6 +2300,12 @@ if (process.env.NODE_ENV !== "test") {
   }, 5000);
 
   setInterval(async () => {
+    try {
+      await runPostPurchaseAutomations();
+    } catch (err: any) {
+      logger.error('❌ [POST-PURCHASE-CRON-ERR] Background follow-up scan failed', err);
+    }
+
     try {
       const { runAbandonedCheckoutDetector } = await import("./server/services/automation.service.js");
       await runAbandonedCheckoutDetector();
