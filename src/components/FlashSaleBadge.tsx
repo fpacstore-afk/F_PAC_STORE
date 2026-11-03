@@ -1,3 +1,5 @@
+import { useLocation } from 'react-router-dom';
+import { isFocusedStoreRoute } from '../../shared/storefrontFocus';
 import React, { useState, useEffect } from 'react';
 import { getFlashSaleInfo, FlashSaleInfo } from '../lib/flashSale';
 import { Timer, Zap, X } from 'lucide-react';
@@ -7,6 +9,7 @@ import { useFixedControlHeight } from '../hooks/useFixedControlHeight';
 import { getActivePromotion } from '../services/promotions/getActivePromotion';
 
 export function FlashSaleBadge() {
+  const { pathname } = useLocation();
   const flashSaleRef = useFixedControlHeight('--flash-control-height');
   const [info, setInfo] = useState<FlashSaleInfo>(getFlashSaleInfo());
   const [isVisible, setIsVisible] = useState(true);
@@ -26,7 +29,7 @@ export function FlashSaleBadge() {
     return () => clearInterval(interval);
   }, []);
 
-  if (!info.isActive || !isVisible || hasActivePromo) return null;
+  if (isFocusedStoreRoute(pathname) || !info.isActive || !isVisible || hasActivePromo) return null;
 
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);

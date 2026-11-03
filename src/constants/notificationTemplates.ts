@@ -1,3 +1,4 @@
+import { safeTrackingUrl } from '../../shared/trackingInput';
 export {
   DEFAULT_NOTIFICATION_CONFIG,
   DEFAULT_STAGE_TEMPLATES,
@@ -29,7 +30,7 @@ export function renderStageTemplate(templateStr: string, orderData: any): string
   const paymentMethod = orderData?.paymentMethod || orderData?.formaPagamento || 'PIX / Cartão';
   const trackingCode = orderData?.trackingCode || orderData?.shipping?.trackingCode || orderData?.codigoRastreio || 'Em processamento';
   const carrier = orderData?.shippingCompany || orderData?.carrier || orderData?.shipping?.carrier || orderData?.transportadora || 'Correios / Transportadora';
-  const trackingLink = orderData?.trackingUrl || orderData?.shipping?.trackingUrl || 'https://fpacstore.com.br/tracking';
+  const trackingLink = safeTrackingUrl(orderData?.trackingUrl || orderData?.shipping?.trackingUrl, safeTrackingUrl(orderData?.publicTrackingUrl));
 
   return templateStr
     .replace(/\{\{nome_cliente\}\}/g, firstName)
@@ -44,5 +45,5 @@ export function renderStageTemplate(templateStr: string, orderData: any): string
     .replace(/\{\{codigo_rastreio\}\}/g, trackingCode)
     .replace(/\{\{transportadora\}\}/g, carrier)
     .replace(/\{\{link_rastreio\}\}/g, trackingLink)
-    .replace(/\{\{link_acompanhamento\}\}/g, 'https://fpacstore.com.br/tracking');
+    .replace(/\{\{link_acompanhamento\}\}/g, safeTrackingUrl(orderData?.publicTrackingUrl));
 }

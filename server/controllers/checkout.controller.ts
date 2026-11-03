@@ -1,3 +1,4 @@
+import { isDefinitivePaymentRefusal } from '../../shared/paymentSubmissionError.js';
 import { Request, Response } from 'express';
 import { mpService } from '../services/mp.service.js';
 import * as storeService from '../services/store.service.js';
@@ -26,6 +27,7 @@ async function processPayment(req: Request, res: Response) {
   let attempt: any;
   let reservedItems: any[] = [];
   let providerSubmitted = false;
+  let providerRefused = false;
   let reservedRepurchaseCoupon = false;
   
   // 1. Inputs Normalization
@@ -267,7 +269,8 @@ async function processPayment(req: Request, res: Response) {
     } catch (paymentErr: any) {
       // A timeout/transport error does not prove that the provider rejected the
       // payment. Keep the order and reservation; recovery only queries the provider.
-      logger.warn('[CHECKOUT] Payment confirmation unresolved', { orderId });
+      providerRefused = isDefinitivePaymentRefusal(paymentErr);
+      logger.warn(providerRefused ? '[CHECKOUT] Provider refused payment creation' : '[CHECKOUT] Payment confirmation unresolved', { orderId });
       throw paymentErr;
     }
     
@@ -280,8 +283,9 @@ async function processPayment(req: Request, res: Response) {
 
   } catch (err: any) {
     if (err.status === 403) return res.status(403).json({ error: 'FORBIDDEN', message: 'Tentativa não autorizada.' });
-    if (attempt?.fresh && !providerSubmitted) {
+    if (attempt?.fresh && (!providerSubmitted || providerRefused)) {
       try {
+        if (providerRefused) await checkoutAttempts.rejectSubmission(key);
         if (reservedRepurchaseCoupon) await releaseRepurchaseCoupon(couponCode, attempt.orderId, false);
         if (reservedItems.length) {
           const orderId = attempt.orderId, verifiedItems = reservedItems;
@@ -293,7 +297,7 @@ async function processPayment(req: Request, res: Response) {
         if (err.code === 'CHECKOUT_TOTAL_CHANGED') return res.status(409).json({
           safeToRetry: true, code: err.code, message: err.message, quote: err.quote,
         });
-        return res.status(400).json({ safeToRetry: true, message: 'Não foi possível iniciar o pagamento. Confira os dados e a disponibilidade dos produtos.' });
+        return res.status(400).json({ safeToRetry: true, message: providerRefused ? 'O pagamento não foi criado. Confira os dados ou escolha outra forma de pagamento e tente novamente.' : 'Não foi possível iniciar o pagamento. Confira os dados e a disponibilidade dos produtos.' });
       } catch { /* An unresolved cleanup must not authorize another charge. */ }
     }
     logger.warn('[CHECKOUT] Attempt requires confirmation', { orderId: attempt?.orderId });

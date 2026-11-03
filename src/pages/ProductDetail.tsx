@@ -2,7 +2,7 @@ import { isAdminIdentity } from '../../shared/adminIdentity';
 import { GarmentModelSelector } from '../components/GarmentModelSelector';
 import { CatalogUnavailable } from '../components/CatalogUnavailable';
 import { getProductVisualKind } from '../lib/productPresentation';
-import React, { useState, useEffect, lazy, Suspense } from "react";
+import React, { useState, useEffect } from "react";
 import { useParams, Link, useNavigate, useSearchParams } from "react-router-dom";
 import { getProductBySlug, products as staticProducts } from "../data/products";
 import { STAMP_CATEGORIES, normalizeStampCategory } from "../constants/stampCategories";
@@ -60,7 +60,6 @@ import { analyticsTracker } from "../services/analyticsTracker";
 import { PrintConfiguration } from "../types/cart";
 import toast from "react-hot-toast";
 import { SizeChart } from "../components/SizeChart";
-const PremiumConfigurator = lazy(() => import("../features/shirt-configurator/pages/PremiumConfigurator").then(module => ({ default: module.PremiumConfigurator })));
 import { Helmet } from 'react-helmet-async';
 import { getPublicApiUrl } from '../lib/api';
 import { motion, AnimatePresence } from "framer-motion";
@@ -1204,30 +1203,9 @@ export default function ProductDetail() {
         {/* 2-Column responsive customizer layout */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
 
-          {/* Premium 3D WebGL Configurator Workspace */}
-          <div className="lg:col-span-12">
-            <Suspense fallback={<div role="status" className="min-h-64 flex items-center justify-center text-sm text-gray-500">Carregando personalizador 3D...</div>}>
-            <PremiumConfigurator
-              initialColorHex={product?.colors?.find(c => c.name.toLowerCase() === selectedColor.toLowerCase())?.hex || "#111112"}
-              initialSize={selectedSize}
-              catalogStamps={dynamicEstampas}
-              parentPrintConfigs={printConfigs}
-              onUpdateCartConfigs={(newConfigs) => {
-                setPrintConfigs(newConfigs);
-              }}
-              onColorChange={(colorHex) => {
-                const matchedColor = product?.colors?.find(c => c.hex.toLowerCase() === colorHex.toLowerCase());
-                if (matchedColor) {
-                  if (selectedColor !== matchedColor.name) void analyticsTracker.trackProductOptionSelect(product.slug, 'color');
-                  setSelectedColor(matchedColor.name);
-                }
-              }}
-              onSizeChange={(size) => {
-                if (selectedSize !== size) void analyticsTracker.trackProductOptionSelect(product.slug, 'size');
-                setSelectedSize(size);
-              }}
-            />
-            </Suspense>
+          <div className="lg:col-span-12 rounded-xl border border-black/10 bg-white p-6">
+            <p className="text-sm text-gray-600">Personalize sua peça no editor PRIME.</p>
+            <Link to="/prime" className="mt-3 inline-flex rounded-lg bg-black px-5 py-3 text-sm font-bold text-white">Abrir personalizador PRIME</Link>
           </div>
 
           {/* B. MINHAS ESTAMPAS SIDEBAR (Hidden in Premium 3D mode) */}

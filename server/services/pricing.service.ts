@@ -1,4 +1,4 @@
-import { compatibleGarmentSource } from '../../shared/sharedGarmentStock';
+import { compatibleGarmentSource, isGarmentVariantAllowed } from '../../shared/sharedGarmentStock';
 import { garmentFamily, garmentTitle } from '../../shared/garmentModels';
 import { isCatalogSleeveSize } from '../../shared/primeArtworkSizing.js';
 import { isPrimeStampCompatible } from '../../shared/primeStampCompatibility.js';
@@ -43,6 +43,8 @@ interface PricingInput {
     name?: string;
     color?: string;
     size?: string;
+    variantKey?: string;
+    variantId?: string;
     quantity?: number;
     price?: number;
     stampName?: string;
@@ -322,9 +324,30 @@ export async function calculateOrderPricing(input: PricingInput, context: Partia
     const itemTotal = roundMoney(unitPrice * quantity);
 
 
-    const variantKey = (rawItem as any).variantKey || `${color}_${size}`;
-    const variantId = (rawItem as any).variantId || variantKey;
     const canonicalParentSlug = isPrimeCustom ? String(canonicalProductData?.slug || canonicalProductId) : String(canonicalProductData?.parentSlug || slug).trim();
+    // Keep existing color/size spellings (including legacy spaces and underscores),
+    // but never let a browser-supplied key select a different physical variant.
+    const variantKey = `${color}_${size}`;
+    const selectionAllowed = (product: any) =>
+      (!Array.isArray(product.colors) || product.colors.length === 0 || getActiveProductColorNames(product.colors).includes(color)) &&
+      (!Array.isArray(product.sizes) || product.sizes.length === 0 || getActiveProductSizes(product.sizes).includes(size)) &&
+      isGarmentVariantAllowed(product, variantKey);
+    if (!selectionAllowed(canonicalProductData) || !selectionAllowed(physicalModel)) {
+      throw new Error('Cor ou tamanho indisponível para este produto.');
+    }
+    const legacyVariantIds = new Set([
+      variantKey,
+      ...[canonicalProductId, canonicalProductData.slug, canonicalParentSlug, physicalModel.slug,
+        customizationProfile?.cartSlug, customizationProfile?.productSlug, customizationProfile?.parentSlug]
+        .filter(Boolean).map(id => `${id}_${variantKey}`),
+    ]);
+    if ((rawItem.variantKey != null && rawItem.variantKey !== '' && rawItem.variantKey !== variantKey) ||
+        (rawItem.variantId != null && rawItem.variantId !== '' && !legacyVariantIds.has(rawItem.variantId))) {
+      throw Object.assign(new Error('A variação do produto não corresponde à cor e ao tamanho selecionados. Revise a sacola.'), {
+        code: 'CHECKOUT_VARIANT_MISMATCH',
+      });
+    }
+    const variantId = variantKey;
     const canonicalName = garmentTitle(String(canonicalProductData?.name || name).trim(), physicalModel).slice(0, 300);
     const canonicalSkuBase = String(canonicalProductData?.sku || '').trim();
     const sku = canonicalSkuBase

@@ -1,3 +1,4 @@
+import { safeTrackingUrl } from '../../shared/trackingInput';
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { auth } from '../lib/firebase';
@@ -370,10 +371,12 @@ export default function OrderStatus() {
             <div>
               <p className="text-[9px] font-black text-[#eab308] uppercase tracking-[0.3em] mb-1">CÓDIGO DE RASTREIO ({order.carrier || 'Correios'})</p>
               <p className="text-xl font-mono font-black uppercase tracking-widest">{order.trackingCode}</p>
+              <p className="text-xs text-white/80 mt-2">Use o código completo, incluindo letras e números.</p>
+              <button type="button" className="mt-2 underline text-sm" onClick={async () => { try { await navigator.clipboard.writeText(String(order.trackingCode)); toast.success('Código copiado'); } catch { toast.error('Selecione e copie o código acima.'); } }}>Copiar código completo</button>
             </div>
             {order.trackingUrl && (
               <a 
-                href={order.trackingUrl} 
+                href={safeTrackingUrl(order.trackingUrl)}
                 target="_blank" 
                 rel="noopener noreferrer" 
                 className="bg-[#eab308] text-black px-6 py-3 font-black text-[10px] uppercase tracking-[0.2em] hover:bg-white transition-all shrink-0"

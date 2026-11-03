@@ -9,11 +9,12 @@ import { catalogIntegrity } from '../shared/catalogIntegrity.ts';
 import { releaseStockReservation } from '../server/services/store.service.ts';
 
 const db = requireIsolatedTestDb();
-let charges = 0, reserves = 0, releases = 0, timeout = false, pricingFails = false;
+let charges = 0, reserves = 0, releases = 0, timeout = false, pricingFails = false, refusal = false;
 const payments = new Map<string, any>();
 const provider: any = {
   createPayment: async (body: any) => {
     charges++;
+    if (refusal) throw Object.assign(new Error('Invalid card token'), { status: 400, cause: [{ code: '3003', description: 'Invalid token' }] });
     const result = { id: String(charges), external_reference: body.external_reference, status: 'pending', payment_method_id: 'pix', transaction_amount: 100, payer: { private: true }, point_of_interaction: { transaction_data: { qr_code: 'fixture-qr' } } };
     payments.set(body.external_reference, result);
     if (timeout) throw new Error('timeout after acceptance');
@@ -132,6 +133,20 @@ try {
     const records = JSON.stringify((await db.collection('checkout_attempts').get()).docs.map((d: any) => d.data()));
     assert.doesNotMatch(records, /private-fixture|fixture@example|cardToken|trackingAccessToken/);
     assert.ok(!records.includes(key(1)));
+  });
+  await check('definitive provider refusal releases stock once and permits a corrected retry', async () => {
+    const before = { charges, releases };
+    refusal = true;
+    const result = await post('/pay', key(8));
+    refusal = false;
+    assert.equal(result.status, 400); assert.equal(result.body.safeToRetry, true);
+    assert.equal(releases, before.releases + 1);
+    const replay = await post('/resume', key(8));
+    assert.equal(replay.body.safeToRetry, true);
+    await post('/pay', key(8));
+    assert.equal(charges, before.charges + 1); assert.equal(releases, before.releases + 1);
+    assert.equal((await post('/pay', key(9))).status, 201);
+    assert.equal(charges, before.charges + 2);
   });
 } finally { await new Promise<void>(r => server.close(() => r())); }
 console.log(`${checks} checkout retry regressions passed; fake provider only.`);

@@ -105,7 +105,7 @@ export const DEFAULT_STAGE_TEMPLATES: Record<string, string> = {
   embalagem: short('🔍', 'Em conferência', 'Estamos conferindo e embalando o pedido.'),
   ready: short('📦', 'Pronto para entrega ou retirada', 'Seguiremos o combinado com você.'),
   completed: short('✅', 'Produção concluída', 'Entrega ou retirada segue o combinado.'),
-  shipped: 'F PAC STORE · 🚚 *Pedido #{{numero_pedido}} enviado*\nRastreio: {{link_rastreio}}\nAcompanhe: {{link_acompanhamento}}',
+  shipped: 'F PAC STORE · 🚚 *Pedido #{{numero_pedido}} enviado*\nCódigo da transportadora: *{{codigo_rastreio}}*\nCopie o código completo, com todas as letras e números.\nRastrear entrega: {{link_rastreio}}\nVer pedido (basta tocar): {{link_acompanhamento}}',
   delivered: 'F PAC STORE · 🎉 *Pedido #{{numero_pedido}} entregue*\nTudo certo por aí? Se precisar, responda aqui.',
   cancelled: 'F PAC STORE · ⚠️ *Pedido #{{numero_pedido}} cancelado*\nSe precisar de ajuda, responda aqui.',
 };
@@ -123,12 +123,14 @@ export const DEFAULT_NOTIFICATION_CONFIG: ProductionNotificationConfig = {
   templates: { ...DEFAULT_STAGE_TEMPLATES },
 };
 
+const PREVIOUS_SHORT_SHIPPED = 'F PAC STORE · 🚚 *Pedido #{{numero_pedido}} enviado*\nRastreio: {{link_rastreio}}\nAcompanhe: {{link_acompanhamento}}';
+
 // Upgrade only exact historical defaults. Merchant-written templates remain intact.
 export function resolveSavedStageTemplates(saved: Record<string, string> = {}) {
   const templates = { ...DEFAULT_STAGE_TEMPLATES, ...saved };
   for (const [key, value] of Object.entries(saved)) {
     if (!DEFAULT_STAGE_TEMPLATES[key]) continue;
-    if (value === PREVIOUS_STAGE_TEMPLATES[key] || value === VERBOSE_STAGE_TEMPLATES[key]) templates[key] = DEFAULT_STAGE_TEMPLATES[key];
+    if (value === PREVIOUS_STAGE_TEMPLATES[key] || value === VERBOSE_STAGE_TEMPLATES[key] || (key === 'shipped' && value === PREVIOUS_SHORT_SHIPPED)) templates[key] = DEFAULT_STAGE_TEMPLATES[key];
   }
   const oldSeparation = separation.replace('Nossa equipe está separando e preparando', 'O pagamento foi confirmado e nossa equipe já está separando e preparando');
   for (const key of ['separacao_corte', 'aguardando_impressao', 'payment_approved']) {

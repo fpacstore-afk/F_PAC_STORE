@@ -97,7 +97,11 @@
     "test:auth-security": "node --import tsx scripts/test_auth_security.ts",
     "test:reel-security": "NODE_ENV=test node --import tsx scripts/test_reel_security.ts",
     "test:preview-tags": "python3 scripts/test_preview_tags.py",
-    "test:payment-correction": "NODE_ENV=test node --import tsx scripts/test_payment_correction.ts"
+    "test:payment-correction": "NODE_ENV=test node --import tsx scripts/test_payment_correction.ts",
+    "test:company-cash-register": "NODE_ENV=test node --import tsx scripts/test_company_cash_register.ts",
+    "test:short-coupon-tracking": "NODE_ENV=test node --import tsx scripts/test_short_coupon_tracking.ts",
+    "test:customer-order-projection": "NODE_ENV=test node --import tsx scripts/test_customer_orders_projection.ts",
+    "test:checkout-variant-identity": "NODE_ENV=test node --import tsx scripts/test_checkout_variant_identity.ts"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

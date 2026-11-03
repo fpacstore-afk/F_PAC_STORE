@@ -1,3 +1,4 @@
+import { matchesStorefrontSearch } from '../lib/storefrontSearch';
 import { CatalogUnavailable } from '../components/CatalogUnavailable';
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
@@ -107,22 +108,7 @@ export default function CatalogStorefront() {
     const filtered = products.filter(product => {
       if (!Array.isArray(product.images) || product.images.length === 0) return false;
 
-      if (term) {
-        const haystack = [
-          product.name,
-          product.headline,
-          product.description,
-          product.slug,
-          product.parentSlug,
-          product.collection,
-          product.baseModel,
-          product.productType,
-          product.category,
-          ...(Array.isArray(product.tags) ? product.tags : []),
-          ...(Array.isArray(product.searchAliases) ? product.searchAliases : []),
-        ].map(normalize).join(' ');
-        if (!haystack.includes(term)) return false;
-      }
+      if (term && !matchesStorefrontSearch(product, search)) return false;
 
       if (collectionFilter !== 'all') {
         if (!productMatchesCommercialLine(product, collectionFilter)) return false;
