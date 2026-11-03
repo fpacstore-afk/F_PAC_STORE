@@ -20,12 +20,21 @@ export function calculateStorefrontTotals(input: {
   const shipping = qualifiesForFreeShipping(quantity) || shippingDiscount > 0 ? 0 : input.shipping;
   const cleanCoupon = String(input.coupon || '').toUpperCase().replace(/\s/g, '');
   let couponRate = 0;
+  const hasCustomerBonus = Number.isFinite(input.customerCouponRate) && Number(input.customerCouponRate) > 0;
   if (promotion) {
     if (promotion.discount_type === 'cupom' && cleanCoupon && cleanCoupon === String(promotion.coupon_code || '').toUpperCase().replace(/\s/g, '')) {
       couponRate = promotion.discount_value === null ? 0 : promotion.discount_value ?? 5;
     }
   } else if (cleanCoupon && cleanCoupon === getDailyPromoCode(new Date(now))) couponRate = 5;
-  if (Number.isFinite(input.customerCouponRate) && Number(input.customerCouponRate) > 0) couponRate = Math.min(50, Number(input.customerCouponRate));
+  if (hasCustomerBonus) {
+    // The personal post-purchase coupon is an additional 5 percentage points.
+    // It may combine with the currently active coupon, even when the customer
+    // enters their unique code instead of the public campaign code.
+    const activeCouponRate = promotion?.discount_type === 'cupom'
+      ? (promotion.discount_value === null ? 0 : promotion.discount_value ?? 5)
+      : !promotion ? 5 : couponRate;
+    couponRate = Math.min(50, activeCouponRate + Number(input.customerCouponRate));
+  }
   let pixDiscountRate = 5;
   if (promotion?.discount_type === 'pix_discount') {
     pixDiscountRate = promotion.pix_discount === null ? 0

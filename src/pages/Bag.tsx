@@ -30,7 +30,7 @@ export default function Bag() {
     items, subtotal, couponDiscount, pixDiscount, pixDiscountRate, flashSaleDiscount, weeklyPromotionDiscount, weeklyPromotionLabel, total, coupon, shipping, observations, paymentMethod,
     customerInfo,
     addItem, removeItem, updateQuantity, setCoupon, setShipping, setObservations, setPaymentMethod,
-    updateCustomer, recoveryConsent, setRecoveryConsent, postPurchaseMarketingConsent, setPostPurchaseMarketingConsent, recoveryCancellationPending, retryRecoveryCancellation
+    updateCustomer, recoveryConsent, setRecoveryConsent, postPurchaseMarketingConsent, setPostPurchaseMarketingConsent, postPurchaseEmailConsent, setPostPurchaseEmailConsent, recoveryCancellationPending, retryRecoveryCancellation
   } = useCart();
   const { user, profile } = useAuth();
 
@@ -351,7 +351,7 @@ export default function Bag() {
         const data = await response.json();
         if (!response.ok || !data.valid) throw new Error(data.error || 'Cupom inválido.');
         setCoupon(code, Number(data.discountPercent));
-        toast.success(`Cupom de ${data.discountPercent}% aplicado!`);
+        toast.success(`Bônus de +${data.discountPercent}% aplicado. Cupons ativos podem ser somados.`);
       } catch (error: any) { toast.error(error.message || 'Cupom inválido.'); }
     }
   };
@@ -946,7 +946,11 @@ export default function Bag() {
               </label>
               <label className="mb-5 flex min-h-11 cursor-pointer items-start gap-3 rounded-lg border border-white/15 p-3 text-xs leading-relaxed text-white/75">
                 <input type="checkbox" checked={postPurchaseMarketingConsent === true} onChange={event => setPostPurchaseMarketingConsent(event.target.checked)} className="mt-1 h-4 w-4 shrink-0 accent-[#eab308]" />
-                Quero receber pelo WhatsApp uma pesquisa rápida após a compra e ofertas de recompra. Opcional; posso desmarcar.
+                Aceito receber pelo WhatsApp uma pesquisa após a compra e uma oferta de recompra. O envio pelo WhatsApp será manual por enquanto. Opcional.
+              </label>
+              <label className="mb-5 flex min-h-11 cursor-pointer items-start gap-3 rounded-lg border border-white/15 p-3 text-xs leading-relaxed text-white/75">
+                <input type="checkbox" checked={postPurchaseEmailConsent === true} onChange={event => setPostPurchaseEmailConsent(event.target.checked)} className="mt-1 h-4 w-4 shrink-0 accent-[#eab308]" />
+                Aceito receber por e-mail uma pesquisa após 7 dias e uma oferta de recompra após 30 dias. O cupom dá +5% adicional, vale 7 dias e pode ser usado uma vez a cada 6 meses. Opcional.
               </label>
 
               {recoveryCancellationPending && <p role="status" className="mb-5 text-sm text-amber-200">O cancelamento dos lembretes ainda precisa ser confirmado pela conexão. <button type="button" onClick={() => void retryRecoveryCancellation()} className="min-h-11 font-bold underline">Tentar novamente</button></p>}
@@ -975,15 +979,15 @@ export default function Bag() {
 
               <div className="mt-8 space-y-4">
                 {/* Coupon Input */}
-                {activePromo && activePromo.active && activePromo.discount_type !== 'cupom' ? (
+                {activePromo && activePromo.active && activePromo.discount_type !== 'cupom' && (
                   <div className="p-3 bg-[#eab308]/10 border border-[#eab308]/20 flex items-center gap-2 text-[#eab308]">
                     <Tag size={14} className="shrink-0" />
                     <span className="text-[10px] font-bold uppercase tracking-wider">
                       Promoção Ativa: {activePromo.title} aplicada automaticamente!
                     </span>
                   </div>
-                ) : (
-                  !coupon && (
+                )}
+                {!coupon && (
                     <div className="flex gap-2">
                       <input 
                         type="text" 
@@ -999,7 +1003,6 @@ export default function Bag() {
                         OK
                       </button>
                     </div>
-                  )
                 )}
                 
                 <p className="text-[10px] text-white/40 flex items-center justify-center gap-2 pt-4">

@@ -196,6 +196,10 @@ async function processPayment(req: Request, res: Response) {
       updatedAt: new Date().toISOString(),
       postPurchaseMarketingConsent: body.postPurchaseMarketingConsent === true,
       postPurchaseMarketingConsentAt: body.postPurchaseMarketingConsent === true ? new Date().toISOString() : null,
+      postPurchaseWhatsAppConsent: body.postPurchaseMarketingConsent === true,
+      postPurchaseWhatsAppConsentAt: body.postPurchaseMarketingConsent === true ? new Date().toISOString() : null,
+      postPurchaseEmailConsent: body.postPurchaseEmailConsent === true,
+      postPurchaseEmailConsentAt: body.postPurchaseEmailConsent === true ? new Date().toISOString() : null,
     };
 
     const trackingAccessToken = checkoutTrackingToken(key);

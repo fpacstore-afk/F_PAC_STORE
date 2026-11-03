@@ -18,7 +18,7 @@ export default function Checkout() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const {
-    items, subtotal, total, shipping, couponDiscount, pixDiscount, flashSaleDiscount, weeklyPromotionDiscount, weeklyPromotionLabel, customerInfo, clearCart, paymentMethod, postPurchaseMarketingConsent
+    items, subtotal, total, shipping, couponDiscount, pixDiscount, flashSaleDiscount, weeklyPromotionDiscount, weeklyPromotionLabel, customerInfo, clearCart, paymentMethod, postPurchaseMarketingConsent, postPurchaseEmailConsent
   } = useCart();
 
   const [paymentResult, setPaymentResult] = useState<any | null>(null);
@@ -225,6 +225,7 @@ export default function Checkout() {
                     items={items}
                     customerInfo={customerInfo}
                     postPurchaseMarketingConsent={postPurchaseMarketingConsent === true}
+                    postPurchaseEmailConsent={postPurchaseEmailConsent === true}
                     initialPaymentMethod={paymentMethod === 'PIX' ? 'pix' : 'credit_card'}
                     onSuccess={(result) => {
                       handlePaymentSuccess(result);
