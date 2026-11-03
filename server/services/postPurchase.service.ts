@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { FieldValue } from 'firebase-admin/firestore';
 import { Resend } from 'resend';
+import opentype from 'opentype.js';
 import sharp from 'sharp';
 import { getDb } from '../firebase.js';
 import { sendWhatsAppMessage } from './automation.service.js';
@@ -124,34 +125,77 @@ function repurchaseMessage(order: any, coupon: any) {
 
 const BRAND_LOGO_FILE = path.resolve(process.cwd(), 'public/estampas/logo-fpac.png');
 const BRAND_FONT_REGULAR_FILE = path.resolve(process.cwd(), 'server/assets/DejaVuSans.ttf');
+const BRAND_FONT_BOLD_FILE = path.resolve(process.cwd(), 'server/assets/DejaVuSans-Bold.ttf');
 let logoBase64Promise: Promise<string> | undefined;
-let fontCssPromise: Promise<string> | undefined;
+let fontPairPromise: Promise<{ regular: any; bold: any }> | undefined;
 async function brandLogoBase64() {
   logoBase64Promise ||= readFile(BRAND_LOGO_FILE).then(file => file.toString('base64')).catch(() => '');
   return logoBase64Promise;
 }
 
-async function embeddedBrandFontCss() {
-  fontCssPromise ||= readFile(BRAND_FONT_REGULAR_FILE)
-    .then(font => `<style>@font-face{font-family:FPACSans;src:url(data:font/ttf;base64,${font.toString('base64')}) format('truetype');font-weight:100 900}</style>`);
-  return fontCssPromise;
+async function brandVectorFonts() {
+  fontPairPromise ||= Promise.all([readFile(BRAND_FONT_REGULAR_FILE), readFile(BRAND_FONT_BOLD_FILE)]).then(([regular, bold]) => {
+    const parse = (font: Buffer) => {
+      const arrayBuffer = font.buffer.slice(font.byteOffset, font.byteOffset + font.byteLength);
+      return opentype.parse(arrayBuffer);
+    };
+    return { regular: parse(regular), bold: parse(bold) };
+  });
+  return fontPairPromise;
 }
 
-function emailArtworkSvg(kind: 'survey' | 'repurchase', name: string, coupon?: any, logoBase64 = '', fontCss = '') {
+function emailArtworkSvg(kind: 'survey' | 'repurchase', name: string, coupon?: any, logoBase64 = '') {
   const safeName = escapeHtml(name);
   const logo = logoBase64
     ? `<image x="490" y="48" width="220" height="220" href="data:image/png;base64,${logoBase64}" preserveAspectRatio="xMidYMid meet"/>`
     : `<text x="600" y="160" text-anchor="middle" fill="#eab308" font-family="Arial,sans-serif" font-size="72" font-weight="900" font-style="italic">F PAC</text><text x="600" y="205" text-anchor="middle" fill="#ffffff" font-family="Arial,sans-serif" font-size="24" letter-spacing="12">STORE</text>`;
   const header = `<rect width="1200" height="390" fill="#090909"/><rect y="382" width="1200" height="8" fill="#eab308"/>${logo}<text x="600" y="318" text-anchor="middle" fill="#eab308" font-family="Arial,sans-serif" font-size="22" font-weight="700" letter-spacing="5">NÃO É SÓ ROUPA. É IDENTIDADE.</text>`;
-  if (kind === 'survey') return `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="1600" viewBox="0 0 1200 1600">${fontCss}<rect width="1200" height="1600" fill="#f4f2ec"/>${header}<text x="600" y="486" text-anchor="middle" fill="#151515" font-family="Arial,sans-serif" font-size="52" font-weight="900">SUA EXPERIÊNCIA</text><text x="600" y="550" text-anchor="middle" fill="#9a7200" font-family="Arial,sans-serif" font-size="52" font-weight="900">FAZ DIFERENÇA</text><text x="600" y="615" text-anchor="middle" fill="#333333" font-family="Arial,sans-serif" font-size="28">Oi, ${safeName}! Conta pra gente como foi.</text><text x="600" y="664" text-anchor="middle" fill="#666666" font-family="Arial,sans-serif" font-size="22">São só 3 respostas rápidas — menos de 1 minuto.</text><rect x="90" y="720" width="1020" height="610" rx="30" fill="#ffffff"/><circle cx="160" cy="808" r="34" fill="#eab308"/><text x="160" y="819" text-anchor="middle" fill="#090909" font-family="Arial,sans-serif" font-size="30" font-weight="900">1</text><text x="220" y="800" fill="#111111" font-family="Arial,sans-serif" font-size="28" font-weight="700">Se já recebeu a peça, que nota dá ao produto?</text><text x="220" y="844" fill="#666666" font-family="Arial,sans-serif" font-size="22">1 = não gostei · 5 = gostei muito</text><rect x="220" y="865" width="740" height="2" fill="#eeeeea"/><circle cx="160" cy="980" r="34" fill="#eab308"/><text x="160" y="991" text-anchor="middle" fill="#090909" font-family="Arial,sans-serif" font-size="30" font-weight="900">2</text><text x="220" y="972" fill="#111111" font-family="Arial,sans-serif" font-size="28" font-weight="700">Como avalia o nosso atendimento?</text><text x="220" y="1016" fill="#666666" font-family="Arial,sans-serif" font-size="22">Dê uma nota de 1 a 5</text><rect x="220" y="1037" width="740" height="2" fill="#eeeeea"/><circle cx="160" cy="1150" r="34" fill="#eab308"/><text x="160" y="1161" text-anchor="middle" fill="#090909" font-family="Arial,sans-serif" font-size="30" font-weight="900">3</text><text x="220" y="1142" fill="#111111" font-family="Arial,sans-serif" font-size="28" font-weight="700">Foi fácil concluir sua compra no site?</text><text x="220" y="1186" fill="#666666" font-family="Arial,sans-serif" font-size="22">Responda: sim ou não</text><rect x="90" y="1370" width="1020" height="150" rx="26" fill="#090909"/><text x="600" y="1430" text-anchor="middle" fill="#eab308" font-family="Arial,sans-serif" font-size="28" font-weight="900" letter-spacing="2">TOQUE AQUI PARA RESPONDER</text><text x="600" y="1476" text-anchor="middle" fill="#ffffff" font-family="Arial,sans-serif" font-size="22">Exemplo: Produto 5 | Atendimento 5 | Compra: sim</text><text x="600" y="1550" text-anchor="middle" fill="#777777" font-family="Arial,sans-serif" font-size="17">Mensagem enviada após seu aceite no checkout.</text></svg>`.replaceAll('Arial,sans-serif', 'FPACSans');
+  if (kind === 'survey') return `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="1600" viewBox="0 0 1200 1600"><rect width="1200" height="1600" fill="#f4f2ec"/>${header}<text x="600" y="486" text-anchor="middle" fill="#151515" font-family="Arial,sans-serif" font-size="52" font-weight="900">SUA EXPERIÊNCIA</text><text x="600" y="550" text-anchor="middle" fill="#9a7200" font-family="Arial,sans-serif" font-size="52" font-weight="900">FAZ DIFERENÇA</text><text x="600" y="615" text-anchor="middle" fill="#333333" font-family="Arial,sans-serif" font-size="28">Oi, ${safeName}! Conta pra gente como foi.</text><text x="600" y="664" text-anchor="middle" fill="#666666" font-family="Arial,sans-serif" font-size="22">São só 3 respostas rápidas — menos de 1 minuto.</text><rect x="90" y="720" width="1020" height="610" rx="30" fill="#ffffff"/><circle cx="160" cy="808" r="34" fill="#eab308"/><text x="160" y="819" text-anchor="middle" fill="#090909" font-family="Arial,sans-serif" font-size="30" font-weight="900">1</text><text x="220" y="800" fill="#111111" font-family="Arial,sans-serif" font-size="28" font-weight="700">Se já recebeu a peça, que nota dá ao produto?</text><text x="220" y="844" fill="#666666" font-family="Arial,sans-serif" font-size="22">1 = não gostei · 5 = gostei muito</text><rect x="220" y="865" width="740" height="2" fill="#eeeeea"/><circle cx="160" cy="980" r="34" fill="#eab308"/><text x="160" y="991" text-anchor="middle" fill="#090909" font-family="Arial,sans-serif" font-size="30" font-weight="900">2</text><text x="220" y="972" fill="#111111" font-family="Arial,sans-serif" font-size="28" font-weight="700">Como avalia o nosso atendimento?</text><text x="220" y="1016" fill="#666666" font-family="Arial,sans-serif" font-size="22">Dê uma nota de 1 a 5</text><rect x="220" y="1037" width="740" height="2" fill="#eeeeea"/><circle cx="160" cy="1150" r="34" fill="#eab308"/><text x="160" y="1161" text-anchor="middle" fill="#090909" font-family="Arial,sans-serif" font-size="30" font-weight="900">3</text><text x="220" y="1142" fill="#111111" font-family="Arial,sans-serif" font-size="28" font-weight="700">Foi fácil concluir sua compra no site?</text><text x="220" y="1186" fill="#666666" font-family="Arial,sans-serif" font-size="22">Responda: sim ou não</text><rect x="90" y="1370" width="1020" height="150" rx="26" fill="#090909"/><text x="600" y="1430" text-anchor="middle" fill="#eab308" font-family="Arial,sans-serif" font-size="28" font-weight="900" letter-spacing="2">TOQUE AQUI PARA RESPONDER</text><text x="600" y="1476" text-anchor="middle" fill="#ffffff" font-family="Arial,sans-serif" font-size="22">Exemplo: Produto 5 | Atendimento 5 | Compra: sim</text><text x="600" y="1550" text-anchor="middle" fill="#777777" font-family="Arial,sans-serif" font-size="17">Mensagem enviada após seu aceite no checkout.</text></svg>`;
   const expires = coupon ? new Date(coupon.expiresAt).toLocaleDateString('pt-BR') : '';
   const code = escapeHtml(String(coupon?.code || ''));
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="1500" viewBox="0 0 1200 1500">${fontCss}<rect width="1200" height="1500" fill="#f4f2ec"/>${header}<text x="600" y="500" text-anchor="middle" fill="#111111" font-family="Arial,sans-serif" font-size="48" font-weight="900">UM PRESENTE</text><text x="600" y="562" text-anchor="middle" fill="#9a7200" font-family="Arial,sans-serif" font-size="48" font-weight="900">PARA SEU PRÓXIMO LOOK</text><text x="600" y="625" text-anchor="middle" fill="#444444" font-family="Arial,sans-serif" font-size="26">Oi, ${safeName}! Guardamos um bônus especial pra você.</text><rect x="90" y="700" width="1020" height="570" rx="32" fill="#ffffff"/><text x="600" y="790" text-anchor="middle" fill="#555555" font-family="Arial,sans-serif" font-size="24" font-weight="700" letter-spacing="3">SEU BÔNUS DE RECOMPRA</text><text x="600" y="900" text-anchor="middle" fill="#111111" font-family="Arial,sans-serif" font-size="106" font-weight="900">+5%</text><text x="600" y="950" text-anchor="middle" fill="#444444" font-family="Arial,sans-serif" font-size="25">ADICIONAL, SOMADO AOS CUPONS ATIVOS</text><rect x="185" y="1000" width="830" height="125" rx="18" fill="#090909"/><text x="600" y="1080" text-anchor="middle" fill="#eab308" font-family="Arial,sans-serif" font-size="54" font-weight="900" letter-spacing="4">${code}</text><text x="600" y="1185" text-anchor="middle" fill="#555555" font-family="Arial,sans-serif" font-size="23">Válido por 7 dias — até ${escapeHtml(expires)}</text><text x="600" y="1350" text-anchor="middle" fill="#111111" font-family="Arial,sans-serif" font-size="25" font-weight="700">Digite o cupom no checkout e aproveite.</text><text x="600" y="1405" text-anchor="middle" fill="#777777" font-family="Arial,sans-serif" font-size="20">F PAC STORE · Joinville/SC</text><text x="600" y="1455" text-anchor="middle" fill="#777777" font-family="Arial,sans-serif" font-size="17">Mensagem enviada após seu aceite no checkout.</text></svg>`.replaceAll('Arial,sans-serif', 'FPACSans');
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="1500" viewBox="0 0 1200 1500"><rect width="1200" height="1500" fill="#f4f2ec"/>${header}<text x="600" y="500" text-anchor="middle" fill="#111111" font-family="Arial,sans-serif" font-size="48" font-weight="900">UM PRESENTE</text><text x="600" y="562" text-anchor="middle" fill="#9a7200" font-family="Arial,sans-serif" font-size="48" font-weight="900">PARA SEU PRÓXIMO LOOK</text><text x="600" y="625" text-anchor="middle" fill="#444444" font-family="Arial,sans-serif" font-size="26">Oi, ${safeName}! Guardamos um bônus especial pra você.</text><rect x="90" y="700" width="1020" height="570" rx="32" fill="#ffffff"/><text x="600" y="790" text-anchor="middle" fill="#555555" font-family="Arial,sans-serif" font-size="24" font-weight="700" letter-spacing="3">SEU BÔNUS DE RECOMPRA</text><text x="600" y="900" text-anchor="middle" fill="#111111" font-family="Arial,sans-serif" font-size="106" font-weight="900">+5%</text><text x="600" y="950" text-anchor="middle" fill="#444444" font-family="Arial,sans-serif" font-size="25">ADICIONAL, SOMADO AOS CUPONS ATIVOS</text><rect x="185" y="1000" width="830" height="125" rx="18" fill="#090909"/><text x="600" y="1080" text-anchor="middle" fill="#eab308" font-family="Arial,sans-serif" font-size="54" font-weight="900" letter-spacing="4">${code}</text><text x="600" y="1185" text-anchor="middle" fill="#555555" font-family="Arial,sans-serif" font-size="23">Válido por 7 dias — até ${escapeHtml(expires)}</text><text x="600" y="1350" text-anchor="middle" fill="#111111" font-family="Arial,sans-serif" font-size="25" font-weight="700">Digite o cupom no checkout e aproveite.</text><text x="600" y="1405" text-anchor="middle" fill="#777777" font-family="Arial,sans-serif" font-size="20">F PAC STORE · Joinville/SC</text><text x="600" y="1455" text-anchor="middle" fill="#777777" font-family="Arial,sans-serif" font-size="17">Mensagem enviada após seu aceite no checkout.</text></svg>`;
+}
+
+function outlineArtworkText(svg: string, fonts: { regular: any; bold: any }) {
+  const xmlText = (value: string) => value.replace(/&(#x[\da-f]+|#\d+|amp|lt|gt|quot|apos);/gi, entity => {
+    const key = entity.slice(1, -1);
+    if (key === 'amp') return '&'; if (key === 'lt') return '<'; if (key === 'gt') return '>';
+    if (key === 'quot') return '"'; if (key === 'apos') return "'";
+    const code = key[1]?.toLowerCase() === 'x' ? parseInt(key.slice(2), 16) : parseInt(key.slice(1), 10);
+    return Number.isFinite(code) ? String.fromCodePoint(code) : '';
+  });
+  return svg.replace(/<text\b([^>]*)>([\s\S]*?)<\/text>/g, (_tag, rawAttrs: string, rawText: string) => {
+    const attrs = Object.fromEntries([...rawAttrs.matchAll(/([\w:-]+)="([^"]*)"/g)].map(match => [match[1], match[2]]));
+    const font = Number(attrs['font-weight'] || 400) >= 600 ? fonts.bold : fonts.regular;
+    const requestedText = xmlText(rawText);
+    const text = Array.from(requestedText).map(char => font.charToGlyphIndex(char) > 0 ? char : '?').join('');
+    const fontSize = Number.parseFloat(attrs['font-size'] || '16');
+    const anchor = attrs['text-anchor'] || 'start';
+    const tracking = Number.parseFloat(attrs['letter-spacing'] || '0');
+    const characters = Array.from(text);
+    const advance = font.getAdvanceWidth(text, fontSize, { kerning: true }) + Math.max(0, characters.length - 1) * tracking;
+    const anchorX = Number.parseFloat(attrs.x || '0');
+    const x = anchor === 'middle' ? anchorX - advance / 2 : anchor === 'end' ? anchorX - advance : anchorX;
+    const y = Number.parseFloat(attrs.y || '0');
+    let pathData = '';
+    if (tracking === 0) {
+      pathData = font.getPath(text, x, y, fontSize, { kerning: true }).toPathData({ decimalPlaces: 2, flipY: false });
+    } else {
+      let cursor = x;
+      pathData = characters.map(char => {
+        const path = font.getPath(char, cursor, y, fontSize, { kerning: false }).toPathData({ decimalPlaces: 2, flipY: false });
+        cursor += font.getAdvanceWidth(char, fontSize, { kerning: false }) + tracking;
+        return path;
+      }).join(' ');
+    }
+    return pathData ? `<path d="${pathData}" fill="${attrs.fill || '#000000'}"/>` : '';
+  });
 }
 
 async function renderEmailArtwork(kind: 'survey' | 'repurchase', name: string, coupon?: any) {
-  const [logo, fontCss] = await Promise.all([brandLogoBase64(), embeddedBrandFontCss()]);
-  return sharp(Buffer.from(emailArtworkSvg(kind, name, coupon, logo, fontCss))).png().toBuffer();
+  const [logo, fonts] = await Promise.all([brandLogoBase64(), brandVectorFonts()]);
+  const svg = outlineArtworkText(emailArtworkSvg(kind, name, coupon, logo), fonts);
+  return sharp(Buffer.from(svg)).png().toBuffer();
 }
 
 async function sendPostPurchaseEmail(order: any, kind: 'survey' | 'repurchase') {
