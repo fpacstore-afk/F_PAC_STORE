@@ -1,3 +1,4 @@
+import { safeTrackingUrl } from '../../shared/trackingInput.js';
 import { randomUUID } from 'node:crypto';
 import { FieldValue } from 'firebase-admin/firestore';
 import { getDb } from "../firebase.js";
@@ -321,10 +322,10 @@ export function renderStageTemplate(templateStr: string, orderData: any): string
   const deliveryEstimate = orderData?.deliveryDate || orderData?.previsao || 'Prazo a confirmar com nossa equipe';
   const paymentMethod = orderData?.paymentMethod || orderData?.formaPagamento || 'PIX / Cartão';
 
-  const trackingCode = orderData?.trackingCode || orderData?.shipping?.trackingCode || orderData?.codigoRastreio || orderData?.trackingUrl || 'Em processamento';
+  const trackingCode = orderData?.trackingCode || orderData?.shipping?.trackingCode || orderData?.codigoRastreio || 'Em processamento';
   const carrier = orderData?.shippingCompany || orderData?.carrier || orderData?.shipping?.carrier || orderData?.transportadora || (orderData?.cep && String(orderData.cep).startsWith('892') ? 'Entrega Local Joinville' : 'Correios / Transportadora');
-  const trackingLink = orderData?.trackingUrl || orderData?.shipping?.trackingUrl || 'https://fpacstore.com.br/tracking';
-  const publicTrackingUrl = orderData?.publicTrackingUrl || 'https://fpacstore.com.br/tracking';
+  const trackingLink = safeTrackingUrl(orderData?.trackingUrl || orderData?.shipping?.trackingUrl, safeTrackingUrl(orderData?.publicTrackingUrl));
+  const publicTrackingUrl = safeTrackingUrl(orderData?.publicTrackingUrl);
 
   return templateStr
     .replace(/\{\{nome_cliente\}\}/g, firstName)

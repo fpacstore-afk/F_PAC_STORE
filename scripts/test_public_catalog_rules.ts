@@ -19,6 +19,15 @@ try {
   const unverified = environment.authenticatedContext('unverified-admin-email', { email: 'fpacstore@gmail.com', email_verified: false }).firestore();
   const claimed = environment.authenticatedContext('claimed-admin', { admin: true }).firestore();
   const manager = environment.authenticatedContext('manager', { email: 'fpacstore@gmail.com', email_verified: true }).firestore();
+  await environment.withSecurityRulesDisabled(async context => {
+    await setDoc(doc(context.firestore(), 'orders/customer-fixture'), { userId: 'customer', customerEmail: 'customer@example.invalid', total: 100, items: [{ unitCostSnapshot: 35 }], internalNotes: 'Private' });
+  });
+  for (const reader of [guest, customer, unverified]) {
+    await assertFails(getDoc(doc(reader, 'orders/customer-fixture')));
+    await assertFails(getDocs(collection(reader, 'orders')));
+  }
+  await assertSucceeds(getDoc(doc(manager, 'orders/customer-fixture')));
+  console.log('Internal order costs remain admin-only, including for the buyer.');
   const customerProfile = doc(customer, 'users/customer');
   for (const field of ['password', 'token', 'role', 'isAdmin', 'admin']) {
     await assertFails(setDoc(customerProfile, { name:'Fixture', [field]:'forged' }));

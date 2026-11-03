@@ -1,3 +1,5 @@
+import { getCustomerOrders } from './server/controllers/customerOrders.controller.js';
+import { getCompanyCashRegister, resetCompanyCashRegister } from './server/services/companyCashRegister.service.js';
 import { SECURITY_HEADERS } from './shared/securityHeaders.js';
 import { denyPrivateFiles } from './server/middleware/privateFiles.js';
 import { correctRecordedPaymentController } from './server/controllers/paymentCorrection.controller.js';
@@ -603,6 +605,20 @@ apiRouter.post("/admin/financial/suppliers", adminApiLimiter, authenticateAdmin,
 apiRouter.put("/admin/financial/suppliers/:id", adminApiLimiter, authenticateAdmin, updateSupplierController);
 apiRouter.post("/admin/financial/suppliers/:id/deactivate", adminApiLimiter, authenticateAdmin, deactivateSupplierController);
 apiRouter.get("/admin/financial/suppliers", adminApiLimiter, authenticateAdmin, getSuppliersController);
+apiRouter.get('/admin/financial/cash-register', adminApiLimiter, authenticateAdmin, async (_req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  try { res.json({ success: true, summary: await getCompanyCashRegister() }); }
+  catch { res.status(503).json({ error: 'Não foi possível carregar o caixa da empresa.' }); }
+});
+apiRouter.post('/admin/financial/cash-register/reset', adminApiLimiter, authenticateAdmin, async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  try { res.json({ success: true, ...await resetCompanyCashRegister(req.body, (req as import('./server/middleware/auth.middleware.js').AuthenticatedRequest).user) }); }
+  catch (error: any) {
+    const changed = error.message === 'REGISTER_CHANGED';
+    res.status(changed ? 409 : error.message === 'INVALID_RESET' ? 400 : 503).json({ error: changed
+      ? 'O caixa mudou. Atualize e confira o saldo antes de zerar.' : 'Não foi possível zerar o indicador do caixa.' });
+  }
+});
 apiRouter.get("/admin/financial/forecast", adminApiLimiter, authenticateAdmin, getCashForecastController);
 apiRouter.post("/admin/orders/:orderId/shipping-cost", adminApiLimiter, authenticateAdmin, recordOrderActualShippingCostController);
 apiRouter.post("/admin/orders/:orderId/gateway-fee", adminApiLimiter, authenticateAdmin, recordOrderGatewayFeeController);
@@ -1895,6 +1911,8 @@ apiRouter.post("/sheets/sync-back", adminApiLimiter, authenticateAdmin, async (r
 });
 
 // Secure Order Tracking Verification Endpoint
+apiRouter.get('/customer/orders', publicApiLimiter, getCustomerOrders);
+
 apiRouter.get("/orders/:orderId/tracking", publicApiLimiter, async (req, res) => {
   try {
     const { orderId } = req.params;

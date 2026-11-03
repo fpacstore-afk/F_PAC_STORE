@@ -1,9 +1,10 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { motion } from 'framer-motion';
-import { Play, Pause, Radio, Volume2, VolumeX, Maximize2, SkipForward } from 'lucide-react';
+import { Play, Pause, Radio, Volume2, VolumeX, Maximize2, SkipForward, X } from 'lucide-react';
 import { useMusicPlayer } from '../../hooks/useMusicPlayer';
 import { cn } from '../../lib/utils';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
+import { isFocusedStoreRoute } from '../../../shared/storefrontFocus';
 
 export function PlayerMini() {
   const {
@@ -17,8 +18,10 @@ export function PlayerMini() {
     filteredTracks
   } = useMusicPlayer();
   const navigate = useNavigate();
+  const { pathname } = useLocation();
+  const [dismissed, setDismissed] = useState(false);
 
-  if (filteredTracks.length === 0 || !currentTrack) return null;
+  if (dismissed || isFocusedStoreRoute(pathname) || filteredTracks.length === 0 || !currentTrack) return null;
 
   return (
     <motion.div
@@ -76,6 +79,7 @@ export function PlayerMini() {
         </span>
       </button>
 
+      <button type="button" onClick={() => setDismissed(true)} aria-label="Ocultar player de rádio" className="p-2 shrink-0 text-gray-400 hover:text-white"><X size={16} /></button>
       <div data-radio-actions className="flex items-center gap-0.5 md:gap-1.5 border-l border-white/10 pl-1 md:pl-2 shrink-0">
         <button
           onClick={togglePlay}

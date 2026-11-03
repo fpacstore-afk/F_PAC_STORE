@@ -33,9 +33,20 @@ export function createCheckoutAttempts(deps = { getDb, mpService, processPayment
   const failBeforeSubmission = async (key: string) => {
     await deps.getDb().runTransaction(async (tx: any) => {
       const ref = refFor(key), snap = await tx.get(ref);
-      if (snap.exists && snap.data().phase === 'preparing') tx.update(ref, { phase: 'failed' });
+      if (snap.exists && ['preparing', 'rejected_cleanup'].includes(snap.data().phase)) tx.update(ref, { phase: 'failed' });
     });
   };
+  const rejectSubmission = async (key: string) => deps.getDb().runTransaction(async (tx: any) => {
+    const ref = refFor(key), snap = await tx.get(ref);
+    if (!snap.exists || snap.data().phase !== 'submitted') throw new Error('Tentativa já foi alterada.');
+    const orderRef = deps.getDb().collection('orders').doc(snap.data().orderId);
+    const orderSnap = await tx.get(orderRef), order = orderSnap.data();
+    if (!order || order.mercadoPagoId || order.payment_id || order.payment?.id || ['approved', 'paid', 'partially_paid'].includes(order.paymentStatus)) {
+      throw new Error('Pagamento precisa de conciliação.');
+    }
+    tx.update(ref, { phase: 'rejected_cleanup', rejectedAt: new Date().toISOString() });
+    tx.update(orderRef, { paymentCreationUncertain: false, paymentStatus: 'rejected', 'payment.status': 'rejected' });
+  });
   const complete = async (key: string, result: any) => {
     // The payment pipeline validates amount/identity and updates the canonical order
     // before any response is treated as confirmed by the browser.
@@ -66,14 +77,14 @@ export function createCheckoutAttempts(deps = { getDb, mpService, processPayment
       tx.set(ref, closed); return closed;
     });
     if (record.phase === 'failed') return { safeToRetry: true, status: 'not_started', message: 'Nenhuma cobrança foi iniciada nesta tentativa. Você pode tentar novamente.' };
-    if (record.phase === 'preparing') return pending;
+    if (['preparing', 'rejected_cleanup'].includes(record.phase)) return pending;
     const order = (await deps.getDb().collection('orders').doc(record.orderId).get()).data();
     const paymentId = record.paymentId || order?.mercadoPagoId || order?.payment_id;
     const result = paymentId ? await deps.mpService.getPayment(String(paymentId)) : await deps.mpService.findPaymentByOrder(record.orderId);
     if (!result) return { ...pending, external_reference: record.orderId, trackingAccessToken: checkoutTrackingToken(key) };
     return complete(key, result);
   };
-  return { claim, submitted, failBeforeSubmission, complete, resume };
+  return { claim, submitted, failBeforeSubmission, rejectSubmission, complete, resume };
 }
 
 export const checkoutAttempts = createCheckoutAttempts();

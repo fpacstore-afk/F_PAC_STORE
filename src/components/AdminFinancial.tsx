@@ -1,3 +1,4 @@
+import { CompanyCashRegister } from './admin/financial/CompanyCashRegister';
 import { isAdminIdentity } from '../../shared/adminIdentity';
 import { companyMovements, companyMovementExportId } from '../../shared/companyMovements';
 import { isOwnerWithdrawal } from '../../shared/ownerWithdrawals';
@@ -103,6 +104,7 @@ const PRODUCT_COST_BASE_MODELS = [
 ];
 
 export type FinancialSubTab = 
+  | 'register'
   | 'dashboard' 
   | 'receivables' 
   | 'ledger' 
@@ -148,6 +150,7 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
   const [cashflow, setCashflow] = useState<CashFlowEntry[]>([]);
   const [traffic, setTraffic] = useState<TrafficCamp[]>([]);
   const [orders, setOrders] = useState<any[]>([]);
+  const cashRegisterRevision = useMemo(() => ({}), [orders, cashflow, investments, traffic]);
   const [rawProducts, setRawProducts] = useState<any[]>([]);
   const { costsByProductId } = usePrivateProductCosts();
   const products = useMemo(
@@ -1181,6 +1184,7 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
       {/* Grid tabs */}
       <div className="flex flex-row overflow-x-auto border-b border-black/10 pb-1 scrollbar-none gap-1 bg-gray-50 p-1">
         {[
+          { id: 'register', label: 'Caixa da empresa', icon: <DollarSign size={14} /> },
           { id: 'dashboard', label: '1. Visão Geral', icon: <PieChart size={14} /> },
           { id: 'orders', label: '2. Vendas e pedidos', icon: <ShoppingBag size={14} /> },
           { id: 'expenses', label: '3. Despesas', icon: <Receipt size={14} /> },
@@ -1211,6 +1215,12 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
         ))}
       </div>
 
+      {activeSubTab === 'register' && <CompanyCashRegister revisionKey={cashRegisterRevision}
+        onMovement={() => setActiveSubTab('cashflow')}
+        onWithdrawal={() => { setActiveSubTab('cashflow'); setCfForm({ description: 'Retirada pessoal do proprietário', amount: '', type: 'out', category: 'Retirada Pessoal', date: financialDateKey(new Date()) || '' }); }}
+        onProLabore={() => { setActiveSubTab('cashflow'); setCfForm({ description: 'Retirada pró-labore', amount: '', type: 'out', category: 'Retirada', date: financialDateKey(new Date()) || '' }); }}
+        onPayables={() => setActiveSubTab('payables')}
+      />}
       {activeSubTab === 'expenses' && <ExpenseCenter cashflow={cashflow} investments={investments} traffic={traffic} />}
       {activeSubTab === 'mei' && isAdmin && <MeiRevenueReport orders={orders} onOpenOrder={(order) => { if (order) setSelectedOrderForDrawer(order); }} />}
 
@@ -1221,6 +1231,7 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
         <div className="space-y-8 animate-in fade-in duration-300">
           <section aria-label="Resumo financeiro do período" className="rounded-xl border border-black/10 bg-white p-5 space-y-4">
             <h3 className="text-sm font-black uppercase">Resumo financeiro: faturamento, lucro e caixa</h3>
+            <button type="button" onClick={() => setActiveSubTab('register')} className="rounded-lg bg-black text-white px-4 py-3 text-sm font-bold">Abrir caixa da empresa</button>
             <p className="text-xs text-gray-600">Selecione o período nos filtros acima. Faturamento e custos seguem os pedidos criados no período, enquanto recebimentos seguem a data do pagamento. Fluxo registrado não é saldo bancário conciliado.</p>
             <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
               {[

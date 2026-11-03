@@ -97,23 +97,33 @@ export async function savePostPurchaseSettings(input: any) {
   return data;
 }
 
-async function issueCoupon(order: any) {
+export async function issueCoupon(order: any) {
   const db = getDb();
   const docRef = db.collection('post_purchase_coupons').doc(`return_${order.id}`);
   const now = Date.now();
-  const code = `VOLTA${randomBytes(5).toString('hex').toUpperCase()}`;
-  return db.runTransaction(async (tx: any) => {
-    const snap = await tx.get(docRef), current = snap.data();
-    if (current?.status === 'active' && Date.parse(current.expiresAt) > now) return current;
-    if (current && current.status !== 'active') throw new Error('Este cupom já foi utilizado ou está em uma compra em andamento.');
-    const coupon = {
-      code, orderId: order.id, email: emailOf(order), phone: phoneOf(order),
-      discountPercent: 5, bonusPercent: 5, stacksWithActiveCoupon: true, status: 'active',
-      createdAt: new Date(now).toISOString(), expiresAt: new Date(now + 7 * 86400000).toISOString(),
-    };
-    tx.set(docRef, coupon);
-    return coupon;
-  });
+  for (let attempt = 0; attempt < 5; attempt++) {
+    // Eight characters, without ambiguous O/I. Reserve the code atomically so
+    // the shorter namespace cannot accidentally give two customers one code.
+    const code = `FP${randomBytes(3).toString('hex').toUpperCase()}`;
+    const codeRef = db.collection('post_purchase_coupon_codes').doc(code);
+    const result = await db.runTransaction(async (tx: any) => {
+      const snap = await tx.get(docRef), current = snap.data();
+      if (current?.status === 'active' && Date.parse(current.expiresAt) > now) return current;
+      if (current && current.status !== 'active') throw new Error('Este cupom já foi utilizado ou está em uma compra em andamento.');
+      const reserved = await tx.get(codeRef);
+      if (reserved.exists) return null;
+      const coupon = {
+        code, orderId: order.id, email: emailOf(order), phone: phoneOf(order),
+        discountPercent: 5, bonusPercent: 5, stacksWithActiveCoupon: true, status: 'active',
+        createdAt: new Date(now).toISOString(), expiresAt: new Date(now + 7 * 86400000).toISOString(),
+      };
+      tx.set(codeRef, { orderId: order.id, createdAt: coupon.createdAt });
+      tx.set(docRef, coupon);
+      return coupon;
+    });
+    if (result) return result;
+  }
+  throw new Error('Não foi possível gerar o cupom. Tente novamente.');
 }
 
 const surveyMessage = (name: string) => `Oi, ${name}! Queremos saber como foi sua experiência com a F PAC STORE.\n\nVocê responde em menos de 1 minuto:\n1) Se já recebeu a peça, que nota dá ao produto? (1 a 5)\n2) Que nota dá ao nosso atendimento? (1 a 5)\n3) Foi fácil concluir a compra no site? (sim/não)\n\nPode responder assim: Produto 5 | Atendimento 5 | Compra: sim.\nSe ainda não recebeu o pedido, pode responder depois. Obrigado por vestir F PAC!`;

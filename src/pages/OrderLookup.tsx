@@ -1,78 +1,42 @@
+import { parseOrderTrackingInput } from '../../shared/trackingInput';
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { Search, ArrowRight, ArrowLeft, Package, Clock, Truck, CheckCircle, XCircle, ChevronRight } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useAuth } from '../context/AuthContext';
-import { collection, query, where, orderBy, onSnapshot, or } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { authenticatedFetch } from '../lib/api';
 
 export default function OrderLookup() {
   const [orderId, setOrderId] = useState('');
+  const [searchError, setSearchError] = useState('');
   const [trackingToken, setTrackingToken] = useState('');
-  const { user, profile } = useAuth();
+  const { user } = useAuth();
   const [userOrders, setUserOrders] = useState<any[]>([]);
   const [loadingOrders, setLoadingOrders] = useState(false);
+  const [ordersError, setOrdersError] = useState('');
   const navigate = useNavigate();
 
   useEffect(() => {
-    if (user) {
-      setLoadingOrders(true);
-      const ordersRef = collection(db, 'orders');
-      
-      const conditions = [where('userId', '==', user.uid)];
-      
-      const userEmail = user.email ? user.email.toLowerCase() : '';
-      if (userEmail) {
-        conditions.push(where('customerEmail', '==', userEmail));
-      }
-
-      const cpfBase = profile?.cpf || '';
-      if (cpfBase) {
-        const cleanCpf = String(cpfBase).replace(/\D/g, '');
-        conditions.push(where('cpf', '==', cleanCpf));
-        conditions.push(where('customerPhone', '==', cleanCpf));
-      }
-      
-      const q = query(
-        ordersRef, 
-        or(...conditions)
-      );
-
-      const unsubscribe = onSnapshot(q, (snapshot) => {
-        const orders = snapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        }));
-        
-        const sortedOrders = [...orders].sort((a: any, b: any) => {
-          const dateA = a.createdAt?.toDate ? a.createdAt.toDate() : new Date(a.createdAt);
-          const dateB = b.createdAt?.toDate ? b.createdAt.toDate() : new Date(b.createdAt);
-          return dateB.getTime() - dateA.getTime();
-        });
-
-        setUserOrders(sortedOrders);
-        setLoadingOrders(false);
-      }, (error) => {
-        console.error("Erro ao carregar pedidos:", error);
-        setLoadingOrders(false);
-      });
-
-      return () => unsubscribe();
-    }
-  }, [user, profile]);
+    let active = true;
+    if (!user) { setUserOrders([]); setOrdersError(''); setLoadingOrders(false); return; }
+    setUserOrders([]); setLoadingOrders(true); setOrdersError('');
+    authenticatedFetch('/api/customer/orders').then(async response => {
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Não foi possível consultar seus pedidos.');
+      if (active) setUserOrders(data.orders || []);
+    }).catch(error => { if (active) setOrdersError(error.message); })
+      .finally(() => { if (active) setLoadingOrders(false); });
+    return () => { active = false; };
+  }, [user?.uid]);
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
-    const cleanId = orderId.trim().toUpperCase();
-    const cleanToken = trackingToken.trim();
-
-    if (!cleanId) return;
-
-    if (cleanToken) {
-      navigate(`/order/${cleanId}?token=${encodeURIComponent(cleanToken)}`);
-    } else {
-      // Navigate without token; OrderStatus will request token or auth
-      navigate(`/order/${cleanId}`);
+    try {
+      const parsed = parseOrderTrackingInput(orderId, trackingToken);
+      setSearchError('');
+      navigate(`/order/${encodeURIComponent(parsed.orderId)}${parsed.token ? `?token=${encodeURIComponent(parsed.token)}` : ''}`);
+    } catch (error: any) {
+      setSearchError(error.message);
     }
   };
 
@@ -122,14 +86,14 @@ export default function OrderLookup() {
           >
             <div className="text-center mb-8">
               <h1 className="text-3xl font-black uppercase tracking-tighter mb-3">Meus Pedidos</h1>
-              <p className="text-gray-500 text-sm uppercase tracking-widest font-bold">Histórico de compras vinculadas ao seu CPF</p>
+              <p className="text-gray-500 text-sm uppercase tracking-widest font-bold">Histórico de compras da sua conta</p>
             </div>
 
             {loadingOrders ? (
               <div className="flex justify-center py-20">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#eab308]"></div>
               </div>
-            ) : userOrders.length > 0 ? (
+            ) : ordersError ? <p role="alert" className="text-sm text-red-700">{ordersError}</p> : userOrders.length > 0 ? (
               <div className="grid gap-6">
                 {userOrders.map((order) => (
                   <Link 
@@ -145,7 +109,7 @@ export default function OrderLookup() {
                         <p className="text-[10px] font-black uppercase tracking-widest text-[#eab308] mb-1">ID: {order.id}</p>
                         <p className="text-lg font-black uppercase tracking-tighter">R$ {order.total?.toFixed(2)}</p>
                         <p className="text-[10px] text-gray-400 uppercase tracking-widest mt-1">
-                          {order.createdAt?.toDate().toLocaleDateString('pt-BR')}
+                          {order.createdAt ? new Date(order.createdAt).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' }) : 'Data a confirmar'}
                         </p>
                       </div>
                     </div>
@@ -167,7 +131,7 @@ export default function OrderLookup() {
               </div>
             ) : (
               <div className="text-center py-20 bg-black/5 border border-black/10">
-                <p className="text-xs uppercase font-bold tracking-widest text-gray-400 mb-6">Nenhum pedido encontrado no seu CPF</p>
+                <p className="text-xs uppercase font-bold tracking-widest text-gray-400 mb-6">Nenhum pedido encontrado na sua conta</p>
                 <Link to="/" className="text-[10px] font-black uppercase tracking-[0.2em] bg-black text-white px-8 py-4 hover:bg-[#eab308] hover:text-black transition-all">
                   Começar a Comprar
                 </Link>
@@ -207,34 +171,36 @@ export default function OrderLookup() {
               <p className="text-gray-500 text-sm uppercase tracking-widest font-bold">Consulte o status da sua compra</p>
             </div>
 
+            <p className="text-sm text-gray-600 mb-5">Para acompanhar, toque no link recebido por WhatsApp ou e-mail. Se digitar o pedido, copie tudo: letras, números e hífen.</p>
             <form onSubmit={handleSearch} className="space-y-5">
+              {searchError && <p role="alert" className="text-sm text-red-700">{searchError}</p>}
               <div>
                 <label className="block text-[10px] font-black uppercase tracking-[0.2em] text-black/40 mb-2">
-                  Código do Pedido
+                  Número do pedido ou link de acompanhamento
                 </label>
                 <input
                   type="text"
                   required
                   value={orderId}
                   onChange={(e) => setOrderId(e.target.value)}
-                  placeholder="EX: PAC-XXXXXX"
+                  placeholder="Ex.: PAC-123456 ou cole o link recebido"
                   className="w-full bg-black/5 border border-black/10 rounded-none p-4 text-sm font-bold focus:outline-none focus:border-[#eab308] transition-colors placeholder:text-black/10"
                 />
               </div>
 
               <div>
                 <label className="block text-[10px] font-black uppercase tracking-[0.2em] text-black/40 mb-2">
-                  Token de Acesso / Chave de Rastreio
+                  Chave de acesso (se recebida separadamente)
                 </label>
                 <input
                   type="text"
                   value={trackingToken}
                   onChange={(e) => setTrackingToken(e.target.value)}
-                  placeholder="Token de 64 caracteres ou link seguro"
+                  placeholder="Cole a chave ou o link completo recebido"
                   className="w-full bg-black/5 border border-black/10 rounded-none p-4 text-sm font-mono focus:outline-none focus:border-[#eab308] transition-colors placeholder:text-black/10"
                 />
                 <p className="text-[9px] text-black/40 font-bold uppercase mt-1">
-                  Enviado por e-mail/WhatsApp para compras sem login.
+                  Ao colar o link completo acima, deixe este campo vazio. Não use aqui o código da transportadora.
                 </p>
               </div>
 
