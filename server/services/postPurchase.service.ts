@@ -94,17 +94,20 @@ export async function savePostPurchaseSettings(input: any) {
 async function issueCoupon(order: any) {
   const db = getDb();
   const docRef = db.collection('post_purchase_coupons').doc(`return_${order.id}`);
-  const snap = await docRef.get();
-  if (snap.exists) return snap.data();
-  const code = `VOLTA${randomBytes(5).toString('hex').toUpperCase()}`;
   const now = Date.now();
-  const coupon = {
-    code, orderId: order.id, email: emailOf(order), phone: phoneOf(order),
-    discountPercent: 5, bonusPercent: 5, stacksWithActiveCoupon: true, status: 'active',
-    createdAt: new Date(now).toISOString(), expiresAt: new Date(now + 7 * 86400000).toISOString(),
-  };
-  await docRef.create(coupon);
-  return coupon;
+  const code = `VOLTA${randomBytes(5).toString('hex').toUpperCase()}`;
+  return db.runTransaction(async (tx: any) => {
+    const snap = await tx.get(docRef), current = snap.data();
+    if (current?.status === 'active' && Date.parse(current.expiresAt) > now) return current;
+    if (current && current.status !== 'active') throw new Error('Este cupom já foi utilizado ou está em uma compra em andamento.');
+    const coupon = {
+      code, orderId: order.id, email: emailOf(order), phone: phoneOf(order),
+      discountPercent: 5, bonusPercent: 5, stacksWithActiveCoupon: true, status: 'active',
+      createdAt: new Date(now).toISOString(), expiresAt: new Date(now + 7 * 86400000).toISOString(),
+    };
+    tx.set(docRef, coupon);
+    return coupon;
+  });
 }
 
 const surveyMessage = (name: string) => `Oi, ${name}! Como foi sua experiência com a F PAC STORE?\n\n1) Produto: nota de 1 a 5\n2) Atendimento: nota de 1 a 5\n3) Teve dificuldade para comprar? (não/sim — qual?)\n\nObrigado por ajudar a gente a melhorar!`;
@@ -171,7 +174,7 @@ async function cooldownActive(db: FirebaseFirestore.Firestore, phone: unknown, e
   const snaps = await Promise.all(locks.map(ref => ref.get()));
   if (snaps.some(snap => {
     const value = snap.data() || {};
-    return (Number(value.redeemedAtMs) >= sixMonthsBefore(now)) || (value.reservedByOrderId && value.reservedExpiresAtMs > now);
+    return (Number(value.redeemedAtMs) >= sixMonthsBefore(now)) || Boolean(value.reservedByOrderId);
   })) return true;
   // Honor redemptions recorded by the earlier coupon flow as well.
   const normalizedPhone = String(phone || '').replace(/\D/g, ''), normalizedEmail = String(email || '').trim().toLowerCase();
@@ -218,10 +221,10 @@ export async function reserveRepurchaseCoupon(code: unknown, phone: unknown, ema
     for (const lockSnap of lockSnaps) {
       const limit = lockSnap.data() || {};
       if (Number(limit.redeemedAtMs) >= sixMonthsBefore(now)) throw new Error('Este cliente já usou um cupom de recompra nos últimos 6 meses.');
-      if (limit.reservedByOrderId && limit.reservedByOrderId !== orderId && Number(limit.reservedExpiresAtMs) > now) throw new Error('Já existe um cupom em uso para este cliente.');
+      if (limit.reservedByOrderId && limit.reservedByOrderId !== orderId) throw new Error('Já existe um cupom em uso para este cliente.');
     }
     tx.update(couponRef, { status: 'reserved', reservedByOrderId: orderId, reservedAt: new Date(now).toISOString() });
-    for (const ref of lockRefs) tx.set(ref, { reservedByOrderId: orderId, reservedCouponCode: current.code, reservedAtMs: now, reservedExpiresAtMs: now + 24 * 60 * 60 * 1000 }, { merge: true });
+    for (const ref of lockRefs) tx.set(ref, { reservedByOrderId: orderId, reservedCouponCode: current.code, reservedAtMs: now }, { merge: true });
   });
   return true;
 }
@@ -245,8 +248,8 @@ export async function releaseRepurchaseCoupon(code: unknown, orderId: string, re
     lockSnaps.forEach((snap: any, index: number) => {
       if (snap.data()?.reservedByOrderId !== orderId) return;
       tx.set(lockRefs[index], redeemed
-        ? { redeemedAtMs: now, redeemedAt: new Date(now).toISOString(), lastRedeemedOrderId: orderId, reservedByOrderId: FieldValue.delete(), reservedCouponCode: FieldValue.delete(), reservedAtMs: FieldValue.delete(), reservedExpiresAtMs: FieldValue.delete() }
-        : { reservedByOrderId: FieldValue.delete(), reservedCouponCode: FieldValue.delete(), reservedAtMs: FieldValue.delete(), reservedExpiresAtMs: FieldValue.delete() }, { merge: true });
+        ? { redeemedAtMs: now, redeemedAt: new Date(now).toISOString(), lastRedeemedOrderId: orderId, reservedByOrderId: FieldValue.delete(), reservedCouponCode: FieldValue.delete(), reservedAtMs: FieldValue.delete() }
+        : { reservedByOrderId: FieldValue.delete(), reservedCouponCode: FieldValue.delete(), reservedAtMs: FieldValue.delete() }, { merge: true });
     });
   });
 }
