@@ -45,9 +45,9 @@ async function getSettings() {
   return {
     ...DEFAULT_SETTINGS,
     ...saved,
-    // Retired settings could have enabled coupled WhatsApp delivery. Keep it manual by default.
-    surveyWhatsAppAutomatic: false,
-    repurchaseWhatsAppAutomatic: false,
+    // Both WhatsApp image workflows stay manual unless an admin explicitly enables them.
+    surveyWhatsAppAutomatic: saved.surveyWhatsAppImageAutomatic === true,
+    repurchaseWhatsAppAutomatic: saved.repurchaseWhatsAppImageAutomatic === true,
     discountPercent: 5,
     couponValidityDays: 7,
   };
@@ -85,8 +85,10 @@ export async function savePostPurchaseSettings(input: any) {
   const data = {
     surveyEmailAutomatic: input?.surveyEmailAutomatic !== false,
     repurchaseEmailAutomatic: input?.repurchaseEmailAutomatic !== false,
-    surveyWhatsAppAutomatic: false,
-    repurchaseWhatsAppAutomatic: false,
+    surveyWhatsAppAutomatic: Boolean(process.env.EVOLUTION_API_URL && process.env.EVOLUTION_API_KEY && input?.surveyWhatsAppAutomatic === true),
+    repurchaseWhatsAppAutomatic: Boolean(process.env.EVOLUTION_API_URL && process.env.EVOLUTION_API_KEY && input?.repurchaseWhatsAppAutomatic === true),
+    surveyWhatsAppImageAutomatic: Boolean(process.env.EVOLUTION_API_URL && process.env.EVOLUTION_API_KEY && input?.surveyWhatsAppAutomatic === true),
+    repurchaseWhatsAppImageAutomatic: Boolean(process.env.EVOLUTION_API_URL && process.env.EVOLUTION_API_KEY && input?.repurchaseWhatsAppAutomatic === true),
     discountPercent: 5, couponValidityDays: 7,
     updatedAt: new Date().toISOString(),
   };
@@ -182,14 +184,18 @@ export async function preparePostPurchaseMessage(orderId: string, kind: 'survey'
   const order = { ...orderSnap.data(), id: orderSnap.id };
   const phone = phoneOf(order);
   if (phone.length < 10) throw new Error('Pedido sem telefone válido para WhatsApp.');
-  const message = kind === 'survey'
-    ? surveyMessage(clean(order.customer?.name || order.customerName || 'Cliente').split(' ')[0])
-    : repurchaseMessage(order, await issueCoupon(order));
+  const coupon = kind === 'repurchase' ? await issueCoupon(order) : undefined;
+  const name = clean(order.customer?.name || order.customerName || 'Cliente').split(' ')[0];
+  const message = kind === 'survey' ? surveyMessage(name) : repurchaseMessage(order, coupon);
+  const image = await renderEmailArtwork(kind, name, coupon);
+  const imageBase64 = image.toString('base64');
+  const imageFileName = `fpac-${kind}-${order.id}.png`;
+  const whatsappUrl = `https://wa.me/${phone.startsWith('55') ? phone : `55${phone}`}?text=${encodeURIComponent(message)}`;
   if (manual) {
     await orderRef.update(kind === 'survey' ? { postPurchaseSurveyManualPreparedAt: new Date().toISOString() } : { postPurchaseRepurchaseManualPreparedAt: new Date().toISOString() });
-    return { whatsappUrl: `https://wa.me/${phone.startsWith('55') ? phone : `55${phone}`}?text=${encodeURIComponent(message)}`, message };
+    return { whatsappUrl, message, imageBase64, imageFileName, imageMimeType: 'image/png' };
   }
-  const sent = await sendWhatsAppMessage(phone, 'custom_message', { customMessage: message, customerName: order.customerName, id: order.id });
+  const sent = await sendWhatsAppMessage(phone, 'custom_message', { customMessage: message, mediaBase64: imageBase64, mediaMimeType: 'image/png', mediaFileName: imageFileName, customerName: order.customerName, id: order.id });
   await orderRef.update(kind === 'survey'
     ? { postPurchaseSurveyStatus: sent ? 'sent' : 'failed', postPurchaseSurveySentAt: sent ? new Date().toISOString() : null }
     : { postPurchaseRepurchaseStatus: sent ? 'sent' : 'failed', postPurchaseRepurchaseSentAt: sent ? new Date().toISOString() : null });
