@@ -1,3 +1,6 @@
+import { preparationExpired } from '../../shared/checkoutPreparation.js';
+import * as storeService from './store.service.js';
+import { releaseRepurchaseCoupon } from './postPurchase.service.js';
 import crypto from 'node:crypto';
 import { getDb } from '../firebase.js';
 import { mpService } from './mp.service.js';
@@ -10,7 +13,24 @@ const pending = { pendingConfirmation: true, status: 'pending', message: 'Ainda 
 
 // The opaque key is both the retry identity and a guest capability. Only its hash
 // is stored. No card token or customer/contact payload is persisted in this record.
-export function createCheckoutAttempts(deps = { getDb, mpService, processPaymentUpdate }) {
+export function createCheckoutAttempts(deps: {
+  getDb: typeof getDb; mpService: any; processPaymentUpdate: any;
+  cleanupPreparation?: (orderId: string) => Promise<void>; now?: () => number;
+} = { getDb, mpService, processPaymentUpdate }) {
+  const now = deps.now || Date.now;
+  const cleanup = deps.cleanupPreparation || (async (orderId: string) => {
+    const db = deps.getDb();
+    const orderRef = db.collection('orders').doc(orderId), snap = await orderRef.get(), order = snap.data();
+    if (order && (order.paymentCreationUncertain || order.mercadoPagoId || order.payment_id || order.payment?.id ||
+      Number(order.payment?.paidAmount || order.amountPaid || 0) > 0)) throw new Error('Pagamento exige conciliação.');
+    // Also release a coupon reserved before the order/reservation was committed.
+    const coupons = await db.collection('post_purchase_coupons').where('reservedByOrderId', '==', orderId).get();
+    for (const coupon of coupons.docs) await releaseRepurchaseCoupon(coupon.data().code, orderId, false);
+    if (order) {
+      if (order.items?.length) await storeService.releaseStockReservation(orderId, order.items, `checkout_${orderId}_release_fail`);
+      await storeService.updateOrderPaymentSnapshot(orderId, 'rejected', { stockReverted: true, stockRevertedAcknowledged: true });
+    }
+  });
   const refFor = (key: string) => deps.getDb().collection('checkout_attempts').doc(digest(key));
   const assertOwner = (record: any, uid: string | null) => {
     if (record.userId !== uid) throw Object.assign(new Error('Tentativa não autorizada.'), { status: 403 });
@@ -18,14 +38,14 @@ export function createCheckoutAttempts(deps = { getDb, mpService, processPayment
   const claim = async (key: string, uid: string | null) => deps.getDb().runTransaction(async (tx: any) => {
     const ref = refFor(key), snap = await tx.get(ref);
     if (snap.exists) { assertOwner(snap.data(), uid); return { ...snap.data(), fresh: false }; }
-    const value = { orderId: `FPAC-${crypto.randomUUID()}`, userId: uid, phase: 'preparing', createdAt: new Date().toISOString() };
+    const value = { orderId: `FPAC-${crypto.randomUUID()}`, userId: uid, phase: 'preparing', createdAt: new Date(now()).toISOString() };
     tx.set(ref, value);
     return { ...value, fresh: true };
   });
   const submitted = async (key: string, orderId: string) => {
     await deps.getDb().runTransaction(async (tx: any) => {
       const attemptRef = refFor(key), snap = await tx.get(attemptRef);
-      if (!snap.exists || snap.data().phase !== 'preparing' || snap.data().orderId !== orderId) throw new Error('Tentativa inválida.');
+      if (!snap.exists || snap.data().phase !== 'preparing' || snap.data().orderId !== orderId || preparationExpired(snap.data(), now())) throw new Error('Tentativa inválida.');
       tx.update(attemptRef, { phase: 'submitted', submittedAt: new Date().toISOString() });
       tx.update(deps.getDb().collection('orders').doc(orderId), { paymentCreationUncertain: true });
     });
@@ -67,15 +87,34 @@ export function createCheckoutAttempts(deps = { getDb, mpService, processPayment
       } },
     };
   };
-  const resume = async (key: string, uid: string | null) => {
+  const recoverPreparation = async (ref: any, uid: string | null) => {
     const record = await deps.getDb().runTransaction(async (tx: any) => {
-      const ref = refFor(key), snap = await tx.get(ref);
-      if (snap.exists) { assertOwner(snap.data(), uid); return snap.data(); }
-      // Seal a missing attempt: a delayed initial request can no longer create a
-      // payment after the browser has been told it is safe to start again.
-      const closed = { userId: uid, phase: 'failed', createdAt: new Date().toISOString() };
-      tx.set(ref, closed); return closed;
+      const snap = await tx.get(ref);
+      if (!snap.exists) {
+        const closed = { userId: uid, phase: 'failed', createdAt: new Date(now()).toISOString() };
+        tx.set(ref, closed); return closed;
+      }
+      const value = snap.data(); assertOwner(value, uid);
+      if (value.phase !== 'preparing' || !preparationExpired(value, now())) return value;
+      const orderRef = deps.getDb().collection('orders').doc(value.orderId);
+      const orderSnap = await tx.get(orderRef), order = orderSnap.data();
+      if (order && (order.paymentCreationUncertain || order.mercadoPagoId || order.payment_id || order.payment?.id ||
+        Number(order.payment?.paidAmount || order.amountPaid || 0) > 0)) {
+        tx.update(ref, { phase: 'submitted' }); return { ...value, phase: 'submitted' };
+      }
+      tx.update(ref, { phase: 'expired_cleanup', expiredAt: new Date(now()).toISOString() });
+      return { ...value, phase: 'expired_cleanup' };
     });
+    if (!['expired_cleanup', 'rejected_cleanup'].includes(record.phase)) return record;
+    await cleanup(record.orderId);
+    await deps.getDb().runTransaction(async (tx: any) => {
+      const current = await tx.get(ref);
+      if (['expired_cleanup', 'rejected_cleanup'].includes(current.data()?.phase)) tx.update(ref, { phase: 'failed', closedAt: new Date(now()).toISOString() });
+    });
+    return { ...record, phase: 'failed' };
+  };
+  const resume = async (key: string, uid: string | null) => {
+    const record = await recoverPreparation(refFor(key), uid);
     if (record.phase === 'failed') return { safeToRetry: true, status: 'not_started', message: 'Nenhuma cobrança foi iniciada nesta tentativa. Você pode tentar novamente.' };
     if (['preparing', 'rejected_cleanup'].includes(record.phase)) return pending;
     const order = (await deps.getDb().collection('orders').doc(record.orderId).get()).data();
@@ -84,7 +123,7 @@ export function createCheckoutAttempts(deps = { getDb, mpService, processPayment
     if (!result) return { ...pending, external_reference: record.orderId, trackingAccessToken: checkoutTrackingToken(key) };
     return complete(key, result);
   };
-  return { claim, submitted, failBeforeSubmission, rejectSubmission, complete, resume };
+  return { claim, submitted, failBeforeSubmission, rejectSubmission, complete, resume, recoverPreparation };
 }
 
 export const checkoutAttempts = createCheckoutAttempts();

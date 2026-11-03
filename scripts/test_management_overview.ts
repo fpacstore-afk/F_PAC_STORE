@@ -53,6 +53,7 @@ const dashboard = {
 };
 const renderDashboard = (visible: boolean) => renderToStaticMarkup(createElement(MemoryRouter, null,
   createElement(ManagementDashboardView, {
+    cashRegister: createElement('section', { 'aria-label': 'Caixa da empresa' }, 'Caixa da empresa'),
     data: dashboard, period: '7d', onPeriodChange: () => {}, syncState: 'Atualizado',
     showFinancialValues: visible, productsCount: 1,
     formatMoney: amount => visible ? `R$ ${amount.toFixed(2).replace('.', ',')}` : 'R$ ••••••',
@@ -67,3 +68,6 @@ assert.match(visible, /Recebimento líquido por intervalo/);
 assert.match(visible, /-17\.7% vs período anterior/);
 
 console.log('PASS: dashboard comparisons, dated chart, receivables and financial privacy rendering.');
+
+assert.match(visible, /aria-label="Caixa da empresa"/);
+assert.match(hidden, /aria-label="Caixa da empresa"/);

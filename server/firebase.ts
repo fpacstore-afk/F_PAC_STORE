@@ -131,25 +131,36 @@ export function createInMemoryDb() {
 
   class MockQuery {
     private limitNum?: number;
+    private cursorId?: string;
     private ordering: { field: string; direction: string }[] = [];
     constructor(public colName: string, public conditions: Array<{ field: string; op: string; val: any }> = []) {}
 
     where(field: string, op: string, val: any) {
       const q = new MockQuery(this.colName, [...this.conditions, { field, op, val }]);
+      q.cursorId = this.cursorId;
       q.limitNum = this.limitNum; q.ordering = [...this.ordering];
       return q;
     }
 
     orderBy(field: string, direction = 'asc') {
       const q = new MockQuery(this.colName, this.conditions);
+      q.cursorId = this.cursorId;
       q.limitNum = this.limitNum; q.ordering = [...this.ordering, { field, direction }];
       return q;
     }
 
     limit(n: number) {
       const q = new MockQuery(this.colName, this.conditions);
+      q.cursorId = this.cursorId;
       q.limitNum = n;
       q.ordering = [...this.ordering];
+      return q;
+    }
+
+    startAfter(cursor: any) {
+      const q = new MockQuery(this.colName, this.conditions);
+      q.limitNum = this.limitNum; q.ordering = [...this.ordering];
+      q.cursorId = typeof cursor === 'string' ? cursor : cursor.id;
       return q;
     }
 
@@ -177,12 +188,13 @@ export function createInMemoryDb() {
       }
       if (this.ordering.length) docs.sort((a, b) => {
         for (const { field, direction } of this.ordering) {
-          const left = getPathValue(a.data(), field), right = getPathValue(b.data(), field);
+          const left = field === '__name__' ? a.id : getPathValue(a.data(), field), right = field === '__name__' ? b.id : getPathValue(b.data(), field);
           const comparison = left < right ? -1 : left > right ? 1 : 0;
           if (comparison) return direction === 'desc' ? -comparison : comparison;
         }
         return 0;
       });
+      if (this.cursorId) docs = docs.filter(doc => doc.id > this.cursorId!);
       if (this.limitNum !== undefined) {
         docs = docs.slice(0, this.limitNum);
       }

@@ -1,3 +1,5 @@
+import { scanMaintenancePages } from './maintenancePagination.js';
+import { checkoutAttempts } from './checkoutAttempts.service.js';
 import { FieldValue } from 'firebase-admin/firestore';
 import { getDb } from "../firebase.js";
 import * as storeService from "./store.service.js";
@@ -384,15 +386,21 @@ export async function processPaymentUpdate(orderId: string, paymentData: any) {
 }
 
 export async function reconcileUncertainPayments() {
-  const snapshot = await getDb().collection('orders').where('paymentCreationUncertain', '==', true).limit(25).get();
-  for (const doc of snapshot.docs) {
+  const db = getDb();
+  for (const phase of ['preparing', 'expired_cleanup', 'rejected_cleanup']) {
+    await scanMaintenancePages(db, `checkout_${phase}`, db.collection('checkout_attempts').where('phase', '==', phase), async doc => {
+      try { await checkoutAttempts.recoverPreparation(doc.ref, doc.data().userId || null); }
+      catch { logger.warn('[CHECKOUT-RECOVERY] Preparação aguarda recuperação', { orderId: doc.data().orderId }); }
+    });
+  }
+  await scanMaintenancePages(db, 'uncertain_payments', db.collection('orders').where('paymentCreationUncertain', '==', true), async doc => {
     try {
       const order = doc.data();
       const paymentId = order.mercadoPagoId || order.payment_id;
       const payment = paymentId ? await mpService.getPayment(String(paymentId)) : await mpService.findPaymentByOrder(doc.id);
       if (payment) await processPaymentUpdate(doc.id, payment);
     } catch { logger.warn('[PAYMENT-RECONCILE] Confirmação pendente', { orderId: doc.id }); }
-  }
+  });
 }
 
 export async function autoCancelUnpaidOrders() {
@@ -405,17 +413,7 @@ export async function autoCancelUnpaidOrders() {
 
     const pendingStatuses = ['received', 'Aguardando Pagamento PIX', 'payment_pending'];
 
-    const snapshot = await db.collection('orders')
-      .where('status', 'in', pendingStatuses)
-      .limit(50)
-      .get();
-
-    if (snapshot.empty) {
-      logger.info(`${loggerPrefix} Nenhum pedido pendente encontrado.`);
-      return;
-    }
-
-    for (const doc of snapshot.docs) {
+    await scanMaintenancePages(db, 'unpaid_orders', db.collection('orders').where('status', 'in', pendingStatuses), async doc => {
       const order = doc.data();
       const orderId = doc.id;
 
@@ -426,21 +424,21 @@ export async function autoCancelUnpaidOrders() {
       // reserva que nunca existiu em pedidos manuais legados.
       if (order.isManual === true || String(orderId).toUpperCase().startsWith('MANUAL-')) {
         logger.info(`${loggerPrefix} Pedido manual mantido para acompanhamento: ${orderId}`);
-        continue;
+        return;
       }
 
       // Age alone cannot disprove a successful provider charge. In particular a
       // timeout during creation must keep its reservation until reconciliation.
-      if (order.paymentCreationUncertain) continue;
+      if (order.paymentCreationUncertain) return;
       if (order.payment?.provider === 'mercadopago' || order.mercadoPagoId || order.payment_id) {
         try {
           const paymentId = order.mercadoPagoId || order.payment_id;
           const payment = paymentId ? await mpService.getPayment(String(paymentId)) : await mpService.findPaymentByOrder(orderId);
           if (payment) await processPaymentUpdate(orderId, payment);
         } catch { logger.warn('[PAYMENT-RECONCILE] Reserva mantida até confirmação', { orderId }); }
-        continue;
+        return;
       }
-      if (['approved', 'paid', 'partially_paid', 'processing'].includes(getOrderPaymentStatus(order)) || getOrderPaidAmount(order) > 0) continue;
+      if (['approved', 'paid', 'partially_paid', 'processing'].includes(getOrderPaymentStatus(order)) || getOrderPaidAmount(order) > 0) return;
 
       let createdAtMs = 0;
       if (order.createdAt) {
@@ -463,7 +461,7 @@ export async function autoCancelUnpaidOrders() {
           stockRevertedAcknowledged: true
         });
       }
-    }
+    });
   } catch (err: any) {
     if (err?.code === 8 || err?.message?.includes('RESOURCE_EXHAUSTED') || err?.message?.includes('Quota limit exceeded')) {
       logger.warn(`${loggerPrefix} ⚠️ Limite de cota do Firestore atingido. Varredura suspensa temporariamente até a renovação da cota.`);

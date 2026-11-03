@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { initializeTestEnvironment, assertFails, assertSucceeds } from '@firebase/rules-unit-testing';
-import { collection, doc, getDoc, getDocs, setDoc, runTransaction } from 'firebase/firestore';
+import { collection, doc, getDoc, getDocs, setDoc, updateDoc, runTransaction } from 'firebase/firestore';
 import { changeProductColorPresets, readProductColorPresets } from '../shared/productColorPresets';
 import { ref, uploadBytes, getMetadata, listAll } from 'firebase/storage';
 
@@ -28,6 +28,17 @@ try {
   }
   await assertSucceeds(getDoc(doc(manager, 'orders/customer-fixture')));
   console.log('Internal order costs remain admin-only, including for the buyer.');
+  await environment.withSecurityRulesDisabled(async context => {
+    await setDoc(doc(context.firestore(), 'reviews/owned-review'), { userId: 'customer', productId: 'shirt', name: 'Cliente',
+      rating: 5, comment: 'Ótima peça', verified: true, createdAt: '2026-11-03' });
+  });
+  await assertSucceeds(updateDoc(doc(customer, 'reviews/owned-review'), { rating: 4, comment: 'Novo comentário válido' }));
+  for (const invalid of [{ productId: 'another' }, { rating: 6 }, { rating: '5' }, { comment: 'x'.repeat(1001) },
+    { name: 'x'.repeat(201) }, { verified: false }, { userId: 'other' }, { createdAt: 'forged' }, { extraField: 'injected' }]) {
+    await assertFails(updateDoc(doc(customer, 'reviews/owned-review'), invalid));
+  }
+  await assertFails(updateDoc(doc(unverified, 'reviews/owned-review'), { comment: 'Not mine' }));
+  console.log('Owner review edits revalidate content and preserve product, verification, author and timestamps.');
   const customerProfile = doc(customer, 'users/customer');
   for (const field of ['password', 'token', 'role', 'isAdmin', 'admin']) {
     await assertFails(setDoc(customerProfile, { name:'Fixture', [field]:'forged' }));

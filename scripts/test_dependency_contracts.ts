@@ -69,3 +69,23 @@ try {
   else process.env.MERCADO_PAGO_ACCESS_TOKEN = originalToken;
 }
 console.log('PASS Firebase modular SDK, gaxios multipart/uuid and Mercado Pago transport contracts');
+
+// The production glob override must retain rimraf's asynchronous pattern API.
+const { mkdtemp, writeFile, access, rm } = await import('node:fs/promises');
+const { tmpdir } = await import('node:os');
+const { join } = await import('node:path');
+const tempDirectory = await mkdtemp(join(tmpdir(), 'fpac-dependency-contract-'));
+try {
+  await writeFile(join(tempDirectory, 'remove.tmp'), 'fixture');
+  await writeFile(join(tempDirectory, 'keep.txt'), 'fixture');
+  const rimrafRequire = createRequire(require.resolve('rimraf'));
+  const { glob } = rimrafRequire('glob');
+  const { rimraf } = require('rimraf');
+  assert.deepEqual(await glob('*.tmp', { cwd: tempDirectory }), ['remove.tmp']);
+  const abort = new AbortController(); abort.abort();
+  await assert.rejects(() => glob('**/*', { cwd: tempDirectory, signal: abort.signal }), /abort/i);
+  await rimraf(join(tempDirectory, '*.tmp'), { glob: true });
+  await assert.rejects(() => access(join(tempDirectory, 'remove.tmp')));
+  await access(join(tempDirectory, 'keep.txt'));
+} finally { await rm(tempDirectory, { recursive: true, force: true }); }
+console.log('Patched production glob honors aborts and preserves rimraf cleanup behavior.');

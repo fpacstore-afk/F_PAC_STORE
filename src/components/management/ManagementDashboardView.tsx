@@ -110,7 +110,7 @@ function ReceiptChart({ rows, visible, formatMoney }: { rows: ReceiptBucket[]; v
   </div>;
 }
 
-export function ManagementDashboardView({ data, period, onPeriodChange, syncState, showFinancialValues, formatMoney, formatPercent, productsCount }: {
+export function ManagementDashboardView({ data, period, onPeriodChange, syncState, showFinancialValues, formatMoney, formatPercent, productsCount, cashRegister }: {
   data: DashboardData;
   period: PeriodKey;
   onPeriodChange: (period: PeriodKey) => void;
@@ -119,6 +119,7 @@ export function ManagementDashboardView({ data, period, onPeriodChange, syncStat
   formatMoney: (value: number) => string;
   formatPercent: (value: number) => string;
   productsCount: number;
+  cashRegister?: React.ReactNode;
 }) {
   const resultReady = data.dre.cogsEstimatedOrders === 0 && data.dre.giftUnknownUnits === 0;
   const expenseParts = [
@@ -139,6 +140,8 @@ export function ManagementDashboardView({ data, period, onPeriodChange, syncStat
       <div><div className="text-xs font-black uppercase tracking-[0.18em] text-[#f5be1b]">Painel do proprietário</div><h2 className="mt-2 text-2xl md:text-4xl font-black tracking-tight">Seu negócio em um olhar</h2><p className="mt-2 text-sm text-white/65">{rangeText} · Pedidos, caixa e operação em um só lugar.</p><div className="mt-4 inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-1.5 text-xs text-white/75"><RefreshCw size={13} />{syncState}</div></div>
       <div className="flex flex-wrap gap-2" role="group" aria-label="Período do dashboard">{periods.map(item => <button key={item.key} type="button" aria-pressed={period === item.key} onClick={() => onPeriodChange(item.key)} className={`rounded-full px-4 py-2 text-xs font-bold transition-colors ${period === item.key ? 'bg-[#f5be1b] text-black' : 'bg-white/10 text-white hover:bg-white/20'}`}>{item.label}</button>)}</div>
     </header>
+
+    {cashRegister}
 
     <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
       <Kpi featured icon={CircleDollarSign} label="Recebido líquido" value={formatMoney(data.receipts.netReceived)} delta={changeLabel(data.receiptsChange)} deltaNegative={data.receiptsChange !== null && data.receiptsChange < 0} helper={period === 'all' ? 'Total dos pagamentos menos estornos, inclusive registros sem data. O gráfico cobre os últimos 12 meses datados.' : 'Pagamentos menos estornos na data registrada. Inclui recebimentos de pedidos antigos.'} />

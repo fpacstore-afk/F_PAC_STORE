@@ -1,3 +1,4 @@
+import { WebhookSignatureValidator } from 'mercadopago';
 import { Request, Response } from 'express';
 import crypto from 'crypto';
 import { getDb } from '../firebase.js';
@@ -5,8 +6,12 @@ import { mpService } from '../services/mp.service.js';
 import { logger } from '../utils/logger.js';
 
 export async function handleWebhook(req: Request, res: Response) {
-  const paymentId = req.query.id || req.body.data?.id;
-  const type = req.query.topic || req.body.type || req.body.action;
+  const rawId = req.query['data.id'] ?? req.query.id ?? req.body?.data?.id;
+  const paymentId = typeof rawId === 'number' && Number.isSafeInteger(rawId) ? String(rawId) : rawId;
+  if (paymentId != null && (typeof paymentId !== 'string' || !/^[a-zA-Z0-9_-]{1,128}$/.test(paymentId))) {
+    return res.status(400).send('Invalid notification identifier');
+  }
+  const type = req.query.topic || req.query.type || req.body?.type || req.body?.action;
 
   logger.info(`🔔 [WEBHOOK] START - Type: ${type}, ID: ${paymentId}`);
 
@@ -24,43 +29,16 @@ export async function handleWebhook(req: Request, res: Response) {
     return res.status(500).send("Server Configuration Error - Webhook secret not configured");
   }
 
-  if (!xSignature || !xRequestId) {
+  if (typeof xSignature !== 'string' || typeof xRequestId !== 'string' || !xSignature || !xRequestId) {
     logger.warn(`⚠️ [WEBHOOK-BLOCKED] Webhook sem cabeçalhos de assinatura obrigatórios (x-signature/x-request-id) para o pagamento ${paymentId}`);
     return res.status(401).send("Unauthorized - Signature headers missing");
   }
 
   try {
-    const parts = xSignature.split(',');
-    const tsPart = parts.find(p => p.startsWith('ts='));
-    const v1Part = parts.find(p => p.startsWith('v1='));
-    
-    if (!tsPart || !v1Part) {
-      logger.warn(`⚠️ [WEBHOOK-BLOCKED] Formato de assinatura inválido para pagamento ${paymentId}`);
-      return res.status(401).send("Unauthorized - Invalid signature format");
-    }
-
-    const ts = tsPart.split('=')[1];
-    const v1 = v1Part.split('=')[1];
-
-    // Proteção contra Replay Attack (valida janela máxima de 10 minutos)
-    const reqTimestamp = parseInt(ts, 10);
-    const currentTimestamp = Math.floor(Date.now() / 1000);
-    if (isNaN(reqTimestamp) || Math.abs(currentTimestamp - reqTimestamp) > 600) {
-      logger.warn(`⚠️ [WEBHOOK-BLOCKED] Replay attack detectado. Assinatura antiga expirada (${ts}) para pagamento ${paymentId}`);
-      return res.status(401).send("Unauthorized - Stale timestamp");
-    }
-
-    const manifest = `id:${paymentId};request-id:${xRequestId};ts:${ts};`;
-    const calculatedHash = crypto.createHmac('sha256', secret).update(manifest).digest('hex');
-    const expected = Buffer.from(calculatedHash, 'hex');
-    const received = Buffer.from(v1, 'hex');
-    const signatureMatches = expected.length === received.length && crypto.timingSafeEqual(expected, received);
-    
-    if (!signatureMatches) {
-      logger.warn(`⚠️ [WEBHOOK-BLOCKED] ASSINATURA INVÁLIDA para pagamento ${paymentId}`);
-      return res.status(401).send("Unauthorized - Signature mismatch");
-    }
-
+    WebhookSignatureValidator.validate({
+      xSignature, xRequestId, dataId: paymentId, secret,
+      toleranceSeconds: 600,
+    });
     logger.info(`✅ [WEBHOOK] Assinatura HMAC verificada com sucesso para pagamento ${paymentId}`);
   } catch (err: any) {
     logger.error("❌ [WEBHOOK-SIGNATURE-ERR] Exceção durante verificação de assinatura:", err.message);
@@ -99,7 +77,7 @@ export async function handleWebhook(req: Request, res: Response) {
     type === 'payment' || 
     type === 'payment.updated' || 
     type === 'payment.created' || 
-    (typeof req.body.action === 'string' && req.body.action.startsWith('payment'));
+    (typeof req.body?.action === 'string' && req.body.action.startsWith('payment'));
 
   if (isPaymentUpdate) {
     logger.info(`🎯 [WEBHOOK] Processando atualização de pagamento - ID: ${paymentId}, Type: ${type}`);
