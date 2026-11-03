@@ -138,6 +138,15 @@ export default function ProductDetail() {
     const { name, id, slug: baseSlug, price, images, ...physical } = option;
     return { ...catalogProduct, ...physical, id: catalogProduct.id, slug: catalogProduct.slug, name: catalogProduct.name, price: catalogProduct.price, images: catalogProduct.images, parentSlug: undefined, stockBaseSlug: baseSlug || id, stockAvailabilitySlug: baseSlug || id, modelClassificationPending: false };
   }, [catalogProduct, chosenGarmentId]);
+  const needsModelSelection = Boolean(product?.modelClassificationPending && catalogProduct?.garmentOptions?.length);
+  const pendingModelMessage = needsModelSelection
+    ? 'Selecione o modelo acima para conferir as medidas, as cores e o estoque desta peça.'
+    : 'Este modelo está em conferência. Fale com a F PAC para confirmar a disponibilidade.';
+  useEffect(() => {
+    if (!chosenGarmentId && catalogProduct?.garmentOptions?.length === 1) {
+      setChosenGarmentId(catalogProduct.garmentOptions[0].garmentModelId);
+    }
+  }, [catalogProduct?.garmentOptions, chosenGarmentId]);
   const [loading, setLoading] = useState(!initialProduct);
   const [catalogError, setCatalogError] = useState(false);
 
@@ -586,7 +595,7 @@ export default function ProductDetail() {
     : 0;
 
   const isFullyAvailable = product
-    ? isProductOutOfStock
+    ? product.modelClassificationPending || isProductOutOfStock
       ? false
       : currentVariantKey
         ? isAvailable(product.stockAvailabilitySlug || product.slug, currentVariantKey, product.parentSlug) &&
@@ -1335,7 +1344,7 @@ export default function ProductDetail() {
               <div className="space-y-4 pt-4 border-t border-black/[0.04]">
 
                 <GarmentModelSelector options={catalogProduct?.garmentOptions || []} selected={chosenGarmentId} onChange={id => { setChosenGarmentId(id); setSelectedColor(''); setSelectedSize(''); }} />
-                {product.modelClassificationPending && <p className="mb-4 rounded-lg bg-amber-50 p-3 text-xs text-amber-950">Modelos em conferência. A disponibilidade será liberada após a separação das peças.</p>}
+                {product.modelClassificationPending && <p className="mb-4 rounded-lg bg-amber-50 p-3 text-xs text-amber-950">{pendingModelMessage}</p>}
                 {/* 1. Cores */}
                 <div className="space-y-1.5">
                   <span className="text-[8px] text-zinc-400 font-extrabold tracking-widest uppercase block font-mono">
@@ -1488,7 +1497,7 @@ export default function ProductDetail() {
         </div>
 
         {/* Render standard modals & charts */}
-        <SizeChart specific={product.sizeChartMode === 'specific'} model={getProductVisualKind(product)} customData={product.sizeChart} availableSizes={product.sizes} />
+        {needsModelSelection ? <section id="guia-de-medidas" className="rounded-xl border border-amber-200 bg-amber-50 p-5 text-sm">Escolha o modelo da peça para ver a tabela de medidas correspondente.</section> : <SizeChart specific={product.sizeChartMode === 'specific'} model={getProductVisualKind(product)} customData={product.sizeChart} availableSizes={product.sizes} />}
         <AnimatePresence>
           {showPrimeConfirmation && (
             <motion.div
@@ -1939,6 +1948,7 @@ export default function ProductDetail() {
           color={selectedColor}
           size={selectedSize}
           available={isFullyAvailable}
+          optionPrompt={needsModelSelection ? 'Escolher modelo' : undefined}
           onBuy={() => handleAddToCart(false, 'checkout')}
           onChooseOptions={() => {
             const selector = !selectedColor ? 'button[id^="color-btn-"]:not(:disabled)' : 'button[id^="size-btn-"]:not(:disabled)';
@@ -2168,7 +2178,7 @@ export default function ProductDetail() {
 
               {/* Colors Select Row */}
               <GarmentModelSelector options={catalogProduct?.garmentOptions || []} selected={chosenGarmentId} onChange={id => { setChosenGarmentId(id); setSelectedColor(''); setSelectedSize(''); }} />
-                {product.modelClassificationPending && <p className="mb-4 rounded-lg bg-amber-50 p-3 text-xs text-amber-950">Modelos em conferência. A disponibilidade será liberada após a separação das peças.</p>}
+                {product.modelClassificationPending && <p className="mb-4 rounded-lg bg-amber-50 p-3 text-xs text-amber-950">{pendingModelMessage}</p>}
                 <div className="space-y-3">
                 <h3 className="text-xs font-black uppercase tracking-widest text-[#eab308] font-mono">
                   1. Escolha a Cor
@@ -2833,7 +2843,12 @@ export default function ProductDetail() {
               </div>
 
               {/* Cart CTA Triggers - Dual Buttons */}
-              {isFullyAvailable ? (
+              {product.modelClassificationPending ? (
+                <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
+                  <p className="text-sm">{pendingModelMessage}</p>
+                  {needsModelSelection && <button type="button" onClick={() => document.getElementById('garment-model-selector')?.scrollIntoView({ behavior: 'smooth', block: 'center' })} className="mt-3 rounded-lg bg-black px-4 py-3 text-sm font-bold text-white">Escolher modelo da peça</button>}
+                </div>
+              ) : isFullyAvailable ? (
                 <div className="flex flex-col sm:flex-row gap-3">
                   <button
                     id="btn-add-to-bag"
@@ -2947,7 +2962,7 @@ export default function ProductDetail() {
                       TECIDO / COMPOSIÇÃO
                     </span>
                     <span className="text-[11px] font-extrabold text-zinc-950 uppercase mt-0.5 block">
-                      {product.fabric || "COMPOSIÇÃO EM CONFERÊNCIA"}
+                      {needsModelSelection ? "SELECIONE O MODELO" : product.fabric || "COMPOSIÇÃO EM CONFERÊNCIA"}
                     </span>
                   </div>
 
@@ -2956,7 +2971,7 @@ export default function ProductDetail() {
                       GRAMATURA
                     </span>
                     <span className="text-[11px] font-extrabold text-zinc-950 uppercase mt-0.5 block">
-                      {product.gsm || "GRAMATURA EM CONFERÊNCIA"}
+                      {needsModelSelection ? "SELECIONE O MODELO" : product.gsm || "GRAMATURA EM CONFERÊNCIA"}
                     </span>
                   </div>
 
@@ -3435,7 +3450,7 @@ export default function ProductDetail() {
         </div>
       </div>
 
-      <SizeChart specific={product.sizeChartMode === 'specific'} model={getProductVisualKind(product)} customData={product.sizeChart} availableSizes={product.sizes} />
+      {needsModelSelection ? <section id="guia-de-medidas" className="rounded-xl border border-amber-200 bg-amber-50 p-5 text-sm">Escolha o modelo da peça para ver a tabela de medidas correspondente.</section> : <SizeChart specific={product.sizeChartMode === 'specific'} model={getProductVisualKind(product)} customData={product.sizeChart} availableSizes={product.sizes} />}
 
       <AnimatePresence>
         {showPrimeConfirmation && (

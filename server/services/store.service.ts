@@ -1,3 +1,4 @@
+import { preparationExpired } from '../../shared/checkoutPreparation.js';
 import { allocateGarments, resolveItemGarmentBase, resolveGarmentBase, resolveManualGarmentBase, stockSlug } from '../../shared/sharedGarmentStock.js';
 import { FieldValue } from 'firebase-admin/firestore';
 import { getDb } from "../firebase.js";
@@ -196,12 +197,18 @@ function buildUpdatedInventory(data: any, physicalSlug: string, variantKey: stri
 /**
  * Reserves stock for pending / newly created order.
  */
-export async function reserveStock(orderId: string, items: any[], idempotencyKey?: string, orderData?: any) {
+export async function reserveStock(orderId: string, items: any[], idempotencyKey?: string, orderData?: any, checkoutGuard?: { attemptId: string }) {
   const db = getDb();
   const effectiveIdempotencyKey = idempotencyKey || `reserve_order_${orderId}`;
   return db.runTransaction(async (transaction) => {
     const duplicate = await isIdempotentDuplicate(transaction, db, effectiveIdempotencyKey);
     if (duplicate) return { success: true, idempotent: true };
+
+    if (checkoutGuard) {
+      const attempt = await transaction.get(db.collection('checkout_attempts').doc(checkoutGuard.attemptId));
+      if (!attempt.exists || attempt.data()?.phase !== 'preparing' || attempt.data()?.orderId !== orderId ||
+          preparationExpired(attempt.data())) throw new Error('A preparação desta compra expirou. Revise a sacola e tente novamente.');
+    }
 
     const orderRef = db.collection('orders').doc(orderId);
     if (orderData) {

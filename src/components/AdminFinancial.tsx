@@ -1,3 +1,4 @@
+import { useSearchParams } from 'react-router-dom';
 import { CompanyCashRegister } from './admin/financial/CompanyCashRegister';
 import { isAdminIdentity } from '../../shared/adminIdentity';
 import { companyMovements, companyMovementExportId } from '../../shared/companyMovements';
@@ -127,6 +128,8 @@ export interface AdminFinancialProps {
 
 export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }: AdminFinancialProps = {}) {
   const { formatMoney, formatPercent, maskFinancial, showFinancialValues } = useFinancialPrivacy();
+  const [entryParams] = useSearchParams();
+  const requestedEntry = entryParams.get('entry');
   const { user, loading: authLoading } = useAuth();
   const isDevBypass = import.meta.env.DEV && localStorage.getItem('admin_bypass') === 'true';
   const isAdmin = isAdminIdentity(user) || isDevBypass;
@@ -216,6 +219,11 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
   const [cfForm, setCfForm] = useState({ description: '', amount: '', type: 'in' as 'in' | 'out', category: 'Outros', date: financialDateKey(new Date()) || '' });
   const [cfDescriptionOption, setCfDescriptionOption] = useState('');
   const [savingCashflow, setSavingCashflow] = useState(false);
+  useEffect(() => {
+    if (!['withdrawal', 'prolabore'].includes(requestedEntry || '')) return;
+    setCfForm({ description: requestedEntry === 'withdrawal' ? 'Retirada pessoal do proprietário' : 'Retirada pró-labore',
+      amount: '', type: 'out', category: requestedEntry === 'withdrawal' ? 'Retirada Pessoal' : 'Retirada', date: financialDateKey(new Date()) || '' });
+  }, [requestedEntry]);
   const isCreatingOwnerWithdrawal = cfForm.type === 'out' && cfForm.category === 'Retirada Pessoal';
   const [trafficForm, setTrafficForm] = useState({ campaignName: '', amountSpent: '', clicks: '', conversions: '', date: new Date().toISOString().split('T')[0] });
 

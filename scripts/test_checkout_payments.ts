@@ -19,7 +19,7 @@ function assert(condition: unknown, message: string): asserts condition {
 // Webhook security + replay/idempotency guarantees.
 assert(webhook.includes("MERCADO_PAGO_WEBHOOK_SECRET"), 'webhook secret must be mandatory');
 assert(webhook.includes("x-signature") && webhook.includes("x-request-id"), 'signature headers must be required');
-assert(webhook.includes("timingSafeEqual"), 'HMAC comparison must use timing-safe equality');
+assert(webhook.includes("WebhookSignatureValidator.validate"), 'use the official constant-time SDK signature validator');
 assert(webhook.includes("createHash('sha256')") && webhook.includes("String(paymentId)}:${xRequestId}"), 'idempotency key must be event-scoped, not payment-scoped');
 assert(webhook.includes("processingStatus === 'completed'"), 'completed webhook events must short-circuit retries');
 assert(webhook.includes("processingStatus: 'completed'"), 'successful webhook processing must persist completion marker');
@@ -33,7 +33,7 @@ assert(checkout.includes('IDEMP-${orderId}'), 'Mercado Pago charge must use an i
 assert(payment.includes('Payment amount mismatch for order'), 'approved payments must match the server order total');
 assert(payment.includes('Payment identity mismatch for order'), 'approved orders must reject a different provider payment id');
 // Order creation and stock reservation must be one Firestore transaction.
-assert(/canonicalOrder\s*\);/.test(checkout) && !checkout.includes('createOrder(orderId, canonicalOrder)'), 'checkout must not persist an order before its stock reservation');
+assert(/canonicalOrder,\s*\{ attemptId: checkoutAttemptId\(key\) \}\s*\);/.test(checkout) && !checkout.includes('createOrder(orderId, canonicalOrder)'), 'checkout must not persist an order before its stock reservation');
 assert(store.includes('orderData?: any') && store.includes('transaction.set(orderRef'), 'reserveStock must support atomic order creation inside its transaction');
 
 // A failed Mercado Pago charge must never acknowledge stock release before release succeeds.

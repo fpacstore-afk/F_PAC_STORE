@@ -312,6 +312,13 @@ service cloud.firestore {
                     (isSignedIn() &&
                      'userId' in resource.data &&
                      resource.data.userId == request.auth.uid &&
+                     request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name', 'rating', 'comment', 'styleInfo']) &&
+                     request.resource.data.productId == resource.data.productId &&
+                     request.resource.data.name is string && request.resource.data.name.size() <= 200 &&
+                     request.resource.data.rating is number && request.resource.data.rating >= 1 && request.resource.data.rating <= 5 &&
+                     request.resource.data.comment is string && request.resource.data.comment.size() <= 1000 &&
+                     (!('styleInfo' in request.resource.data) || request.resource.data.styleInfo == null ||
+                       (request.resource.data.styleInfo is string && request.resource.data.styleInfo.size() <= 100)) &&
                      request.resource.data.userId == resource.data.userId &&
                      request.resource.data.verified == resource.data.verified);
       allow delete: if isAdmin() ||

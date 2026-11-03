@@ -1,3 +1,5 @@
+import { useNavigate } from 'react-router-dom';
+import { CompanyCashRegister } from '../admin/financial/CompanyCashRegister';
 import { buildCustomerIdentities, loyaltyPaidValue } from '../../../shared/customerPurchases';
 import { giftReportRows, summarizeGiftRows } from '../../../shared/giftReporting';
 import { useEffect, useMemo, useState } from 'react';
@@ -59,6 +61,7 @@ function sessionOrigin(session: AnyDoc) {
 
 
 export default function ManagementDashboard() {
+  const navigate = useNavigate();
   const { formatMoney, formatPercent, showFinancialValues } = useFinancialPrivacy();
   const [period, setPeriod] = useState<PeriodKey>('30d');
   const [orders, setOrders] = useState<AnyDoc[]>([]);
@@ -304,10 +307,18 @@ export default function ManagementDashboard() {
     };
   }, [orders, sessions, inventory, products, cashflow, investments, trafficRecords, payables, period]);
 
+  const cashRevision = useMemo(() => ({}), [orders, cashflow, investments, trafficRecords, payables]);
+
   if (loadError) return <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-5 text-sm text-red-900"><p>{loadError}</p><button type="button" onClick={() => setReloadKey(key => key + 1)} className="mt-3 rounded-lg bg-black px-4 py-2 text-white">Tentar novamente</button></div>;
   if (loading) return <p role="status" className="p-5 text-sm">Carregando os dados para calcular os indicadores...</p>;
 
   return <ManagementDashboardView
+    cashRegister={<CompanyCashRegister revisionKey={cashRevision}
+      onMovement={() => navigate('/gestao?tab=financial&finance=cashflow')}
+      onWithdrawal={() => navigate('/gestao?tab=financial&finance=cashflow&entry=withdrawal')}
+      onProLabore={() => navigate('/gestao?tab=financial&finance=cashflow&entry=prolabore')}
+      onPayables={() => navigate('/gestao?tab=financial&finance=payables')}
+    />}
     data={data}
     period={period}
     onPeriodChange={setPeriod}

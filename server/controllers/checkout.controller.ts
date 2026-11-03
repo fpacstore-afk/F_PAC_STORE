@@ -1,3 +1,4 @@
+import { checkoutAttemptId } from '../../shared/checkoutPreparation.js';
 import { isDefinitivePaymentRefusal } from '../../shared/paymentSubmissionError.js';
 import { Request, Response } from 'express';
 import { mpService } from '../services/mp.service.js';
@@ -216,7 +217,8 @@ async function processPayment(req: Request, res: Response) {
       orderId,
       verifiedItems,
       `checkout_${orderId}_reserve`,
-      canonicalOrder
+      canonicalOrder,
+      { attemptId: checkoutAttemptId(key) }
     );
     reservedItems = verifiedItems;
 
