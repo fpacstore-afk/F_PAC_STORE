@@ -1,6 +1,9 @@
 import { createHash, randomBytes } from 'crypto';
+import { readFile } from 'node:fs/promises';
+import path from 'node:path';
 import { FieldValue } from 'firebase-admin/firestore';
 import { Resend } from 'resend';
+import sharp from 'sharp';
 import { getDb } from '../firebase.js';
 import { sendWhatsAppMessage } from './automation.service.js';
 
@@ -110,11 +113,35 @@ async function issueCoupon(order: any) {
   });
 }
 
-const surveyMessage = (name: string) => `Oi, ${name}! Como foi sua experiência com a F PAC STORE?\n\n1) Produto: nota de 1 a 5\n2) Atendimento: nota de 1 a 5\n3) Teve dificuldade para comprar? (não/sim — qual?)\n\nObrigado por ajudar a gente a melhorar!`;
+const surveyMessage = (name: string) => `Oi, ${name}! Queremos saber como foi sua experiência com a F PAC STORE.\n\nVocê responde em menos de 1 minuto:\n1) Se já recebeu a peça, que nota dá ao produto? (1 a 5)\n2) Que nota dá ao nosso atendimento? (1 a 5)\n3) Foi fácil concluir a compra no site? (sim/não)\n\nPode responder assim: Produto 5 | Atendimento 5 | Compra: sim.\nSe ainda não recebeu o pedido, pode responder depois. Obrigado por vestir F PAC!`;
 
 function repurchaseMessage(order: any, coupon: any) {
   const name = clean(order.customer?.name || order.customerName || 'Cliente').split(' ')[0];
-  return `Oi, ${name}! Você ganhou +5% de desconto para sua próxima compra, acumulável com cupons ativos.\n\nCupom: ${coupon.code}\nVálido por 7 dias, até ${new Date(coupon.expiresAt).toLocaleDateString('pt-BR')}. Uso limitado a 1 vez a cada 6 meses por cliente.\n\nAcesse: https://www.fpacstore.com.br/`;
+  return `Oi, ${name}! Preparamos um bônus especial para sua próxima compra na F PAC STORE.\n\nVocê ganhou +5% adicional, somado aos cupons ativos.\n\nSeu cupom: ${coupon.code}\nVálido por 7 dias, até ${new Date(coupon.expiresAt).toLocaleDateString('pt-BR')}.\n\nAcesse o site: https://www.fpacstore.com.br/`;
+}
+
+const BRAND_LOGO_FILE = path.resolve(process.cwd(), 'public/estampas/logo-fpac.png');
+let logoBase64Promise: Promise<string> | undefined;
+async function brandLogoBase64() {
+  logoBase64Promise ||= readFile(BRAND_LOGO_FILE).then(file => file.toString('base64')).catch(() => '');
+  return logoBase64Promise;
+}
+
+function emailArtworkSvg(kind: 'survey' | 'repurchase', name: string, coupon?: any, logoBase64 = '') {
+  const safeName = escapeHtml(name);
+  const logo = logoBase64
+    ? `<image x="490" y="48" width="220" height="220" href="data:image/png;base64,${logoBase64}" preserveAspectRatio="xMidYMid meet"/>`
+    : `<text x="600" y="160" text-anchor="middle" fill="#eab308" font-family="Arial,sans-serif" font-size="72" font-weight="900" font-style="italic">F PAC</text><text x="600" y="205" text-anchor="middle" fill="#ffffff" font-family="Arial,sans-serif" font-size="24" letter-spacing="12">STORE</text>`;
+  const header = `<rect width="1200" height="390" fill="#090909"/><rect y="382" width="1200" height="8" fill="#eab308"/>${logo}<text x="600" y="318" text-anchor="middle" fill="#eab308" font-family="Arial,sans-serif" font-size="22" font-weight="700" letter-spacing="5">NÃO É SÓ ROUPA. É IDENTIDADE.</text>`;
+  if (kind === 'survey') return `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="1600" viewBox="0 0 1200 1600"><rect width="1200" height="1600" fill="#f4f2ec"/>${header}<text x="600" y="486" text-anchor="middle" fill="#151515" font-family="Arial,sans-serif" font-size="52" font-weight="900">SUA EXPERIÊNCIA</text><text x="600" y="550" text-anchor="middle" fill="#9a7200" font-family="Arial,sans-serif" font-size="52" font-weight="900">FAZ DIFERENÇA</text><text x="600" y="615" text-anchor="middle" fill="#333333" font-family="Arial,sans-serif" font-size="28">Oi, ${safeName}! Conta pra gente como foi.</text><text x="600" y="664" text-anchor="middle" fill="#666666" font-family="Arial,sans-serif" font-size="22">São só 3 respostas rápidas — menos de 1 minuto.</text><rect x="90" y="720" width="1020" height="610" rx="30" fill="#ffffff"/><circle cx="160" cy="808" r="34" fill="#eab308"/><text x="160" y="819" text-anchor="middle" fill="#090909" font-family="Arial,sans-serif" font-size="30" font-weight="900">1</text><text x="220" y="800" fill="#111111" font-family="Arial,sans-serif" font-size="28" font-weight="700">Se já recebeu a peça, que nota dá ao produto?</text><text x="220" y="844" fill="#666666" font-family="Arial,sans-serif" font-size="22">1 = não gostei · 5 = gostei muito</text><rect x="220" y="865" width="740" height="2" fill="#eeeeea"/><circle cx="160" cy="980" r="34" fill="#eab308"/><text x="160" y="991" text-anchor="middle" fill="#090909" font-family="Arial,sans-serif" font-size="30" font-weight="900">2</text><text x="220" y="972" fill="#111111" font-family="Arial,sans-serif" font-size="28" font-weight="700">Como avalia o nosso atendimento?</text><text x="220" y="1016" fill="#666666" font-family="Arial,sans-serif" font-size="22">Dê uma nota de 1 a 5</text><rect x="220" y="1037" width="740" height="2" fill="#eeeeea"/><circle cx="160" cy="1150" r="34" fill="#eab308"/><text x="160" y="1161" text-anchor="middle" fill="#090909" font-family="Arial,sans-serif" font-size="30" font-weight="900">3</text><text x="220" y="1142" fill="#111111" font-family="Arial,sans-serif" font-size="28" font-weight="700">Foi fácil concluir sua compra no site?</text><text x="220" y="1186" fill="#666666" font-family="Arial,sans-serif" font-size="22">Responda: sim ou não</text><rect x="90" y="1370" width="1020" height="150" rx="26" fill="#090909"/><text x="600" y="1430" text-anchor="middle" fill="#eab308" font-family="Arial,sans-serif" font-size="28" font-weight="900" letter-spacing="2">TOQUE AQUI PARA RESPONDER</text><text x="600" y="1476" text-anchor="middle" fill="#ffffff" font-family="Arial,sans-serif" font-size="22">Exemplo: Produto 5 | Atendimento 5 | Compra: sim</text><text x="600" y="1550" text-anchor="middle" fill="#777777" font-family="Arial,sans-serif" font-size="17">Mensagem enviada após seu aceite no checkout.</text></svg>`;
+  const expires = coupon ? new Date(coupon.expiresAt).toLocaleDateString('pt-BR') : '';
+  const code = escapeHtml(String(coupon?.code || ''));
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="1500" viewBox="0 0 1200 1500"><rect width="1200" height="1500" fill="#f4f2ec"/>${header}<text x="600" y="500" text-anchor="middle" fill="#111111" font-family="Arial,sans-serif" font-size="48" font-weight="900">UM PRESENTE</text><text x="600" y="562" text-anchor="middle" fill="#9a7200" font-family="Arial,sans-serif" font-size="48" font-weight="900">PARA SEU PRÓXIMO LOOK</text><text x="600" y="625" text-anchor="middle" fill="#444444" font-family="Arial,sans-serif" font-size="26">Oi, ${safeName}! Guardamos um bônus especial pra você.</text><rect x="90" y="700" width="1020" height="570" rx="32" fill="#ffffff"/><text x="600" y="790" text-anchor="middle" fill="#555555" font-family="Arial,sans-serif" font-size="24" font-weight="700" letter-spacing="3">SEU BÔNUS DE RECOMPRA</text><text x="600" y="900" text-anchor="middle" fill="#111111" font-family="Arial,sans-serif" font-size="106" font-weight="900">+5%</text><text x="600" y="950" text-anchor="middle" fill="#444444" font-family="Arial,sans-serif" font-size="25">ADICIONAL, SOMADO AOS CUPONS ATIVOS</text><rect x="185" y="1000" width="830" height="125" rx="18" fill="#090909"/><text x="600" y="1080" text-anchor="middle" fill="#eab308" font-family="Arial,sans-serif" font-size="54" font-weight="900" letter-spacing="4">${code}</text><text x="600" y="1185" text-anchor="middle" fill="#555555" font-family="Arial,sans-serif" font-size="23">Válido por 7 dias — até ${escapeHtml(expires)}</text><text x="600" y="1350" text-anchor="middle" fill="#111111" font-family="Arial,sans-serif" font-size="25" font-weight="700">Digite o cupom no checkout e aproveite.</text><text x="600" y="1405" text-anchor="middle" fill="#777777" font-family="Arial,sans-serif" font-size="20">F PAC STORE · Joinville/SC</text><text x="600" y="1455" text-anchor="middle" fill="#777777" font-family="Arial,sans-serif" font-size="17">Mensagem enviada após seu aceite no checkout.</text></svg>`;
+}
+
+async function renderEmailArtwork(kind: 'survey' | 'repurchase', name: string, coupon?: any) {
+  const logo = await brandLogoBase64();
+  return sharp(Buffer.from(emailArtworkSvg(kind, name, coupon, logo))).png().toBuffer();
 }
 
 async function sendPostPurchaseEmail(order: any, kind: 'survey' | 'repurchase') {
@@ -123,16 +150,25 @@ async function sendPostPurchaseEmail(order: any, kind: 'survey' | 'repurchase') 
   if (!validEmail(email)) throw new Error('Pedido sem e-mail válido.');
   const name = clean(order.customer?.name || order.customerName || 'Cliente').split(' ')[0];
   let subject: string, message: string;
+  let coupon: any;
   if (kind === 'survey') {
-    subject = 'Como foi sua experiência com a F PAC STORE?';
+    subject = `${name}, conta pra gente como foi sua experiência`;
     message = surveyMessage(name);
   } else {
-    subject = 'Seu bônus de recompra da F PAC STORE';
-    message = repurchaseMessage(order, await issueCoupon(order));
+    subject = 'Um bônus especial espera por você na F PAC STORE';
+    coupon = await issueCoupon(order);
+    message = repurchaseMessage(order, coupon);
   }
+  const image = await renderEmailArtwork(kind, name, coupon);
+  const contentId = `fpac-${kind}-${createHash('sha1').update(order.id).digest('hex').slice(0, 16)}`;
+  const imageAlt = kind === 'survey' ? 'Pesquisa de satisfação F PAC STORE: produto, atendimento e facilidade da compra.' : 'Bônus F PAC STORE: +5% adicional, cupom de recompra válido por 7 dias.';
+  const imageLink = kind === 'survey'
+    ? `mailto:atendimento@fpacstore.com.br?subject=${encodeURIComponent(`Pesquisa F PAC STORE — pedido ${order.id}`)}&body=${encodeURIComponent('Produto: %0AAtendimento: %0ACompra foi fácil? (sim/não): ')}`
+    : '';
   const result = await new Resend(key).emails.send({
     from: 'F PAC STORE <atendimento@fpacstore.com.br>', to: [email], subject, text: message,
-    html: `<div style="font-family:Arial,sans-serif;line-height:1.7;color:#202820;max-width:600px;margin:auto;padding:24px"><h2 style="color:#3c503e">F PAC STORE</h2><p>${escapeHtml(message).replace(/\n/g, '<br>')}</p><p style="font-size:12px;color:#666">Você recebeu esta mensagem porque autorizou comunicações pós-compra no checkout.</p></div>`,
+    html: `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:8px;background:#f4f2ec;text-align:center">${imageLink ? `<a href="${imageLink.replace(/&/g, '&amp;')}" aria-label="Responder pesquisa F PAC STORE">` : ''}<img src="cid:${contentId}" alt="${imageAlt}" width="600" style="display:block;width:100%;max-width:600px;height:auto;border:0;margin:0 auto"/>${imageLink ? '</a>' : ''}${kind === 'repurchase' ? `<p style="font-family:Arial,sans-serif;font-size:16px;line-height:1.5;margin:12px 0 4px;color:#111"><a href="https://www.fpacstore.com.br/" style="color:#111;text-decoration:underline">https://www.fpacstore.com.br/</a></p>` : ''}</div>`,
+    attachments: [{ filename: `fpac-${kind}-pedido-${order.id}.png`, content: image.toString('base64'), contentType: 'image/png', contentId }],
   }, { idempotencyKey: `postpurchase/${order.id}/${kind}` });
   if (result.error || !result.data?.id) throw new Error(result.error?.message || 'O provedor não confirmou o envio do e-mail.');
   return result.data.id;
