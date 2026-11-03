@@ -93,6 +93,7 @@ function lazyWithRetry<T>(importFunc: () => Promise<T>): React.LazyExoticCompone
 const AdminIntelligenceCRM = lazyWithRetry(() => import('../components/AdminIntelligenceCRM'));
 const AdminFinancial = lazyWithRetry(() => import('../components/AdminFinancial').then(m => ({ default: m.AdminFinancial })));
 const AdminPromotions = lazyWithRetry(() => import('../components/AdminPromotions').then(m => ({ default: m.AdminPromotions })));
+const AdminPostPurchase = lazyWithRetry(() => import('../components/AdminPostPurchase'));
 const AdminStockCenter = lazyWithRetry(() => import('../components/AdminStockCenter').then(m => ({ default: m.AdminStockCenter })));
 const InventoryAuditCenter = lazyWithRetry(() => import('../components/InventoryAuditCenter').then(m => ({ default: m.InventoryAuditCenter })));
 const AdminStampsManager = lazyWithRetry(() => import('../components/admin/AdminStampsManager').then(m => ({ default: m.AdminStampsManager })));
@@ -123,6 +124,7 @@ type ManagementTab =
   | 'intelligence'
   | 'notifications'
   | 'promotions'
+  | 'post_purchase'
   | 'financial'
   | 'gifts'
   | 'loyalty'
@@ -141,6 +143,7 @@ const MANAGEMENT_TABS: Array<{ id: ManagementTab; label: string; icon: React.Ele
   { id: 'gifts', label: 'Brindes', icon: Gift },
   { id: 'customer_identity', label: 'Clientes', icon: Users },
   { id: 'promotions', label: 'Promoções', icon: BadgePercent },
+  { id: 'post_purchase', label: 'Clima & satisfação', icon: MessageCircle },
   { id: 'loyalty', label: 'Fidelidade', icon: Sparkles },
   { id: 'identity', label: 'Site & mídia', icon: Images },
   { id: 'music', label: 'Rádio', icon: Radio },
@@ -3571,6 +3574,10 @@ Total: R$ ${totalSum.toFixed(2)}`;
       ) : activeTab === 'promotions' ? (
         <React.Suspense fallback={<div className="p-12 text-center text-sm font-bold uppercase tracking-widest text-black/50 animate-pulse">Carregando Promoções...</div>}>
           <AdminPromotions />
+        </React.Suspense>
+      ) : activeTab === 'post_purchase' ? (
+        <React.Suspense fallback={<div className="p-12 text-center text-sm font-bold uppercase tracking-widest text-black/50 animate-pulse">Carregando Clima & Satisfação...</div>}>
+          <AdminPostPurchase />
         </React.Suspense>
       ) : activeTab === 'gifts' ? (
         <React.Suspense fallback={<p role="status" className="p-8 text-center">Carregando controle de brindes...</p>}>

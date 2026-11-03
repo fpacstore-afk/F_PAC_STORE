@@ -85,6 +85,7 @@ export interface OrderPricingSnapshot {
   shipping: number;
   total: number;
   currency: 'BRL';
+  couponCode?: string;
   flashSaleDiscount?: number;
   weeklyPromotionDiscount?: number;
   shippingCharged?: number;
@@ -181,6 +182,8 @@ export interface OrderCanonical {
   shippingStatus: ShippingStatus;
   
   processedEvents?: string[];
+  postPurchaseMarketingConsent?: boolean;
+  postPurchaseMarketingConsentAt?: string | null;
   createdAt: any;
   updatedAt: any;
 }

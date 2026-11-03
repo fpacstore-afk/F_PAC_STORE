@@ -5,6 +5,7 @@ import { sendStatusEmail } from "./email.service.js";
 import { logger } from "../utils/logger.js";
 import { PaymentStatus } from "../types/order.types.js";
 import { mpService } from './mp.service.js';
+import { releaseRepurchaseCoupon } from './postPurchase.service.js';
 import {
   getOrderPaidAmount,
   getOrderPaymentStatus,
@@ -348,6 +349,12 @@ export async function processPaymentUpdate(orderId: string, paymentData: any) {
     // Mercado Pago webhook returns 500 and retries. A replay also reaches this path,
     // allowing an unacknowledged release to recover after a transient Firestore error.
     const finalOrder = await ensurePendingStockReversion(orderId);
+
+    if (finalOrder?.paymentStatus === 'approved' && finalOrder?.pricing?.couponCode) {
+      await releaseRepurchaseCoupon(finalOrder.pricing.couponCode, orderId, true);
+    } else if (finalOrder?.pricing?.couponCode && ['rejected', 'cancelled'].includes(finalOrder?.paymentStatus)) {
+      await releaseRepurchaseCoupon(finalOrder.pricing.couponCode, orderId, false);
+    }
 
     if (!wasUpdated) {
       return { success: true, status: 'unchanged', idempotent: true };
