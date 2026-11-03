@@ -322,21 +322,33 @@ export async function sendWhatsAppMessage(phone: string, type: 'payment_approved
     let sentReal = false;
     if (apiUrl && apiKey) {
       try {
-        const endpoint = `${apiUrl.replace(/\/$/, "")}/message/sendText/${instance}`;
+        const hasMedia = type === 'custom_message' && typeof payload?.mediaBase64 === 'string' && payload.mediaBase64.length > 0;
+        const endpoint = `${apiUrl.replace(/\/$/, "")}/message/${hasMedia ? 'sendMedia' : 'sendText'}/${instance}`;
         logger.info(`📡 [WHATSAPP-EVOLUTION] Sending message to ${formattedPhone}...`);
         const response = await axios.post(
           endpoint,
-          {
-            number: formattedPhone,
-            options: {
-              delay: 1200,
-              presence: "composing",
-              linkPreview: true
-            },
-            textMessage: {
-              text: message
-            }
-          },
+          hasMedia
+            ? {
+                number: formattedPhone,
+                mediatype: 'image',
+                mimetype: payload.mediaMimeType || 'image/png',
+                caption: message,
+                media: payload.mediaBase64,
+                fileName: payload.mediaFileName || 'fpac-store.png',
+                delay: 1200,
+                linkPreview: true,
+              }
+            : {
+                number: formattedPhone,
+                options: {
+                  delay: 1200,
+                  presence: "composing",
+                  linkPreview: true
+                },
+                textMessage: {
+                  text: message
+                }
+              },
           {
             headers: {
               "Content-Type": "application/json",
