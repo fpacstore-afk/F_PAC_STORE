@@ -85,6 +85,26 @@ test('goals and overview share the current month cutoff, including future record
   assert.equal(summarizeReceipts([future], ranges.month).received, 0);
 });
 
+test('previous year follows midnight in São Paulo and separates installments and refunds', () => {
+  const before = new Date('2027-01-01T02:59:59Z');
+  const after = new Date('2027-01-01T03:00:00Z');
+  assert.equal(receiptPeriodRange('previous_year', before)?.end, '2025-12-31');
+  const previous = receiptPeriodRange('previous_year', after);
+  assert.deepEqual(previous, { start: '2026-01-01', end: '2026-12-31' });
+  assert.deepEqual(receiptPeriodRange('previous_month', after), { start: '2026-12-01', end: '2026-12-31' });
+  const order = fixture({
+    createdAt: '2026-12-29',
+    payment: { paidAmount: 300, refundedAmount: 20 },
+    paymentLogs: [
+      { id: 'december', amount: 100, date: before },
+      { id: 'january', amount: 200, date: after }
+    ],
+    refundLogs: [{ id: 'january-refund', amount: 20, date: after }]
+  });
+  assert.equal(summarizeReceipts([order], previous).netReceived, 100);
+  assert.equal(summarizeReceipts([order], receiptPeriodRange('year', after)).netReceived, 180);
+});
+
 async function main() {
   const db = requireIsolatedTestDb();
   const { processOrderRefundController, updateOrderPaymentStatus } = await import('../server/controllers/admin.controller');

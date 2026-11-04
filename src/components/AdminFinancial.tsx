@@ -57,7 +57,13 @@ import {
 } from '../utils/orderFinancial';
 import { buildAutomaticCostMetadata } from '../../shared/productCostProfiles';
 
-export type FinancialPeriod = 'all' | 'today' | '7days' | 'current_month' | 'previous_month' | 'quarter' | 'year';
+export type FinancialPeriod = 'all' | 'today' | '7days' | 'current_month' | 'previous_month' | 'quarter' | 'year' | 'previous_year';
+
+function financialCsvCell(value: unknown): string {
+  const text = String(value ?? '');
+  const safe = /^\s*[=+\-@]|^[\t\r\n]/.test(text) ? `'${text}` : text;
+  return `"${safe.replace(/"/g, '""')}"`;
+}
 
 // Definition of types for persistence
 interface Investment {
@@ -1045,18 +1051,23 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
     let rows = '';
 
     if (type === 'orders') {
-      headers = 'Pedido ID;Data;Cliente;Método;Total (R$);Status;Gateway Pago;Custo Produto;Frete Pago;Lucro Líquido (R$)\n';
-      rows = orders.map(o => {
+      headers = 'Pedido ID;Data de cadastro;Cliente;Método;Total (R$);Status;Gateway Pago;Custo Produto;Frete Pago;Lucro Líquido (R$)\n';
+      rows = filteredOrders.map(o => {
         const calc = calculateFeesAndMargins(o);
-        const dateStr = o.createdAtDate ? o.createdAtDate.toLocaleDateString('pt-BR') : '';
-        return `${o.id};${dateStr};${o.customerName};${o.paymentMethod};${getOrderTotal(o).toFixed(2)};${o.status};${calc.gatewayFee.toFixed(2)};${calc.cogs.toFixed(2)};${calc.shippingCost.toFixed(2)};${calc.netProfit.toFixed(2)}`;
+        const date = financialDateKey(o.createdAt || o.createdAtDate || o.created_at || o.date);
+        return [
+          ...[o.id, date, o.customerName, o.paymentMethod].map(financialCsvCell),
+          getOrderTotal(o).toFixed(2), financialCsvCell(o.status),
+          calc.gatewayFee.toFixed(2), calc.cogs.toFixed(2), calc.shippingCost.toFixed(2), calc.netProfit.toFixed(2)
+        ].join(';');
       }).join('\n');
     } else if (type === 'products') {
       headers = 'SKU;Nome;Estoque;Preço Venda (R$);Custo Unitário (R$);Vendidos;Receita Líquida Recebida;Lucro Acumulado;Margem (%)\n';
       rows = productFinancialStats.list.map(p => `${p.slug};${p.name};${p.stock};${p.price.toFixed(2)};${p.cost.toFixed(2)};${p.soldCount};${p.totalFaturamento.toFixed(2)};${p.totalProfit.toFixed(2)};${p.margin.toFixed(1)}`).join('\n');
     } else if (type === 'cashflow') {
       headers = 'ID;Data;Tipo;Descrição;Categoria;Valor (R$)\n';
-      rows = companyCashflow.map(c => `${companyMovementExportId(c)};${c.date};${c.type === 'in' ? 'Entrada' : 'Saída'};${c.description};${c.category};${Number(c.amount).toFixed(2)}`).join('\n');
+      rows = filteredCashflow.map(c => [companyMovementExportId(c), financialDateKey(c.date || (c as any).createdAt), c.type === 'in' ? 'Entrada' : 'Saída', c.description, c.category]
+        .map(financialCsvCell).concat(Number(c.amount).toFixed(2)).join(';')).join('\n');
     } else if (type === 'traffic') {
       headers = 'ID;Data;Campanha;Investimento;Cliques;Conversões Informadas;ROAS Estimado;Receita Estimada Menos Anúncios\n';
       rows = trafficStats.campaigns.map(c => `${companyMovementExportId(c)};${c.date};${c.campaignName};${c.amountSpent.toFixed(2)};${c.clicks};${c.conversions};${c.roas === null ? '' : c.roas.toFixed(1)};${c.lucro === null ? '' : c.lucro.toFixed(2)}`).join('\n');
@@ -1065,7 +1076,9 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
     const csvContent = "data:text/csv;charset=utf-8,\uFEFF" + encodeURIComponent(headers + rows);
     const link = document.createElement("a");
     link.setAttribute("href", csvContent);
-    link.setAttribute("download", `fpac_financeiro_${type}.csv`);
+    const range = receiptPeriodRange(periodFilter);
+    const suffix = range ? `${range.start}_${range.end}` : 'todos';
+    link.setAttribute("download", `fpac_financeiro_${type}_${suffix}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -1172,6 +1185,7 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
             { id: 'previous_month', label: 'Mês Anterior' },
             { id: 'quarter', label: 'Trimestre' },
             { id: 'year', label: 'Ano Atual' },
+            { id: 'previous_year', label: 'Ano Anterior' },
           ].map(p => (
             <button
               key={p.id}

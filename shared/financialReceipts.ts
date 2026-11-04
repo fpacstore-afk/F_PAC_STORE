@@ -120,6 +120,7 @@ export function receiptPeriodRange(period: string, now = new Date()): ReceiptRan
   if (period === 'previous_month') return receiptMonthRange(month === 1 ? year - 1 : year, month === 1 ? 11 : month - 2);
   if (period === 'current_month') return { start: receiptMonthRange(year, month - 1).start, end: today };
   if (period === 'year') return { start: `${year}-01-01`, end: today };
+  if (period === 'previous_year') return { start: `${year - 1}-01-01`, end: `${year - 1}-12-31` };
   const days = period === '7days' ? 6 : period === 'quarter' ? 89 : 0;
   return { start: new Date(Date.parse(`${today}T12:00:00Z`) - days * 86400000).toISOString().slice(0, 10), end: today };
 }
