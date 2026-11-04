@@ -1,3 +1,4 @@
+import { financialDateKey } from '../../shared/cashFlow';
 import { PrimeOrderPlacements } from './PrimeOrderPlacements';
 import { ProductionNotificationStatus } from './ProductionNotificationStatus';
 import { useProductionNotificationSettings } from '../hooks/useProductionNotificationSettings';
@@ -75,6 +76,7 @@ export const OrderProductionDrawer: React.FC<OrderProductionDrawerProps> = ({
 
   // Partial Payment Modal state
   const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [payDate, setPayDate] = useState('');
   const [payAmountInput, setPayAmountInput] = useState<string>('');
   const [payMethodInput, setPayMethodInput] = useState<string>('PIX');
   const [payOperatorInput, setPayOperatorInput] = useState<string>('Admin');
@@ -88,6 +90,7 @@ export const OrderProductionDrawer: React.FC<OrderProductionDrawerProps> = ({
     const due = getOrderBalanceDue(order);
     setPayAmountInput(due > 0 ? String(due) : '');
     setPayMethodInput('PIX');
+    setPayDate(financialDateKey(new Date()) || '');
     setPayOperatorInput('Admin');
     setPayIdempotencyKey(typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `prod_pay_${order.id}_${Math.random().toString(36).substring(2, 12)}_${Date.now()}`);
     setShowPaymentModal(true);
@@ -118,7 +121,8 @@ export const OrderProductionDrawer: React.FC<OrderProductionDrawerProps> = ({
         currentPaid,
         total,
         payOperatorInput || 'Admin',
-        payIdempotencyKey
+        payIdempotencyKey,
+        payDate
       );
       toast.success(`Pagamento parcial de R$ ${amountNum.toFixed(2)} registrado com sucesso!`);
       setShowPaymentModal(false);
@@ -1037,11 +1041,11 @@ export const OrderProductionDrawer: React.FC<OrderProductionDrawerProps> = ({
                           Via: {pay.method || 'Manual'}
                         </span>
                         <span className="ml-2 text-zinc-400 text-[8px]">
-                          Op: {pay.operator || 'Admin'}
+                          Op: {pay.recordedBy || pay.operator || 'Admin'}
                         </span>
                       </div>
                       <span className="text-[8px] text-zinc-400 font-mono">
-                        {pay.date ? (pay.date.toDate ? pay.date.toDate().toLocaleString('pt-BR') : new Date(pay.date).toLocaleString('pt-BR')) : ''}
+                        {financialDateKey(pay.date)?.split('-').reverse().join('/') || '—'}
                       </span>
                     </div>
                   ))
@@ -1315,6 +1319,10 @@ export const OrderProductionDrawer: React.FC<OrderProductionDrawerProps> = ({
                   </select>
                 </div>
 
+                <label className="grid gap-1 text-xs font-bold">
+                  Data do recebimento
+                  <input type="date" required max={financialDateKey(new Date()) || undefined} value={payDate} onChange={event => setPayDate(event.target.value)} className="min-h-11 border border-black/20 px-3 text-sm" />
+                </label>
                 <div>
                   <label className="block text-[10px] font-black uppercase tracking-wider text-zinc-300 mb-1">
                     Operador / Responsável

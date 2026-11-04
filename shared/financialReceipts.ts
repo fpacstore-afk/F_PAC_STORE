@@ -1,5 +1,5 @@
 import { getOrderPaidAmount, getOrderRefundedAmount } from './orderFinancialCore';
-import { financialDateKey } from './cashFlow';
+import { validFinancialDay, financialDateKey } from './cashFlow';
 
 export type ReceiptRange = { start: string; end: string } | null;
 type Movement = { date: string; amount: number };
@@ -117,6 +117,13 @@ export function receiptPeriodRange(period: string, now = new Date()): ReceiptRan
   if (period === 'all') return null;
   const today = financialDateKey(now)!;
   const [year, month] = today.split('-').map(Number);
+  const [kind, first, last] = period.split(':');
+  if (kind === 'year' && /^\d{4}$/.test(first || '')) return { start: `${first}-01-01`, end: `${first}-12-31` };
+  if (kind === 'month' && /^\d{4}-(0[1-9]|1[0-2])$/.test(first || '')) {
+    const [selectedYear, selectedMonth] = first.split('-').map(Number);
+    if (selectedYear >= 1000) return receiptMonthRange(selectedYear, selectedMonth - 1);
+  }
+  if (kind === 'range' && validFinancialDay(first) && validFinancialDay(last) && first <= last) return { start: first, end: last };
   if (period === 'previous_month') return receiptMonthRange(month === 1 ? year - 1 : year, month === 1 ? 11 : month - 2);
   if (period === 'current_month') return { start: receiptMonthRange(year, month - 1).start, end: today };
   if (period === 'year') return { start: `${year}-01-01`, end: today };

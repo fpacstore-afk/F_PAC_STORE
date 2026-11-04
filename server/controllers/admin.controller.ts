@@ -1,3 +1,4 @@
+import { correctedReceiptBasis } from '../../shared/financialReceipts.js';
 import { financialPatch } from '../services/paymentCorrection.service.js';
 import { isManualReceiptOrder } from '../../shared/paymentCorrection.js';
 import { transferGarmentsToProduction } from '../services/productionStock.service.js';
@@ -5,7 +6,7 @@ import { FieldValue } from 'firebase-admin/firestore';
 import { calculateCashForecast } from '../../shared/cashForecast';
 import { roundMoney } from '../../shared/financialDefaults';
 import { MANUAL_CASH_FLOW_CATEGORIES, QUICK_EXPENSE_CATEGORIES } from '../../shared/cashFlowOptions';
-import { financialDateKey } from '../../shared/cashFlow';
+import { financialDateKey, validFinancialDay } from '../../shared/cashFlow';
 import { isSalesCashFlowEntry, SALES_MOVEMENT_MESSAGE } from '../../shared/financialMovementScope';
 import { Request, Response } from 'express';
 import { getDb } from '../firebase.js';
@@ -215,12 +216,27 @@ export async function createManualOrderController(req: Request, res: Response) {
       });
     }
 
+    const today = financialDateKey(new Date())!;
+    const saleDate = order.saleDate;
+    const historical = order.historicalSale === true;
+    if ((historical || saleDate != null) && (!validFinancialDay(saleDate) || saleDate > today || (historical && saleDate >= today))) {
+      return res.status(400).json({ error: 'INVALID_SALE_DATE', message: 'Informe uma data de venda válida. Vendas antigas devem ter data anterior a hoje.' });
+    }
+    if (historical && (typeof order.garmentsAlreadyMoved !== 'boolean' || typeof order.stampsAlreadyMoved !== 'boolean')) {
+      return res.status(400).json({ error: 'HISTORICAL_STOCK_REQUIRED', message: 'Informe se as peças e as estampas já foram movimentadas.' });
+    }
+
     const db = getDb();
     const existingOrder = await db.collection('orders').doc(orderId).get();
     if (existingOrder.exists && existingOrder.data()?.isManual !== true) {
       return res.status(409).json({ error: 'MANUAL_ORDER_ALREADY_EXISTS', message: 'Este identificador já pertence a outro pedido.' });
     }
     order = existingOrder.exists ? existingOrder.data() : await prepareManualOrderCosts(order, db);
+    const historicalSale = order.historicalSale === true;
+    const skipStampStock = historicalSale && order.stampsAlreadyMoved === true;
+    const suppressAutomaticNotifications = historicalSale && order.notifyHistoricalCustomer !== true;
+    const moveGarments = historicalSale ? !order.garmentsAlreadyMoved : order.stockControl === 'move';
+    const stockControl = moveGarments ? 'move' : 'no_move';
     const isGift = order?.isGift === true || order?.orderKind === 'gift';
     const giftItems = isGift
       ? order.items.map((item: any) => ({ ...item, price: 0 }))
@@ -258,12 +274,18 @@ export async function createManualOrderController(req: Request, res: Response) {
       } : {}),
       id: orderId,
       isManual: true,
-      inventoryLifecycle: order.stockControl === 'move' ? 'reserved' : 'unmanaged',
+      saleDate: order.saleDate || (existingOrder.exists ? financialDateKey(order.createdAt) : today),
+      recordedBy: (req as any).user?.email || (req as any).user?.uid || 'Admin',
+      historicalSale,
+      skipStampStock,
+      suppressAutomaticNotifications,
+      stockControl,
+      inventoryLifecycle: stockControl === 'move' ? 'reserved' : 'unmanaged',
       createdAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp()
     };
 
-    if (order.stockControl === 'move') {
+    if (stockControl === 'move') {
       if (!existingOrder.exists) {
         await reserveStock(orderId, order.items, `reserve_order_${orderId}`, orderPayload);
       } else if (existingOrder.data()?.isManual !== true) {
@@ -274,7 +296,7 @@ export async function createManualOrderController(req: Request, res: Response) {
       if (['shipped', 'delivered'].includes(String(order.shippingStatus || '').toLowerCase())) {
         await consumeStockReservation(orderId, order.items, `shipping_shipped_${orderId}`);
       }
-      if (String(order.shippingStatus || '').toLowerCase() === 'delivered') {
+      if (!skipStampStock && String(order.shippingStatus || '').toLowerCase() === 'delivered') {
         await db.runTransaction(async transaction => {
           await applyOrderStampStockInTransaction(transaction, db, orderId, order.items, 'delivery_reconcile');
         });
@@ -288,12 +310,12 @@ export async function createManualOrderController(req: Request, res: Response) {
           err.code = 'MANUAL_ORDER_ALREADY_EXISTS';
           throw err;
         }
-        await applyOrderStampStockInTransaction(transaction, db, orderId, order.printSupplyMode === 'on_demand' ? order.items.map((item: any) => ({ ...item, printSupplyMode: 'on_demand' })) : order.items, 'order_debit');
+        if (!skipStampStock) await applyOrderStampStockInTransaction(transaction, db, orderId, order.printSupplyMode === 'on_demand' ? order.items.map((item: any) => ({ ...item, printSupplyMode: 'on_demand' })) : order.items, 'order_debit');
         transaction.set(ref, orderPayload);
       });
     }
 
-    if (order.stockControl !== 'move' && String(order.shippingStatus || '').toLowerCase() === 'delivered') {
+    if (stockControl !== 'move' && !skipStampStock && String(order.shippingStatus || '').toLowerCase() === 'delivered') {
       await db.runTransaction(async transaction => {
         await applyOrderStampStockInTransaction(transaction, db, orderId, order.items, 'delivery_reconcile');
       });
@@ -327,7 +349,7 @@ export async function createManualOrderController(req: Request, res: Response) {
 
     // Notify a newly created active order only after persistence. Historical edits
     // and retries must not generate another customer receipt.
-    if (!existingOrder.exists && !['delivered', 'completed'].includes(String(order.shippingStatus || order.status || '').toLowerCase())) {
+    if (!existingOrder.exists && !suppressAutomaticNotifications && !['delivered', 'completed'].includes(String(order.shippingStatus || order.status || '').toLowerCase())) {
       await dispatchStageNotification({ orderId, newStageId: 'received', changedBy: (req as any).user?.email || 'Admin', channels: { whatsapp: false } })
         .catch((error: any) => logger.warn(`[MANUAL-ORDER-EMAIL] ${orderId}: ${error.message}`));
     }
@@ -1637,7 +1659,7 @@ export async function processPhysicalReceiveController(req: Request, res: Respon
 export async function registerManualPaymentController(req: Request, res: Response) {
   try {
     const orderId = req.params.orderId || req.params.id;
-    const { amount, method, reason, idempotencyKey } = req.body;
+    const { amount, method, reason, idempotencyKey, paymentDate } = req.body;
     const user = (req as any).user;
 
     if (!idempotencyKey || typeof idempotencyKey !== 'string' || !idempotencyKey.trim()) {
@@ -1656,6 +1678,12 @@ export async function registerManualPaymentController(req: Request, res: Respons
       });
     }
 
+    const timestamp = new Date().toISOString();
+    const today = financialDateKey(timestamp)!;
+    if (paymentDate != null && (!validFinancialDay(paymentDate) || paymentDate > today)) {
+      return res.status(400).json({ error: 'INVALID_PAYMENT_DATE', message: 'Informe uma data de recebimento válida até hoje.' });
+    }
+    const effectiveDate = paymentDate ?? today;
     const db = getDb();
     const eventId = deriveLedgerEventId(idempotencyKey.trim());
     const eventRef = db.collection('financial_events').doc(eventId);
@@ -1667,7 +1695,8 @@ export async function registerManualPaymentController(req: Request, res: Respons
       if (eventSnap.exists) {
         const existingEvent = eventSnap.data() as FinancialEvent;
         if (existingEvent.orderId !== orderId || !['payment_approved','partial_payment'].includes(existingEvent.type) || existingEvent.amount !== parsedAmount ||
-            (method && existingEvent.paymentMethod !== String(method).trim().toUpperCase())) {
+            (method && existingEvent.paymentMethod !== String(method).trim().toUpperCase()) ||
+            (paymentDate != null && (existingEvent.paymentDate || financialDateKey(existingEvent.createdAt)) !== effectiveDate)) {
           throw Object.assign(new Error('Esta chave já foi usada em outro recebimento.'), { status: 409, code: 'IDEMPOTENCY_CONFLICT' });
         }
         const orderSnap = await transaction.get(orderRef);
@@ -1712,7 +1741,6 @@ export async function registerManualPaymentController(req: Request, res: Respons
       const newPendingAmount = roundMoney(Math.max(0, currentPending - parsedAmount));
       const newStatus: PaymentStatus = newPendingAmount === 0 ? 'approved' : 'partially_paid';
 
-      const timestamp = new Date().toISOString();
       const paymentMethodUsed = method ? String(method).trim().toUpperCase() : 'MANUAL';
       const effectiveReason = reason ? String(reason).trim() : `Pagamento manual de R$ ${parsedAmount.toFixed(2)} via ${paymentMethodUsed}`;
 
@@ -1721,7 +1749,8 @@ export async function registerManualPaymentController(req: Request, res: Respons
         amount: parsedAmount,
         method: paymentMethodUsed,
         notes: effectiveReason,
-        date: timestamp,
+        date: effectiveDate,
+        recordedAt: timestamp,
         recordedBy: user?.email || user?.uid || 'Admin'
       };
 
@@ -1730,11 +1759,15 @@ export async function registerManualPaymentController(req: Request, res: Respons
         amount: parsedAmount,
         status: newStatus,
         timestamp,
+        paymentDate: effectiveDate,
         message: effectiveReason,
         operator: user?.email || user?.uid || 'Admin'
       };
 
+      const previousReceiptBasis = !orderData.paymentReceiptBasis && !orderData.paymentLogs?.length && currentPaid > 0
+        ? correctedReceiptBasis(orderData, currentPaid, eventRef.id) : null;
       const updatePayload: any = {
+        ...(previousReceiptBasis ? { paymentReceiptBasis: previousReceiptBasis } : {}),
         'payment.paidAmount': newPaidAmount,
         'payment.pendingAmount': newPendingAmount,
         'payment.status': newStatus,
@@ -1764,7 +1797,7 @@ export async function registerManualPaymentController(req: Request, res: Respons
             ...installment,
             paidAmount: installmentPaid,
             status: installmentPaid + 0.001 >= installmentAmount ? 'paid' : 'pending',
-            ...(installmentPaid + 0.001 >= installmentAmount ? { paidAt: timestamp } : {})
+            ...(installmentPaid + 0.001 >= installmentAmount ? { paidAt: effectiveDate } : {})
           };
         });
         updatePayload['payment.installments'] = updatedInstallments;
@@ -1772,7 +1805,7 @@ export async function registerManualPaymentController(req: Request, res: Respons
       }
 
       if (newStatus === 'approved') {
-        updatePayload['payment.paidAt'] = timestamp;
+        updatePayload['payment.paidAt'] = effectiveDate;
       }
 
       // 5. Atualizar pedido na transação
@@ -1794,6 +1827,7 @@ export async function registerManualPaymentController(req: Request, res: Respons
         newRefundedAmount: getOrderRefundedAmount(orderData),
         paymentMethod: paymentMethodUsed,
         provider: 'manual',
+        paymentDate: effectiveDate,
         actorId: user?.uid,
         actorEmail: user?.email,
         reason: effectiveReason,
@@ -1818,10 +1852,11 @@ export async function registerManualPaymentController(req: Request, res: Respons
         effectiveReason,
         order: financialPatch(orderId, { ...orderData,
           payment: { ...(orderData.payment || {}), paidAmount: newPaidAmount, pendingAmount: newPendingAmount, status: newStatus, method: paymentMethodUsed,
-            ...(newStatus === 'approved' ? { paidAt: timestamp } : {}),
+            ...(newStatus === 'approved' ? { paidAt: effectiveDate } : {}),
             ...(updatePayload['payment.installments'] ? { installments: updatePayload['payment.installments'] } : {}) },
           amountPaid: newPaidAmount, balanceDue: newPendingAmount, paymentStatus: newStatus,
           ...(updatePayload.installments ? { installments: updatePayload.installments } : {}),
+          ...(previousReceiptBasis ? { paymentReceiptBasis: previousReceiptBasis } : {}),
           paymentLogs: [...(orderData.paymentLogs || []), paymentLogEntry] })
       };
     });
@@ -1838,7 +1873,8 @@ export async function registerManualPaymentController(req: Request, res: Respons
       resource: 'orders',
       resourceId: orderId,
       metadata: { 
-        amount: parsedAmount, 
+        amount: parsedAmount,
+        paymentDate: effectiveDate,
         method: transactionResult.paymentMethodUsed, 
         newStatus: transactionResult.paymentStatus, 
         newPaidAmount: transactionResult.paidAmount, 
@@ -1850,7 +1886,7 @@ export async function registerManualPaymentController(req: Request, res: Respons
 
     logger.info(`💰 [MANUAL-PAY] Order ${orderId} received R$ ${parsedAmount} via ${transactionResult.paymentMethodUsed} (New Status: ${transactionResult.paymentStatus})`);
 
-    if (transactionResult.paymentStatus === 'approved') {
+    if (transactionResult.paymentStatus === 'approved' && effectiveDate === today) {
       await dispatchStageNotification({
         orderId,
         newStageId: 'payment_approved',

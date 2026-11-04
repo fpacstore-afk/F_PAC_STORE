@@ -66,6 +66,14 @@ export function financialDateKey(value: any): string | null {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo', year: 'numeric', month: '2-digit', day: '2-digit' }).format(date);
 }
 
+export function orderSaleDateKey(order: any): string | null {
+  return financialDateKey(order.saleDate) || financialDateKey(order.createdAt || order.createdAtDate || order.created_at || order.date);
+}
+
+export function validFinancialDay(value: unknown): value is string {
+  return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value) && financialDateKey(value) === value;
+}
+
 /** Distribute only the authoritative balance, in due-date order; do not invent a due date. */
 export function scheduleOpenBalance(balance: number, installments: any[], fallbackDue?: any) {
   let remaining = Math.max(0, balance);

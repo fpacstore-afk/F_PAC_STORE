@@ -16,7 +16,9 @@ export function previousDashboardRange(range: ReceiptRange): ReceiptRange {
 export function isConfirmedReceivable(order: any) {
   const status = getOrderPaymentStatus(order);
   if (order?.isGift || order?.orderKind === 'gift' || ['cancelled', 'canceled', 'cancelado', 'rejected', 'refunded', 'not_applicable'].includes(status)) return false;
-  if (getOrderPendingAmount(order) <= 0) return false;
+  const inactive = [order?.status, order?.paymentStatus, order?.productionStatus, order?.shippingStatus]
+    .some(value => ['cancelled', 'canceled', 'rejected', 'refunded'].includes(String(value || '').toLowerCase()));
+  if (inactive || getOrderPendingAmount(order) <= 0) return false;
   if (order?.isManual === true || order?.confirmedAt || getOrderPaidAmount(order) > 0) return true;
   const stages = [order?.status, order?.production?.status, order?.productionStatus, order?.shipping?.status, order?.shippingStatus]
     .map(value => String(value || '').toLowerCase());

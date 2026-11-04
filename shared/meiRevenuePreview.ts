@@ -1,4 +1,4 @@
-import { financialDateKey } from './cashFlow';
+import { orderSaleDateKey } from './cashFlow';
 import { getOrderPaidAmount, getOrderPaymentStatus, getOrderRefundedAmount, getOrderTotal } from './orderFinancialCore';
 
 /** A working-paper preview, NOT an official tax return or electronic invoice. */
@@ -32,7 +32,7 @@ const numberValue = (value: unknown) => {
 const normalized = (value: unknown) => String(value ?? '').trim().toLowerCase();
 
 /**
- * Uses order creation date as a provisional sale date (never a payment date).
+ * Uses the explicit sale date or order creation as the legacy fallback.
  * Requires review for refunds, partial payments, cancelled orders and unclear records.
  * Marketplaces not present in the site's orders are not included.
  */
@@ -45,7 +45,7 @@ export function buildMeiMonthlyPreview(orders: any[], month: string, registratio
     const id = String(order?.id || '').trim();
     if (!id || seen.has(id) || /^test_/i.test(id) || order?.isTest === true || order?.testOrder === true) continue;
     seen.add(id);
-    const date = financialDateKey(order.createdAt || order.createdAtDate || order.created_at || order.date);
+    const date = orderSaleDateKey(order);
     if (!date) { missingDateCount++; continue; }
     if (!date.startsWith(month)) continue;
     const amount = numberValue(getOrderTotal(order));

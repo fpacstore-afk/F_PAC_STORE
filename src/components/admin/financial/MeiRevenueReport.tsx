@@ -91,7 +91,7 @@ export function MeiRevenueReport({ orders, onOpenOrder }: MeiReportProps) {
       <AlertTriangle className="shrink-0" size={18} />
       <div className="space-y-1">
         <p className="font-bold">{!registrationDate ? 'MEI ainda não informado: relatório apenas para planejamento.' : 'Conferência fiscal necessária antes de declarar.'}</p>
-        <p>Esta prévia usa a data de criação do pedido como aproximação da data da venda e o valor total do pedido, possivelmente com frete. Não usa data de recebimento para inventar competência. Verifique notas, fretes, descontos, cancelamentos, devoluções, serviços e o regime aplicável com orientação fiscal.</p>
+        <p>Esta prévia usa a data da venda informada ou a data de cadastro para pedidos antigos sem esse campo. O valor total pode incluir frete. Verifique notas, fretes, descontos, cancelamentos, devoluções, serviços e o regime aplicável com orientação fiscal.</p>
         <p>Vendas na Shopee, Mercado Livre, Amazon ou WhatsApp só aparecem aqui se estiverem registradas nos pedidos do sistema. Pedidos não cadastrados e valores sem data precisam ser adicionados e conferidos antes do relatório oficial.</p>
         {preview.missingDateCount > 0 && <p className="font-bold">{preview.missingDateCount} pedido(s) carregado(s) sem data não puderam ser atribuídos ao mês.</p>}
       </div>
