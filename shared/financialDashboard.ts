@@ -1,4 +1,4 @@
-import { financialDateKey, isActiveFinancialRecord, scheduleOpenBalance } from './cashFlow';
+import { financialDateKey, orderSaleDateKey, isActiveFinancialRecord, scheduleOpenBalance } from './cashFlow';
 import { datedFinancialMovements, receiptMonthRange, receiptPeriodRange, receiptGoalRanges, summarizeReceipts, type ReceiptRange } from './financialReceipts';
 import { getOrderPendingAmount, getOrderPaidAmount, getOrderTotal, getOrderPaymentStatus, getOrderRefundedAmount } from './orderFinancialCore';
 
@@ -17,26 +17,39 @@ export function dateMatchesRange(value: unknown, range: ReceiptRange): boolean {
   return Boolean(date && date >= range.start && date <= range.end);
 }
 
+/** The same commercial sale qualifies in the dashboard, goals and sale details. */
+export function classifyCommercialSale(order: any) {
+  const status = getOrderPaymentStatus(order);
+  if (order.isGift === true || order.orderKind === 'gift' || !isActiveFinancialRecord(order) || ['cancelled', 'rejected', 'refunded', 'not_applicable'].includes(status)) return null;
+  const date = orderSaleDateKey(order);
+  const value = getOrderTotal(order), refunded = getOrderRefundedAmount(order);
+  const valid = Boolean(date) && Number.isFinite(value) && value >= 0 && Number.isFinite(refunded) && refunded >= 0;
+  const operational = [order.status, order.production?.status, order.productionStatus].map(value => String(value || '').toLowerCase());
+  const confirmed = getOrderPaidAmount(order) > 0 || order.isManual === true || Boolean(order.confirmedAt) || operational.some(value => ['processing', 'in_production', 'estamparia', 'costura', 'embalagem', 'ready', 'pronto', 'completed', 'shipped', 'delivered', 'entregue'].includes(value));
+  return { date, valid, confirmed, value: Math.max(0, value - refunded) };
+}
+
+export function confirmedSalesAmount(orders: any[]) {
+  return money(orders.reduce((total, order) => {
+    const sale = classifyCommercialSale(order);
+    return total + (sale?.valid && sale.confirmed ? sale.value : 0);
+  }, 0));
+}
+
 /** Sales goals follow the original order month; cash continues to follow each settlement date. */
 export function salesGoalProgress(orders: any[], year: number, month: number, now = new Date()) {
   const ranges = receiptGoalRanges(year, month, now);
   let monthly = 0, yearly = 0, pendingConfirmation = 0, review = 0;
   for (const order of orders) {
-    const status = getOrderPaymentStatus(order);
-    if (order.isGift === true || order.orderKind === 'gift' || !isActiveFinancialRecord(order) || ['cancelled', 'rejected', 'refunded', 'not_applicable'].includes(status)) continue;
-    const date = financialDateKey(order.createdAt || order.createdAtDate || order.created_at || order.date);
-    const value = getOrderTotal(order), refunded = getOrderRefundedAmount(order);
-    if (!date || !Number.isFinite(value) || value < 0 || !Number.isFinite(refunded) || refunded < 0) { review++; continue; }
-    // Manual sales are confirmed by the store. Unpaid, unconfirmed online attempts stay separate.
-    const operational = [order.status, order.production?.status, order.productionStatus].map(value => String(value || '').toLowerCase());
-    const confirmed = getOrderPaidAmount(order) > 0 || order.isManual === true || Boolean(order.confirmedAt) || operational.some(value => ['processing', 'in_production', 'estamparia', 'costura', 'embalagem', 'ready', 'pronto', 'completed', 'shipped', 'delivered', 'entregue'].includes(value));
-    const netSale = Math.max(0, value - refunded);
-    if (!confirmed) {
-      if (dateMatchesRange(date, ranges.month)) pendingConfirmation += netSale;
+    const sale = classifyCommercialSale(order);
+    if (!sale) continue;
+    if (!sale.valid) { review++; continue; }
+    if (!sale.confirmed) {
+      if (dateMatchesRange(sale.date, ranges.month)) pendingConfirmation += sale.value;
       continue;
     }
-    if (dateMatchesRange(date, ranges.month)) monthly += netSale;
-    if (dateMatchesRange(date, ranges.year)) yearly += netSale;
+    if (dateMatchesRange(sale.date, ranges.month)) monthly += sale.value;
+    if (dateMatchesRange(sale.date, ranges.year)) yearly += sale.value;
   }
   return { month: money(monthly), year: money(yearly), pendingConfirmation: money(pendingConfirmation), review };
 }
@@ -56,7 +69,7 @@ export function receivableMatchesPeriod(order: any, period: string, basis: Recei
     const receipts = summarizeReceipts([order], range);
     return receipts.received > 0 || receipts.refunded > 0;
   }
-  if (basis === 'created') return dateMatchesRange(order.createdAt || order.createdAtDate || order.created_at || order.date, range);
+  if (basis === 'created') return dateMatchesRange(orderSaleDateKey(order), range);
   const installments = order.payment?.installments || order.installments || [];
   const schedule = scheduleOpenBalance(getOrderPendingAmount(order), Array.isArray(installments) ? installments : [], order.payment?.dueDate || order.dueDate);
   return schedule.entries.some(entry => dateMatchesRange(entry.due, range));

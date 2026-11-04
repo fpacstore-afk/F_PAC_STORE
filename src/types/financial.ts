@@ -145,6 +145,7 @@ export interface FinancialEvent {
   previousRefundedAmount?: number;
   newRefundedAmount?: number;
   paymentMethod?: string;
+  paymentDate?: string;
   provider?: string;
   providerPaymentId?: string;
   actorId?: string;

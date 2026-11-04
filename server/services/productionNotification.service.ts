@@ -443,6 +443,7 @@ export async function dispatchStageNotification(params: {
     const snap = await tx.get(orderRef);
     if (!snap.exists) throw new Error('Pedido não encontrado.');
     const order = snap.data();
+    if (order.suppressAutomaticNotifications === true && !forceResend) return { suppressed: true as const };
     const prior = order.sentStageNotifications?.[newStageId] || {};
     if (Number(prior.leaseUntil) > Date.now()) return { busy: true };
     const repeat = forceResend || (settings.allowResendOnStageReentry && previousStageId && previousStageId !== newStageId);
@@ -450,6 +451,7 @@ export async function dispatchStageNotification(params: {
     tx.update(orderRef, { ['sentStageNotifications.' + newStageId]: { ...state, emailAttemptKey: state.emailAttemptKey || token, leaseToken: token, leaseUntil: Date.now() + 120000 } });
     return { order, prior: state };
   });
+  if (claim.suppressed) return { success: true, skipped: true, reason: 'Avisos automáticos desativados para este pedido histórico.' };
   if (claim.busy) return { success: true, skipped: true, reason: 'Envio já em andamento.' };
   const { order, prior } = claim;
   const trackingAccess = generateTrackingToken();

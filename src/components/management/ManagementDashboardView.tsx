@@ -24,6 +24,7 @@ type DashboardData = {
   payableSummary: ReturnType<typeof summarizePayables>;
   averageReceipt: number;
   paidOrders: number;
+  salesAmount?: number;
   pendingPayments: number;
   pendingAmount: number;
   inProduction: number;
@@ -68,12 +69,12 @@ function Heading({ icon: Icon, title, subtitle, href, action }: {
   </div>;
 }
 
-function Kpi({ label, value, helper, icon: Icon, featured = false, delta, deltaNegative = false }: {
-  label: string; value: string; helper: string; icon: React.ElementType; featured?: boolean; delta?: string; deltaNegative?: boolean;
+function Kpi({ label, value, helper, icon: Icon, featured = false, delta, deltaNegative = false, href }: {
+  label: string; value: string; helper: string; icon: React.ElementType; featured?: boolean; delta?: string; deltaNegative?: boolean; href?: string;
 }) {
   return <div className={`rounded-2xl border p-5 lg:p-6 min-w-0 flex flex-col justify-between gap-5 ${featured ? 'bg-[#151515] border-[#151515] text-white' : 'bg-white border-black/10 text-[#171717]'}`}>
     <div className="flex items-start justify-between gap-3"><span className={`text-xs font-bold ${featured ? 'text-white/65' : 'text-black/55'}`}>{label}</span><Icon size={18} className={featured ? 'text-[#facc15]' : 'text-amber-600'} /></div>
-    <div><div className={`text-[clamp(1.55rem,2.4vw,2.5rem)] leading-tight font-black tracking-tight break-words ${featured ? 'text-[#facc15]' : ''}`}>{value}</div>
+    <div><div className={`text-[clamp(1.55rem,2.4vw,2.5rem)] leading-tight font-black tracking-tight break-words ${featured ? 'text-[#facc15]' : ''}`}>{href ? <Link aria-label={`Ver detalhes de ${label}`} to={href} className="underline decoration-1 underline-offset-4">{value}</Link> : value}</div>
       {delta && <div className={`mt-2 inline-flex items-center gap-1 text-xs font-bold ${featured ? 'text-white/85' : deltaNegative ? 'text-rose-700' : 'text-emerald-800'}`}>{deltaNegative ? <ArrowDownRight size={14} /> : <ArrowUpRight size={14} />}{delta}</div>}
       <p className={`mt-2 text-xs leading-relaxed ${featured ? 'text-white/55' : 'text-black/50'}`}>{helper}</p></div>
   </div>;
@@ -110,7 +111,7 @@ function ReceiptChart({ rows, visible, formatMoney }: { rows: ReceiptBucket[]; v
   </div>;
 }
 
-export function ManagementDashboardView({ data, period, onPeriodChange, syncState, showFinancialValues, formatMoney, formatPercent, productsCount, cashRegister }: {
+export function ManagementDashboardView({ data, period, onPeriodChange, syncState, showFinancialValues, formatMoney, formatPercent, productsCount, cashRegister, cashBalance }: {
   data: DashboardData;
   period: PeriodKey;
   onPeriodChange: (period: PeriodKey) => void;
@@ -120,6 +121,7 @@ export function ManagementDashboardView({ data, period, onPeriodChange, syncStat
   formatPercent: (value: number) => string;
   productsCount: number;
   cashRegister?: React.ReactNode;
+  cashBalance?: number | null;
 }) {
   const resultReady = data.dre.cogsEstimatedOrders === 0 && data.dre.giftUnknownUnits === 0;
   const expenseParts = [
@@ -131,6 +133,7 @@ export function ManagementDashboardView({ data, period, onPeriodChange, syncStat
   const expenseTotal = expenseParts.reduce((sum, part) => sum + Math.max(0, part.value), 0);
   const bestMax = Math.max(1, ...data.bestSellers.map(item => item.quantity));
   const rangeText = data.range ? `${data.range.start.split('-').reverse().join('/')} a ${data.range.end.split('-').reverse().join('/')}` : 'Todo o histórico';
+  const periodQuery = data.range ? `&period=${encodeURIComponent(`range:${data.range.start}:${data.range.end}`)}` : '&period=all';
   const changeLabel = (change: number | null) => change === null || !showFinancialValues ? undefined : `${change > 0 ? '+' : ''}${formatPercent(change)} vs período anterior`;
 
   return <section className="space-y-6 text-[#171717]">
@@ -141,19 +144,23 @@ export function ManagementDashboardView({ data, period, onPeriodChange, syncStat
       <div className="flex flex-wrap gap-2" role="group" aria-label="Período do dashboard">{periods.map(item => <button key={item.key} type="button" aria-pressed={period === item.key} onClick={() => onPeriodChange(item.key)} className={`rounded-full px-4 py-2 text-xs font-bold transition-colors ${period === item.key ? 'bg-[#f5be1b] text-black' : 'bg-white/10 text-white hover:bg-white/20'}`}>{item.label}</button>)}</div>
     </header>
 
-    {cashRegister}
-
-    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
-      <Kpi featured icon={CircleDollarSign} label="Recebido líquido" value={formatMoney(data.receipts.netReceived)} delta={changeLabel(data.receiptsChange)} deltaNegative={data.receiptsChange !== null && data.receiptsChange < 0} helper={period === 'all' ? 'Total dos pagamentos menos estornos, inclusive registros sem data. O gráfico cobre os últimos 12 meses datados.' : 'Pagamentos menos estornos na data registrada. Inclui recebimentos de pedidos antigos.'} />
-      <Kpi icon={TrendingUp} label="Resultado operacional estimado" value={resultReady ? formatMoney(data.dre.operatingProfit) : 'Conferir custos'} helper={resultReady ? 'Pedidos criados no período após custos e despesas registrados; não é saldo bancário.' : `Custos completos em ${data.dre.costCoveragePercent}% dos pedidos e brindes do período.`} />
-      <Kpi icon={WalletCards} label="Despesas operacionais" value={formatMoney(data.operatingExpenses)} helper="Lançamentos do período, incluindo marketing; sem retiradas pessoais ou investimentos de estrutura." />
+    <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+      <Kpi icon={ShoppingCart} label="Vendas do período" value={formatMoney(data.salesAmount ?? 0)} helper="Vendas confirmadas pela data da venda, descontados estornos." href={`/gestao?tab=financial&finance=orders&confirmed=1${periodQuery}`} />
+      <Kpi featured icon={CircleDollarSign} label="Recebido no período" value={formatMoney(data.receipts.netReceived)} delta={changeLabel(data.receiptsChange)} deltaNegative={data.receiptsChange !== null && data.receiptsChange < 0} helper="Recebimentos menos estornos, pelas datas registradas." href={`/gestao?tab=financial&finance=receipts${periodQuery}`} />
+      <Kpi icon={CreditCard} label="A receber" value={formatMoney(data.pendingAmount)} helper={`Posição atual de ${count.format(data.pendingPayments)} pedido(s) confirmado(s) com saldo.`} href="/gestao?tab=receivables&confirmed=1" />
+      <Kpi icon={WalletCards} label="Saldo do caixa" value={cashBalance == null ? '—' : formatMoney(cashBalance)} helper="Saldo do ciclo atual do caixa da empresa." href="/gestao?tab=financial&finance=register" />
     </div>
-    <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-      <Kpi icon={ShoppingCart} label="Pedidos com pagamento" value={count.format(data.paidOrders)} delta={changeLabel(data.paidOrdersChange)} deltaNegative={data.paidOrdersChange !== null && data.paidOrdersChange < 0} helper="Pedidos criados no período com valor recebido, inclusive parcial." />
-      <Kpi icon={CreditCard} label="Média recebida por pedido" value={formatMoney(data.averageReceipt)} helper="Recebimento líquido dividido pelos pedidos que receberam no período." />
-      <Kpi icon={CircleDollarSign} label="A receber" value={formatMoney(data.pendingAmount)} helper={`${count.format(data.pendingPayments)} pedido(s) confirmado(s) com saldo. Tentativas de checkout não entram.`} />
-      <Kpi icon={WalletCards} label="Contas a pagar" value={formatMoney(data.payableSummary.totalOpen)} helper={`${count.format(data.payableSummary.overdueCount)} vencida(s) · ${formatMoney(data.payableSummary.overdueAmount)} em atraso.`} />
-    </div>
+    {cashRegister && <details className="rounded-xl border border-black/10 bg-white p-3"><summary className="cursor-pointer px-2 py-2 text-sm font-bold">Operações do caixa da empresa</summary><div className="mt-2">{cashRegister}</div></details>}
+    <details className="rounded-xl border border-black/10 bg-white p-3">
+      <summary className="cursor-pointer px-2 py-2 text-sm font-bold">Mais indicadores financeiros</summary>
+      <div className="mt-2 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+        <Kpi icon={TrendingUp} label="Resultado operacional estimado" value={resultReady ? formatMoney(data.dre.operatingProfit) : 'Conferir custos'} helper={resultReady ? 'Pedidos do período após custos e despesas registrados.' : `Custos completos em ${data.dre.costCoveragePercent}% dos pedidos e brindes do período.`} />
+        <Kpi icon={WalletCards} label="Despesas operacionais" value={formatMoney(data.operatingExpenses)} helper="Lançamentos do período, incluindo marketing. Retiradas e investimentos têm controles próprios." />
+        <Kpi icon={ShoppingCart} label="Pedidos com pagamento" value={count.format(data.paidOrders)} delta={changeLabel(data.paidOrdersChange)} deltaNegative={data.paidOrdersChange !== null && data.paidOrdersChange < 0} helper="Pedidos do período com valor recebido, inclusive parcial." />
+        <Kpi icon={CreditCard} label="Média recebida por pedido" value={formatMoney(data.averageReceipt)} helper="Recebimento líquido dividido pelos pedidos que receberam no período." />
+        <Kpi icon={WalletCards} label="Contas a pagar" value={formatMoney(data.payableSummary.totalOpen)} helper={`${count.format(data.payableSummary.overdueCount)} vencida(s) · ${formatMoney(data.payableSummary.overdueAmount)} em atraso.`} href="/gestao?tab=financial&finance=payables" />
+      </div>
+    </details>
 
     {data.gifts && <div className="rounded-2xl border border-black/10 bg-white p-5 md:p-6"><Heading icon={Gift} title="Brindes" subtitle="Cadastros do período; entregas confirmadas e custos históricos separados das estimativas." href="/gestao?tab=gifts" action="Ver controle de brindes" /><div className="grid grid-cols-2 lg:grid-cols-4 gap-4"><div><div className="text-xs text-black/50">Unidades entregues</div><strong className="text-2xl">{data.gifts.delivered.units}</strong></div><div><div className="text-xs text-black/50">Custo registrado dos entregues</div><strong className="text-2xl">{formatMoney(data.gifts.delivered.knownCost)}</strong></div><div><div className="text-xs text-black/50">Unidades em aberto</div><strong className="text-2xl">{data.gifts.open.units}</strong></div><div><div className="text-xs text-black/50">Unidades com custo a conferir</div><strong className="text-2xl">{data.gifts.active.pendingUnits}</strong></div></div></div>}
 

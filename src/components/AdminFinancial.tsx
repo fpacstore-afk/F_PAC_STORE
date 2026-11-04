@@ -1,3 +1,6 @@
+import { MonthlyCloseout } from './admin/financial/MonthlyCloseout';
+import { FinancialReceiptsView } from './admin/financial/FinancialReceiptsView';
+import { FinancialPeriodPicker } from './admin/FinancialPeriodPicker';
 import { useSearchParams } from 'react-router-dom';
 import { CompanyCashRegister } from './admin/financial/CompanyCashRegister';
 import { isAdminIdentity } from '../../shared/adminIdentity';
@@ -6,8 +9,8 @@ import { isOwnerWithdrawal } from '../../shared/ownerWithdrawals';
 import { ProductRow } from './admin/financial/ProductCostRow';
 import { APPS_SCRIPT_PROMPT } from '../data/sheetsIntegrationScript';
 import { summarizeReceipts, receiptPeriodRange } from '../../shared/financialReceipts';
-import { estimateCampaignPerformance } from '../../shared/financialDashboard';
-import { financialDateKey, isActiveFinancialRecord } from '../../shared/cashFlow';
+import { classifyCommercialSale, confirmedSalesAmount, dateMatchesRange, estimateCampaignPerformance } from '../../shared/financialDashboard';
+import { financialDateKey, isActiveFinancialRecord, orderSaleDateKey } from '../../shared/cashFlow';
 import { isSalesCashFlowEntry, SALES_MOVEMENT_MESSAGE } from '../../shared/financialMovementScope';
 import { LegacySalesHistory } from './admin/financial/LegacySalesHistory';
 import { MeiRevenueReport } from './admin/financial/MeiRevenueReport';
@@ -24,7 +27,7 @@ import {
   Calendar, Layers, Filter, Plus, Trash2, Download, 
   RefreshCw, CheckCircle2, AlertTriangle, HelpCircle, 
   FileSpreadsheet, PieChart, ShoppingBag, Eye, Percent, ArrowUpRight, CreditCard,
-  RotateCcw, ShieldCheck, History, Clock, Receipt, Building2, Truck, FileText, Package, BarChart3
+  ClipboardCheck, RotateCcw, ShieldCheck, History, Clock, Receipt, Building2, Truck, FileText, Package, BarChart3
 } from 'lucide-react';
 import AdminAccountsReceivable from './AdminAccountsReceivable';
 import { FinancialLedgerView } from './admin/financial/FinancialLedgerView';
@@ -57,7 +60,11 @@ import {
 } from '../utils/orderFinancial';
 import { buildAutomaticCostMetadata } from '../../shared/productCostProfiles';
 
-export type FinancialPeriod = 'all' | 'today' | '7days' | 'current_month' | 'previous_month' | 'quarter' | 'year';
+function financialCsvCell(value: unknown): string {
+  const text = String(value ?? '');
+  const safe = /^\s*[=+\-@]|^[\t\r\n]/.test(text) ? `'${text}` : text;
+  return `"${safe.replace(/"/g, '""')}"`;
+}
 
 // Definition of types for persistence
 interface Investment {
@@ -118,6 +125,8 @@ export type FinancialSubTab =
   | 'products' 
   | 'sheets' 
   | 'orders'
+  | 'receipts'
+  | 'closeout'
   | 'mei';
 
 export interface AdminFinancialProps {
@@ -136,7 +145,14 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
 
   const [activeSubTab, setActiveSubTab] = useState<FinancialSubTab>(initialSubTab || 'dashboard');
   const [selectedOrderForDrawer, setSelectedOrderForDrawer] = useState<any | null>(null);
-  const [periodFilter, setPeriodFilter] = useState<FinancialPeriod>('all');
+  const linkedPeriod = entryParams.get('period');
+  const [periodFilter, setPeriodFilter] = useState(linkedPeriod || 'all');
+  const [confirmedOnly, setConfirmedOnly] = useState(entryParams.get('confirmed') === '1');
+  useEffect(() => {
+    if (linkedPeriod) setPeriodFilter(linkedPeriod);
+    setConfirmedOnly(entryParams.get('confirmed') === '1');
+  }, [linkedPeriod, entryParams]);
+  const analysisRange = useMemo(() => receiptPeriodRange(periodFilter), [periodFilter]);
 
   useEffect(() => {
     if (initialSubTab) {
@@ -421,43 +437,37 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
     };
   };
 
-  // Helper to filter dates by period
-  const isWithinPeriod = (dateInput: any, period: FinancialPeriod): boolean => {
-    if (period === 'all') return true;
-    const key = financialDateKey(dateInput);
-    const range = receiptPeriodRange(period);
-    return Boolean(key && range && key >= range.start && key <= range.end);
-  };
-
-  // Filtered Datasets based on selected Period
-  const filteredOrders = useMemo(() => {
-    return orders.filter(o => isWithinPeriod(o.createdAt || o.createdAtDate || o.created_at || o.date, periodFilter));
-  }, [orders, periodFilter]);
+  const filteredOrders = useMemo(() => orders.filter(order => {
+    if (!dateMatchesRange(orderSaleDateKey(order), analysisRange)) return false;
+    if (activeSubTab !== 'orders' || !confirmedOnly) return true;
+    const sale = classifyCommercialSale(order);
+    return Boolean(sale?.valid && sale.confirmed);
+  }), [orders, analysisRange, confirmedOnly, activeSubTab]);
 
   const companyCashflow = useMemo(() => companyMovements(cashflow, investments).filter(isActiveFinancialRecord)
     .sort((a, b) => (financialDateKey(b.date || b.createdAt) || '').localeCompare(financialDateKey(a.date || a.createdAt) || '')), [cashflow, investments]);
   const filteredCashflow = useMemo(() => {
-    return companyCashflow.filter(c => isWithinPeriod(c.date || (c as any).createdAt, periodFilter));
-  }, [companyCashflow, periodFilter]);
+    return companyCashflow.filter(c => dateMatchesRange(c.date || (c as any).createdAt, analysisRange));
+  }, [companyCashflow, analysisRange]);
   const legacySales = useMemo(() => cashflow.filter(isSalesCashFlowEntry), [cashflow]);
   const filteredLegacySales = useMemo(() => legacySales.filter(c =>
-    isWithinPeriod(c.date || (c as any).createdAt, periodFilter)
-  ), [legacySales, periodFilter]);
+    dateMatchesRange(c.date || (c as any).createdAt, analysisRange)
+  ), [legacySales, analysisRange]);
 
   const filteredTraffic = useMemo(() => {
-    return traffic.filter(t => isWithinPeriod(t.date, periodFilter));
-  }, [traffic, periodFilter]);
+    return traffic.filter(t => dateMatchesRange(t.date, analysisRange));
+  }, [traffic, analysisRange]);
 
   const filteredInvestments = useMemo(() => {
-    return investments.filter(i => isWithinPeriod(i.date || (i as any).createdAt, periodFilter));
-  }, [investments, periodFilter]);
+    return investments.filter(i => dateMatchesRange(i.date || (i as any).createdAt, analysisRange));
+  }, [investments, analysisRange]);
 
   // Canonical DRE Statement Computation
   const dreStats = useMemo(() => {
     return calculateFinancialDRE(filteredOrders, filteredCashflow, filteredInvestments, filteredTraffic, products);
   }, [filteredOrders, filteredCashflow, filteredInvestments, filteredTraffic, products]);
 
-  const receiptsByDate = useMemo(() => summarizeReceipts(orders, receiptPeriodRange(periodFilter)), [orders, periodFilter]);
+  const receiptsByDate = useMemo(() => summarizeReceipts(orders, analysisRange), [orders, analysisRange]);
 
   // Order aggregations (Filtered by Period) — canonical financial engine
   const orderStats = useMemo(() => {
@@ -1045,18 +1055,23 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
     let rows = '';
 
     if (type === 'orders') {
-      headers = 'Pedido ID;Data;Cliente;Método;Total (R$);Status;Gateway Pago;Custo Produto;Frete Pago;Lucro Líquido (R$)\n';
-      rows = orders.map(o => {
+      headers = 'Pedido ID;Data da venda;Cliente;Método;Total (R$);Status;Gateway Pago;Custo Produto;Frete Pago;Lucro Líquido (R$)\n';
+      rows = filteredOrders.map(o => {
         const calc = calculateFeesAndMargins(o);
-        const dateStr = o.createdAtDate ? o.createdAtDate.toLocaleDateString('pt-BR') : '';
-        return `${o.id};${dateStr};${o.customerName};${o.paymentMethod};${getOrderTotal(o).toFixed(2)};${o.status};${calc.gatewayFee.toFixed(2)};${calc.cogs.toFixed(2)};${calc.shippingCost.toFixed(2)};${calc.netProfit.toFixed(2)}`;
+        const date = orderSaleDateKey(o);
+        return [
+          ...[o.id, date, o.customerName, o.paymentMethod].map(financialCsvCell),
+          getOrderTotal(o).toFixed(2), financialCsvCell(o.status),
+          calc.gatewayFee.toFixed(2), calc.cogs.toFixed(2), calc.shippingCost.toFixed(2), calc.netProfit.toFixed(2)
+        ].join(';');
       }).join('\n');
     } else if (type === 'products') {
       headers = 'SKU;Nome;Estoque;Preço Venda (R$);Custo Unitário (R$);Vendidos;Receita Líquida Recebida;Lucro Acumulado;Margem (%)\n';
       rows = productFinancialStats.list.map(p => `${p.slug};${p.name};${p.stock};${p.price.toFixed(2)};${p.cost.toFixed(2)};${p.soldCount};${p.totalFaturamento.toFixed(2)};${p.totalProfit.toFixed(2)};${p.margin.toFixed(1)}`).join('\n');
     } else if (type === 'cashflow') {
       headers = 'ID;Data;Tipo;Descrição;Categoria;Valor (R$)\n';
-      rows = companyCashflow.map(c => `${companyMovementExportId(c)};${c.date};${c.type === 'in' ? 'Entrada' : 'Saída'};${c.description};${c.category};${Number(c.amount).toFixed(2)}`).join('\n');
+      rows = filteredCashflow.map(c => [companyMovementExportId(c), financialDateKey(c.date || (c as any).createdAt), c.type === 'in' ? 'Entrada' : 'Saída', c.description, c.category]
+        .map(financialCsvCell).concat(Number(c.amount).toFixed(2)).join(';')).join('\n');
     } else if (type === 'traffic') {
       headers = 'ID;Data;Campanha;Investimento;Cliques;Conversões Informadas;ROAS Estimado;Receita Estimada Menos Anúncios\n';
       rows = trafficStats.campaigns.map(c => `${companyMovementExportId(c)};${c.date};${c.campaignName};${c.amountSpent.toFixed(2)};${c.clicks};${c.conversions};${c.roas === null ? '' : c.roas.toFixed(1)};${c.lucro === null ? '' : c.lucro.toFixed(2)}`).join('\n');
@@ -1065,7 +1080,8 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
     const csvContent = "data:text/csv;charset=utf-8,\uFEFF" + encodeURIComponent(headers + rows);
     const link = document.createElement("a");
     link.setAttribute("href", csvContent);
-    link.setAttribute("download", `fpac_financeiro_${type}.csv`);
+    const suffix = analysisRange ? `${analysisRange.start}_${analysisRange.end}` : 'todos';
+    link.setAttribute("download", `fpac_financeiro_${type}_${suffix}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -1103,7 +1119,7 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
           </div>
 
           <div className="flex flex-wrap gap-2">
-            {activeSubTab !== 'mei' && <button
+            {['orders', 'dashboard', 'cashflow'].includes(activeSubTab) && <button
               onClick={() => handleDownloadCSV(activeSubTab === 'cashflow' ? 'cashflow' : 'orders')}
               className="bg-[#eab308] text-black hover:bg-white transition-all px-4 py-2 text-[9px] font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer"
             >
@@ -1163,30 +1179,7 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
           <Calendar size={14} className="text-[#eab308]" />
           <span className="text-[9px] font-black uppercase tracking-wider text-black">Período de Análise:</span>
         </div>
-        <div className="flex flex-wrap gap-1">
-          {[
-            { id: 'all', label: 'Todo o Período' },
-            { id: 'today', label: 'Hoje' },
-            { id: '7days', label: 'Últimos 7 Dias' },
-            { id: 'current_month', label: 'Mês Atual' },
-            { id: 'previous_month', label: 'Mês Anterior' },
-            { id: 'quarter', label: 'Trimestre' },
-            { id: 'year', label: 'Ano Atual' },
-          ].map(p => (
-            <button
-              key={p.id}
-              onClick={() => setPeriodFilter(p.id as FinancialPeriod)}
-              className={cn(
-                "px-3 py-1.5 text-[8.5px] font-black uppercase tracking-wider transition-all border cursor-pointer",
-                periodFilter === p.id 
-                  ? "bg-black text-[#eab308] border-black shadow-sm" 
-                  : "bg-white text-gray-500 border-black/10 hover:bg-gray-50 hover:text-black"
-              )}
-            >
-              {p.label}
-            </button>
-          ))}
-        </div>
+        <FinancialPeriodPicker value={periodFilter} onChange={setPeriodFilter} />
       </div>
 
       {/* Grid tabs */}
@@ -1195,6 +1188,8 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
           { id: 'register', label: 'Caixa da empresa', icon: <DollarSign size={14} /> },
           { id: 'dashboard', label: '1. Visão Geral', icon: <PieChart size={14} /> },
           { id: 'orders', label: '2. Vendas e pedidos', icon: <ShoppingBag size={14} /> },
+          { id: 'receipts', label: 'Recebimentos', icon: <Receipt size={14} /> },
+          { id: 'closeout', label: 'Fechamentos', icon: <ClipboardCheck size={14} /> },
           { id: 'expenses', label: '3. Despesas', icon: <Receipt size={14} /> },
           { id: 'cashflow', label: '4. Entradas e saídas', icon: <Clock size={14} /> },
           { id: 'receivables', label: '5. Contas a Receber', icon: <CreditCard size={14} /> },
@@ -1223,6 +1218,8 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
         ))}
       </div>
 
+      {activeSubTab === 'closeout' && <MonthlyCloseout />}
+      {activeSubTab === 'receipts' && <FinancialReceiptsView key={periodFilter} orders={orders} range={analysisRange} onOpenOrder={setSelectedOrderForDrawer} />}
       {activeSubTab === 'register' && <CompanyCashRegister revisionKey={cashRegisterRevision}
         onMovement={() => setActiveSubTab('cashflow')}
         onWithdrawal={() => { setActiveSubTab('cashflow'); setCfForm({ description: 'Retirada pessoal do proprietário', amount: '', type: 'out', category: 'Retirada Pessoal', date: financialDateKey(new Date()) || '' }); }}
@@ -1709,12 +1706,13 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
            <div className="p-6 bg-white border flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
               <div>
                 <h3 className="text-lg font-black uppercase italic">Vendas e pedidos</h3>
+                <label className="mt-2 flex items-center gap-2 text-xs font-bold"><input type="checkbox" checked={confirmedOnly} onChange={event => setConfirmedOnly(event.target.checked)} /> Somente vendas confirmadas</label>
                 <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-0.5">Pedidos do site e pedidos manuais, com pagamentos, taxas e custos registrados. Vendas não são lançadas novamente nas entradas manuais.</p>
               </div>
               <div className="flex gap-4">
                 <div className="text-right border-r border-black/10 pr-6">
-                   <span className="text-[8px] font-extrabold text-gray-400 uppercase tracking-widest">FATURAMENTO</span>
-                   <h4 className="text-xl font-black text-black">{formatMoney(orderStats.faturamento)}</h4>
+                   <span className="text-[8px] font-extrabold text-gray-400 uppercase tracking-widest">{confirmedOnly ? 'VENDAS CONFIRMADAS LÍQUIDAS' : 'FATURAMENTO'}</span>
+                   <h4 className="text-xl font-black text-black">{formatMoney(confirmedOnly ? confirmedSalesAmount(filteredOrders) : orderStats.faturamento)}</h4>
                 </div>
                 <div className="text-right">
                    <span className="text-[8px] font-extrabold text-gray-400 uppercase tracking-widest">RESULTADO DOS PEDIDOS</span>
@@ -1759,12 +1757,12 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
                           return (
                             <tr key={order.id} className={cn("block lg:table-row border-b border-black/[0.03] hover:bg-black/[0.01] transition-colors uppercase p-4 lg:p-0 space-y-2.5 lg:space-y-0", !isApproved && "opacity-50 bg-gray-50/40")}>
                               <td className="block lg:table-cell p-0 lg:p-4">
-                                <div className="font-extrabold text-black text-xs">#{order.id.slice(0, 10).toUpperCase()}</div>
+                                <button type="button" onClick={() => setSelectedOrderForDrawer(order)} className="break-all text-left text-xs font-extrabold text-black underline underline-offset-2">#{order.id}</button>
                                 <div className="text-[8.5px] text-gray-400 font-black tracking-widest mt-0.5">{order.customerName}</div>
                               </td>
                               <td className="block lg:table-cell p-0 lg:p-4 flex justify-between items-center lg:table-cell text-xs font-bold text-gray-500 whitespace-nowrap">
                                 <span className="inline-block lg:hidden font-extrabold text-gray-400 text-[8px] uppercase tracking-widest mr-2">Data</span>
-                                <span>{order.createdAtDate?.toLocaleDateString('pt-BR') || ''}</span>
+                                <span>{orderSaleDateKey(order)?.split('-').reverse().join('/') || '—'}</span>
                               </td>
                               <td className="block lg:table-cell p-0 lg:p-4 flex justify-between items-center lg:table-cell font-black tracking-wider text-[10px]">
                                 <span className="inline-block lg:hidden font-extrabold text-gray-400 text-[8px] uppercase tracking-widest mr-2">Método</span>
@@ -2488,7 +2486,7 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
       )}
 
       {activeSubTab === 'receivables' && (
-        <AdminAccountsReceivable onNavigateOrder={(ordId) => {
+        <AdminAccountsReceivable confirmedOnly={entryParams.get('confirmed') === '1'} onNavigateOrder={(ordId) => {
           const matched = orders.find(o => String(o.id) === String(ordId));
           if (matched) setSelectedOrderForDrawer(matched);
           else setSelectedOrderForDrawer({ id: ordId, name: `Pedido #${ordId}` });

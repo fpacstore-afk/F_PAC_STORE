@@ -1,3 +1,4 @@
+import { financialDateKey, orderSaleDateKey } from '../../../../shared/cashFlow';
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
@@ -59,6 +60,7 @@ export function OrderFinancialDrawer({
   const [activeAction, setActiveAction] = useState<'overview' | 'pay' | 'refund' | 'correct'>('overview');
 
   // Payment Form State
+  const [paymentDate, setPaymentDate] = useState('');
   const [paymentAmount, setPaymentAmount] = useState<string>('');
   const [paymentMethod, setPaymentMethod] = useState<string>('PIX');
   const [paymentReason, setPaymentReason] = useState<string>('');
@@ -104,6 +106,7 @@ export function OrderFinancialDrawer({
       setActiveAction('overview');
       const pending = getOrderPendingAmount(order);
       setPaymentAmount(pending > 0 ? pending.toFixed(2) : '');
+      setPaymentDate(financialDateKey(new Date()) || '');
       setPaymentMethod(order.payment?.method || order.paymentMethod || 'PIX');
       setPaymentReason(`Pagamento referente ao pedido #${order.id}`);
       setPaymentIdempotencyKey(generateKey('pay', order.id));
@@ -150,7 +153,8 @@ export function OrderFinancialDrawer({
         amountNum,
         paymentMethod,
         paymentReason,
-        paymentIdempotencyKey
+        paymentIdempotencyKey,
+        paymentDate
       );
 
       if (res?.idempotentReplay) {
@@ -242,10 +246,11 @@ export function OrderFinancialDrawer({
                 )}
                 {createdDate && (
                   <span className="text-[9px] text-gray-400 font-bold">
-                    {createdDate.toLocaleDateString('pt-BR')} às {createdDate.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                    Cadastrado em {createdDate.toLocaleDateString('pt-BR')} às {createdDate.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
                   </span>
                 )}
               </div>
+              {order.saleDate && <p className="mb-1 text-xs text-gray-600">Venda em {orderSaleDateKey(order)?.split('-').reverse().join('/')}{order.recordedBy && ` · Cadastro por ${order.recordedBy}`}</p>}
               <h2 className="text-lg font-black uppercase tracking-tight text-black flex items-center gap-2">
                 <CreditCard className="text-[#eab308]" size={18} /> Central Financeira do Pedido
               </h2>
@@ -466,6 +471,10 @@ export function OrderFinancialDrawer({
                 </select>
               </div>
 
+              <label className="grid gap-1 text-xs font-bold">
+                Data do recebimento
+                <input type="date" required max={financialDateKey(new Date()) || undefined} value={paymentDate} onChange={event => setPaymentDate(event.target.value)} className="min-h-11 rounded border border-black/20 px-3 text-sm" />
+              </label>
               <div>
                 <label className="text-[8.5px] font-black uppercase tracking-wider text-black block mb-1">
                   Motivo / Observações
@@ -648,6 +657,7 @@ export function OrderFinancialDrawer({
 
                       <div className="flex items-center justify-between text-[7px] font-mono text-gray-400 pt-1 border-t border-black/5">
                         <span>Operador: {evt.actorEmail || 'Admin'}</span>
+                        {evt.paymentDate && <span>Recebido em {evt.paymentDate.split('-').reverse().join('/')}</span>}
                         <span>Método: {evt.paymentMethod || 'MANUAL'}</span>
                       </div>
                     </div>

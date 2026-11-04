@@ -265,7 +265,8 @@ export async function reserveStock(orderId: string, items: any[], idempotencyKey
       itemReads.push({ item, physicalSlug, variantKey, requestedQty, invRef, invDoc, stats });
     }
 
-    await applyOrderStampStockInTransaction(transaction, db, orderId, resolvedItems, 'order_debit');
+    const historicalStampAlreadyMoved = orderData?.isManual === true && orderData?.historicalSale === true && orderData?.skipStampStock === true;
+    if (!historicalStampAlreadyMoved) await applyOrderStampStockInTransaction(transaction, db, orderId, resolvedItems, 'order_debit');
 
     if (orderData) {
       transaction.set(orderRef, {

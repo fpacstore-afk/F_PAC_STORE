@@ -1,3 +1,5 @@
+import { isConfirmedReceivable } from '../../shared/managementOverview';
+import { financialDateKey } from '../../shared/cashFlow';
 import { PaymentCorrectionForm } from './admin/financial/PaymentCorrectionForm';
 import { canCorrectRecordedPayment, isManualReceiptOrder } from '../../shared/paymentCorrection';
 import React, { useState, useEffect, useMemo } from 'react';
@@ -51,6 +53,7 @@ import { receivableMatchesPeriod, type ReceivableDateBasis } from '../../shared/
 
 interface AdminAccountsReceivableProps {
   initialSearchTerm?: string;
+  confirmedOnly?: boolean;
   onNavigateOrder?: (orderId: string) => void;
 }
 
@@ -62,7 +65,7 @@ export function getOrderAmountPaid(order: any): number {
   return getOrderPaidAmount(order);
 }
 
-export default function AdminAccountsReceivable({ initialSearchTerm = '', onNavigateOrder }: AdminAccountsReceivableProps) {
+export default function AdminAccountsReceivable({ initialSearchTerm = '', confirmedOnly = false, onNavigateOrder }: AdminAccountsReceivableProps) {
   const { formatMoney } = useFinancialPrivacy();
   const [correctionOrder, setCorrectionOrder] = useState<any | null>(null);
   const [orders, setOrders] = useState<any[]>([]);
@@ -79,6 +82,7 @@ export default function AdminAccountsReceivable({ initialSearchTerm = '', onNavi
 
   // Modal: Registrar Pagamento Manual
   const [paymentModalOrder, setPaymentModalOrder] = useState<any | null>(null);
+  const [paymentDate, setPaymentDate] = useState('');
   const [paymentAmount, setPaymentAmount] = useState<string>('');
   const [paymentMethod, setPaymentMethod] = useState<string>('PIX');
   const [paymentReason, setPaymentReason] = useState<string>('');
@@ -132,6 +136,7 @@ export default function AdminAccountsReceivable({ initialSearchTerm = '', onNavi
   const filteredOrders = useMemo(() => {
     return orders.filter(o => {
       // Exclui pedidos cancelados se não houver saldo nem valor pago
+      if (confirmedOnly && !isConfirmedReceivable(o)) return false;
       const status = getOrderPaymentStatus(o);
       const total = getOrderTotal(o);
       const paid = getOrderPaidAmount(o);
@@ -173,7 +178,7 @@ export default function AdminAccountsReceivable({ initialSearchTerm = '', onNavi
 
       return true;
     });
-  }, [orders, statusFilter, periodFilter, dateBasis, searchTerm]);
+  }, [confirmedOnly, orders, statusFilter, periodFilter, dateBasis, searchTerm]);
 
   // Reset page when filter changes
   useEffect(() => {
@@ -231,6 +236,7 @@ export default function AdminAccountsReceivable({ initialSearchTerm = '', onNavi
     setPaymentModalOrder(order);
     const pending = getOrderPendingAmount(order);
     setPaymentAmount(pending > 0 ? pending.toFixed(2) : '');
+    setPaymentDate(financialDateKey(new Date()) || '');
     setPaymentMethod(order.payment?.method || 'PIX');
     setPaymentReason(`Quitação/parcela referente ao pedido #${order.id}`);
     setPaymentIdempotencyKey(typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `pay_${order.id}_${Math.random().toString(36).substring(2, 15)}_${Date.now()}`);
@@ -260,7 +266,8 @@ export default function AdminAccountsReceivable({ initialSearchTerm = '', onNavi
         amountNum,
         paymentMethod,
         paymentReason,
-        paymentIdempotencyKey
+        paymentIdempotencyKey,
+        paymentDate
       );
       if (res?.idempotentReplay) {
         toast.success(`Pagamento já processado anteriormente (Replay idempotente).`);
@@ -882,7 +889,11 @@ export default function AdminAccountsReceivable({ initialSearchTerm = '', onNavi
                   </select>
                 </div>
 
-                <div>
+                <label className="grid gap-1 text-xs font-bold">
+                Data do recebimento
+                <input type="date" required max={financialDateKey(new Date()) || undefined} value={paymentDate} onChange={event => setPaymentDate(event.target.value)} className="min-h-11 rounded border border-black/20 px-3 text-sm" />
+              </label>
+              <div>
                   <label className="text-[9px] font-black uppercase tracking-wider text-black block mb-1">
                     Motivo / Observações
                   </label>
@@ -1130,7 +1141,8 @@ export default function AdminAccountsReceivable({ initialSearchTerm = '', onNavi
 
                           <div className="flex items-center justify-between text-[7.5px] font-mono text-gray-400 pt-1 border-t border-black/5">
                             <span>Op: {evt.actorEmail || 'Admin'}</span>
-                            <span>Método: {evt.paymentMethod || 'MANUAL'}</span>
+                            {evt.paymentDate && <span>Recebido em {evt.paymentDate.split('-').reverse().join('/')}</span>}
+                        <span>Método: {evt.paymentMethod || 'MANUAL'}</span>
                           </div>
                         </div>
                       );

@@ -1,3 +1,4 @@
+import { orderSaleDateKey } from '../../../shared/cashFlow';
 import { useNavigate } from 'react-router-dom';
 import { CompanyCashRegister } from '../admin/financial/CompanyCashRegister';
 import { buildCustomerIdentities, loyaltyPaidValue } from '../../../shared/customerPurchases';
@@ -8,7 +9,7 @@ import { db } from '../../lib/firebase';
 import { catalogIntegrity } from '../../../shared/catalogIntegrity';
 import { getOrderPaidAmount, getOrderNetReceived, getOrderPendingAmount } from '../../../shared/orderFinancialCore';
 import { summarizeReceipts } from '../../../shared/financialReceipts';
-import { dashboardPeriodRange, dateMatchesRange, summarizePayables } from '../../../shared/financialDashboard';
+import { confirmedSalesAmount, dashboardPeriodRange, dateMatchesRange, summarizePayables } from '../../../shared/financialDashboard';
 import { isConfirmedReceivable, periodChange, previousDashboardRange, receiptTrend } from '../../../shared/managementOverview';
 import { calculateFinancialDRE } from '../../utils/orderFinancial';
 import { useFinancialPrivacy } from '../../context/FinancialPrivacyContext';
@@ -63,6 +64,7 @@ function sessionOrigin(session: AnyDoc) {
 export default function ManagementDashboard() {
   const navigate = useNavigate();
   const { formatMoney, formatPercent, showFinancialValues } = useFinancialPrivacy();
+  const [cashBalance, setCashBalance] = useState<number | null>(null);
   const [period, setPeriod] = useState<PeriodKey>('30d');
   const [orders, setOrders] = useState<AnyDoc[]>([]);
   const [sessions, setSessions] = useState<AnyDoc[]>([]);
@@ -156,12 +158,12 @@ export default function ManagementDashboard() {
     buildCustomerIdentities(orders).filter(group => group.aliases.size > 0).forEach(group => group.allOrders.forEach(order => customerKeys.set(order, group.key)));
     const customerKey = (order: AnyDoc) => customerKeys.get(order) || '';
     const paidAll = orders.filter(isPaid);
-    const paid = paidAll.filter(order => inPeriod(order.createdAt || order.createdAtDate || order.created_at || order.date));
+    const paid = paidAll.filter(order => inPeriod(orderSaleDateKey(order)));
     const receipts = summarizeReceipts(orders, range);
     const previousReceipts = priorRange ? summarizeReceipts(orders, priorRange) : null;
     const trend = receiptTrend(orders, range, selected.days);
     const averageReceipt = receipts.receivedOrders ? receipts.netReceived / receipts.receivedOrders : 0;
-    const periodOrders = orders.filter(order => inPeriod(order.createdAt || order.createdAtDate || order.created_at || order.date));
+    const periodOrders = orders.filter(order => inPeriod(orderSaleDateKey(order)));
     const periodRecords = (records: AnyDoc[]) => records.filter(record => inPeriod(record.date || record.createdAt || record.created_at));
     const dre = calculateFinancialDRE(
       periodOrders,
@@ -271,6 +273,7 @@ export default function ManagementDashboard() {
 
     return {
       integrity,
+      salesAmount: confirmedSalesAmount(periodOrders),
       gifts: summarizeGiftRows(giftReportRows(periodOrders, products)),
       unresolvedPayments: orders.filter(order => order.paymentCreationUncertain).length,
       receipts,
@@ -281,7 +284,7 @@ export default function ManagementDashboard() {
       payableSummary,
       averageReceipt,
       paidOrders: paid.length,
-      paidOrdersChange: priorRange ? periodChange(paid.length, paidAll.filter(order => dateMatchesRange(order.createdAt || order.createdAtDate || order.created_at || order.date, priorRange)).length) : null,
+      paidOrdersChange: priorRange ? periodChange(paid.length, paidAll.filter(order => dateMatchesRange(orderSaleDateKey(order), priorRange)).length) : null,
       receiptsChange: previousReceipts ? periodChange(receipts.netReceived, previousReceipts.netReceived) : null,
       conversion,
       sessionsCount: filteredSessions.length,
@@ -313,7 +316,8 @@ export default function ManagementDashboard() {
   if (loading) return <p role="status" className="p-5 text-sm">Carregando os dados para calcular os indicadores...</p>;
 
   return <ManagementDashboardView
-    cashRegister={<CompanyCashRegister revisionKey={cashRevision}
+    cashBalance={cashBalance}
+    cashRegister={<CompanyCashRegister revisionKey={cashRevision} onBalance={setCashBalance}
       onMovement={() => navigate('/gestao?tab=financial&finance=cashflow')}
       onWithdrawal={() => navigate('/gestao?tab=financial&finance=cashflow&entry=withdrawal')}
       onProLabore={() => navigate('/gestao?tab=financial&finance=cashflow&entry=prolabore')}

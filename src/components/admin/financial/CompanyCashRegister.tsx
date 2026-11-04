@@ -3,8 +3,8 @@ import { authenticatedFetch } from '../../../lib/api';
 import { useFinancialPrivacy } from '../../../context/FinancialPrivacyContext';
 import toast from 'react-hot-toast';
 
-type Props = { revisionKey: object; onMovement: () => void; onWithdrawal: () => void; onProLabore: () => void; onPayables: () => void };
-export function CompanyCashRegister({ revisionKey, onMovement, onWithdrawal, onProLabore, onPayables }: Props) {
+type Props = { revisionKey: object; onBalance?: (balance: number | null) => void; onMovement: () => void; onWithdrawal: () => void; onProLabore: () => void; onPayables: () => void };
+export function CompanyCashRegister({ revisionKey, onBalance, onMovement, onWithdrawal, onProLabore, onPayables }: Props) {
   const { formatMoney } = useFinancialPrivacy();
   const [summary, setSummary] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -25,6 +25,7 @@ export function CompanyCashRegister({ revisionKey, onMovement, onWithdrawal, onP
     finally { if (request === generation.current) setLoading(false); }
   }
   useEffect(() => { void refresh(); return () => { generation.current++; }; }, [revisionKey]);
+  useEffect(() => { onBalance?.(summary?.cycle.balance ?? null); }, [summary, onBalance]);
   async function reset() {
     if (!summary || resetting) return;
     setResetting(true);

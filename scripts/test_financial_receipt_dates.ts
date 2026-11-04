@@ -1,3 +1,5 @@
+import { salesGoalProgress } from '../shared/financialDashboard';
+import { getMonthlyCloseout, saveMonthlyCloseout } from '../server/services/monthlyCloseout.service';
 import assert from 'node:assert/strict';
 import { summarizeReceipts, receiptMonthRange, receiptPeriodRange, receiptGoalRanges, orderReceiptHistory } from '../shared/financialReceipts';
 import { financialDateKey } from '../shared/cashFlow';
@@ -85,9 +87,29 @@ test('goals and overview share the current month cutoff, including future record
   assert.equal(summarizeReceipts([future], ranges.month).received, 0);
 });
 
+test('previous year follows midnight in São Paulo and separates installments and refunds', () => {
+  const before = new Date('2027-01-01T02:59:59Z');
+  const after = new Date('2027-01-01T03:00:00Z');
+  assert.equal(receiptPeriodRange('previous_year', before)?.end, '2025-12-31');
+  const previous = receiptPeriodRange('previous_year', after);
+  assert.deepEqual(previous, { start: '2026-01-01', end: '2026-12-31' });
+  assert.deepEqual(receiptPeriodRange('previous_month', after), { start: '2026-12-01', end: '2026-12-31' });
+  const order = fixture({
+    createdAt: '2026-12-29',
+    payment: { paidAmount: 300, refundedAmount: 20 },
+    paymentLogs: [
+      { id: 'december', amount: 100, date: before },
+      { id: 'january', amount: 200, date: after }
+    ],
+    refundLogs: [{ id: 'january-refund', amount: 20, date: after }]
+  });
+  assert.equal(summarizeReceipts([order], previous).netReceived, 100);
+  assert.equal(summarizeReceipts([order], receiptPeriodRange('year', after)).netReceived, 180);
+});
+
 async function main() {
   const db = requireIsolatedTestDb();
-  const { processOrderRefundController, updateOrderPaymentStatus } = await import('../server/controllers/admin.controller');
+  const { processOrderRefundController, updateOrderPaymentStatus, createManualOrderController, registerManualPaymentController } = await import('../server/controllers/admin.controller');
   async function call(handler: any, id: string, body: any) {
     let status = 200, result: any;
     await handler({ params: { orderId: id }, body, user: { uid: 'isolated-test', email: 'isolated@example.invalid' }, ip: '127.0.0.1' },
@@ -140,6 +162,66 @@ async function main() {
   await invalidRef.update({ 'payment.paidAmount': 0 });
   assert.equal((await call(updateOrderPaymentStatus, invalidRef.id, { newStatus: 'refunded', idempotencyKey: 'unpaid-refund' })).result.error, 'INVALID_REFUND_AMOUNT');
   checks++; console.log('PASS malformed or excessive refunds cannot manufacture captured money');
+  const historical = {
+    id: 'MANUAL-YEAR-END',
+    historicalSale: true,
+    saleDate: '2025-12-29',
+    garmentsAlreadyMoved: true,
+    stampsAlreadyMoved: true,
+    items: [{ id: 'shirt', quantity: 1, price: 300 }],
+    total: 300, status: 'received', paymentStatus: 'pending'
+  };
+  assert.equal((await call(createManualOrderController, historical.id, { order: { ...historical, saleDate: '2025-02-29' } })).status, 400);
+  assert.equal((await call(createManualOrderController, historical.id, { order: historical })).status, 201);
+  const refHistorical = db.collection('orders').doc(historical.id);
+  const created = (await refHistorical.get()).data();
+  assert.equal(created.saleDate, historical.saleDate);
+  assert.notEqual(financialDateKey(created.createdAt), historical.saleDate);
+  assert.equal(created.recordedBy, 'isolated@example.invalid');
+  assert.equal(created.stockControl, 'no_move');
+  assert.equal(created.skipStampStock, true);
+  assert.equal(created.suppressAutomaticNotifications, true);
+  assert.equal((await db.collection('stamp_stock_events').doc(`${historical.id}_order_debit`).get()).exists, false);
+  const salesNow = new Date('2026-01-05T15:00:00Z');
+  assert.equal(salesGoalProgress([created], 2025, 11, salesNow).year, 300);
+  assert.equal(salesGoalProgress([created], 2026, 0, salesNow).year, 0);
+
+  // A legacy first receipt with a known date is retained when a second receipt is logged.
+  await refHistorical.update({ payment: { status: 'partially_paid', paidAmount: 100, pendingAmount: 200, paidAt: '2025-12-30' } });
+  const january = { amount: 200, method: 'PIX', paymentDate: '2026-01-03', idempotencyKey: 'late-pay-jan' };
+  assert.equal((await call(registerManualPaymentController, historical.id, { ...january, paymentDate: '2199-01-03' })).status, 400);
+  assert.equal((await call(registerManualPaymentController, historical.id, january)).status, 200);
+  assert.equal((await call(registerManualPaymentController, historical.id, january)).result.idempotentReplay, true);
+  assert.equal((await call(registerManualPaymentController, historical.id, { ...january, paymentDate: '2025-12-31' })).status, 409);
+  const historicalPaid = (await refHistorical.get()).data();
+  assert.equal(historicalPaid.paymentLogs[0].date, '2026-01-03');
+  assert.ok(historicalPaid.paymentLogs[0].recordedAt);
+  assert.equal(summarizeReceipts([historicalPaid], receiptPeriodRange('month:2025-12')).received, 100);
+  assert.equal(summarizeReceipts([historicalPaid], receiptPeriodRange('year:2026')).received, 200);
+  checks++; console.log('PASS late sale, skipped stock and notifications, and audited receipts across calendar years');
+
+  const closeoutMonth = '2026-02';
+  const preview = await getMonthlyCloseout(closeoutMonth);
+  const closeout = { month: closeoutMonth, token: preview.token, requestId: 'closeout-first', reconciled: true,
+    bankAndCashBalance: 82.50, receivables: 25, payables: 10, note: 'Sem contagem registrada.' };
+  await db.collection('financial_cashflow').doc('closeout-expense').set({ amount: 10, type: 'out', date: '2026-02-12' });
+  await assert.rejects(saveMonthlyCloseout(closeout, { uid: 'isolated-test' }), /CLOSEOUT_CHANGED/);
+  const refreshed = { ...closeout, token: (await getMonthlyCloseout(closeoutMonth)).token };
+  await assert.rejects(saveMonthlyCloseout({ ...refreshed, note: '' }, { uid: 'isolated-test' }), /CLOSEOUT_NOTE_REQUIRED/);
+  const first = await saveMonthlyCloseout(refreshed, { uid: 'isolated-test' });
+  assert.equal(first.revision, 1);
+  assert.equal(first.position.movements.cashOut, 10);
+  assert.deepEqual(await saveMonthlyCloseout(refreshed, { uid: 'isolated-test' }), first);
+  await db.collection('financial_cashflow').doc('closeout-expense').update({ amount: 15 });
+  const changed = await getMonthlyCloseout(closeoutMonth);
+  assert.equal(changed.saved.position.movements.cashOut, 10);
+  assert.equal(changed.position.movements.cashOut, 15);
+  const second = await saveMonthlyCloseout({ ...refreshed, token: changed.token, requestId: 'closeout-second', note: 'Corrigido comprovante.' }, { uid: 'isolated-test' });
+  assert.equal(second.revision, 2);
+  const history = await getMonthlyCloseout(closeoutMonth);
+  assert.deepEqual(history.versions.map((version: any) => version.position.movements.cashOut), [15, 10]);
+  assert.equal(history.annual[0].expenses, 15);
+  checks++; console.log('PASS monthly closeouts validate current data, preserve versions and summarize the latest monthly records');
   console.log(`${checks} receipt date checks passed; isolated database, no customer notifications or production writes.`);
 }
 main().catch(error => { console.error(error); process.exit(1); });

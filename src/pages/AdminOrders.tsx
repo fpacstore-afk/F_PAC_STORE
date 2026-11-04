@@ -1,10 +1,14 @@
+import { FinancialPeriodPicker } from '../components/admin/FinancialPeriodPicker';
+import { dashboardPeriodRange, dateMatchesRange } from '../../shared/financialDashboard';
+import { receiptPeriodRange } from '../../shared/financialReceipts';
+import { financialDateKey, orderSaleDateKey, validFinancialDay } from '../../shared/cashFlow';
 import { isAdminIdentity } from '../../shared/adminIdentity';
 import { compatibleGarmentSource } from '../../shared/sharedGarmentStock';
 import { garmentFamily, garmentTitle } from '../../shared/garmentModels';
 import { collection, deleteDoc, doc, getDoc, onSnapshot, orderBy, query, serverTimestamp, setDoc, updateDoc, writeBatch } from 'firebase/firestore';
 import { AnimatePresence, motion } from 'framer-motion';
 import { BadgePercent, BarChart3, BellRing, Boxes, CheckCircle, ChevronDown, ChevronUp, ClipboardCheck, ClipboardList, Eye, EyeOff, Factory, FileSpreadsheet, Gift, Images, Layers, LayoutDashboard, Loader2, Mail, MessageCircle, Package, Plus, Radio, RefreshCw, Search, Sparkles, Trash2, Truck, Users, WalletCards, Warehouse, XCircle } from 'lucide-react';
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import QRCode from 'qrcode';
 import toast from 'react-hot-toast';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
@@ -224,6 +228,7 @@ function AdminOrdersInner() {
   );
   const [catalogStamps, setCatalogStamps] = useState<any[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
+  const [orderPeriod, setOrderPeriod] = useState('all');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [stockFilter, setStockFilter] = useState<'all' | 'moved' | 'not_moved'>('all');
   const [activeTab, setActiveTab] = useState<ManagementTab>(() => {
@@ -278,8 +283,15 @@ function AdminOrdersInner() {
 
   // --- MANUAL ORDER SYSTEM ---
   const [orderSubView, setOrderSubView] = useState<'list' | 'reports' | 'logs'>('list');
-  const [orderListView, setOrderListView] = useState<'active' | 'completed'>('active');
+  const [orderListView, setOrderListView] = useState<'active' | 'completed' | 'all'>('active');
   const [isManualModalOpen, setIsManualModalOpen] = useState(false);
+  const [historicalSale, setHistoricalSale] = useState(false);
+  const [saleDate, setSaleDate] = useState('');
+  const [garmentHistory, setGarmentHistory] = useState('');
+  const [stampHistory, setStampHistory] = useState('');
+  const [notifyHistoricalCustomer, setNotifyHistoricalCustomer] = useState(false);
+  const [initialPaymentDate, setInitialPaymentDate] = useState('');
+  const manualOrderId = useRef<string | null>(null);
   const [manualOrderKind, setManualOrderKind] = useState<'sale' | 'gift'>('sale');
   const [isOrderMaintenanceOpen, setIsOrderMaintenanceOpen] = useState(false);
   const [orderMaintenancePreview, setOrderMaintenancePreview] = useState<OrderMaintenancePreview | null>(null);
@@ -578,6 +590,7 @@ function AdminOrdersInner() {
     const requestedOrder = searchParams.get('orderId');
     if (activeTab !== 'orders' || !ordersLoaded || !requestedOrder || !orders.some(order => order.id === requestedOrder)) return;
     setSearchTerm(requestedOrder);
+    setOrderPeriod('all');
     setExpandedOrders(current => current.includes(requestedOrder) ? current : [...current, requestedOrder]);
   }, [activeTab, ordersLoaded, orders, searchParams]);
   useEffect(() => {
@@ -698,28 +711,9 @@ function AdminOrdersInner() {
       });
     }
 
-    // 3. Filter by Period / Date Range
-    const now = new Date();
-    filtered = filtered.filter(o => {
-      const oDate = o.createdAt?.toMillis ? new Date(o.createdAt.toMillis()) : (o.createdAt?.seconds ? new Date(o.createdAt.seconds * 1000) : new Date(o.createdAt || now));
-      const diffMs = now.getTime() - oDate.getTime();
-      const diffDays = diffMs / (1000 * 60 * 60 * 24);
-
-      if (repPeriod === 'today') {
-        return oDate.toDateString() === now.toDateString();
-      } else if (repPeriod === '7days') {
-        return diffDays <= 7;
-      } else if (repPeriod === '30days') {
-        return diffDays <= 30;
-      } else if (repPeriod === 'thisMonth') {
-        return oDate.getMonth() === now.getMonth() && oDate.getFullYear() === now.getFullYear();
-      } else if (repPeriod === 'lastMonth') {
-        const prevMonth = now.getMonth() === 0 ? 11 : now.getMonth() - 1;
-        const prevYear = now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear();
-        return oDate.getMonth() === prevMonth && oDate.getFullYear() === prevYear;
-      }
-      return true; // 'all'
-    });
+    const reportPeriods: Record<string, string> = { today: 'today', '7days': '7days', thisMonth: 'current_month', lastMonth: 'previous_month' };
+    const reportRange = repPeriod === '30days' ? dashboardPeriodRange(30) : receiptPeriodRange(reportPeriods[repPeriod] || 'all');
+    filtered = filtered.filter(order => dateMatchesRange(orderSaleDateKey(order), reportRange));
 
     const paidFilteredOrders = filtered.filter(o => isAdminOrderPaid(o));
 
@@ -1775,9 +1769,17 @@ function AdminOrdersInner() {
       return;
     }
 
+    if (savingManualOrder) return;
+    const isHistorical = manualOrderKind === 'sale' && historicalSale;
+    const today = financialDateKey(new Date())!;
+    if (isHistorical && (!validFinancialDay(saleDate) || saleDate >= today || !garmentHistory || !stampHistory)) {
+      toast.error('Informe a data anterior a hoje e confira a movimentação das peças e estampas.');
+      return;
+    }
+
     setSavingManualOrder(true);
     try {
-      const orderId = `${manualOrderKind === 'gift' ? 'MANUAL-BRINDE' : 'MANUAL'}-${Date.now().toString().slice(-5)}-${Math.floor(100 + Math.random() * 900)}`;
+      const orderId = manualOrderId.current ??= `${manualOrderKind === 'gift' ? 'MANUAL-BRINDE' : 'MANUAL'}-${Date.now()}-${crypto.randomUUID().slice(0, 8)}`;
       
       const subTotalSum = manualOrderKind === 'gift' ? 0 : tempItems.reduce((acc, item) => acc + (item.price * item.quantity), 0);
       const totalSum = manualOrderKind === 'gift' ? 0 : Math.max(0, subTotalSum + Number(manualOrderShipping) - Number(manualOrderDiscount));
@@ -1879,10 +1881,25 @@ function AdminOrdersInner() {
 
       const customLines = tempItems.filter((item) => item.mode === 'custom');
       const customOrderDetails = buildManualCustomProduction(customLines);
-      const orderStockControl = stockControl;
+      const orderStockControl = isHistorical ? (garmentHistory === 'moved' ? 'no_move' : 'move') : stockControl;
+      if (initAmountPaid > 0 && initialPaymentDate && (!validFinancialDay(initialPaymentDate) || initialPaymentDate > today)) {
+        toast.error('Informe uma data de recebimento válida até hoje.');
+        return;
+      }
+      if (isHistorical && initAmountPaid > 0 && !initialPaymentDate) {
+        toast.error('Informe a data efetiva do recebimento.');
+        return;
+      }
 
       const orderPayload = {
         id: orderId,
+        ...(isHistorical ? {
+          historicalSale: true,
+          saleDate,
+          garmentsAlreadyMoved: garmentHistory === 'moved',
+          stampsAlreadyMoved: stampHistory === 'moved',
+          notifyHistoricalCustomer
+        } : {}),
         customerName: custName,
         customerPhone: custPhone,
         customerPhone2: custPhone2,
@@ -1946,7 +1963,7 @@ function AdminOrdersInner() {
         }
 
         // Disparar WhatsApp + e-mail pelo fluxo centralizado quando estiver aguardando pagamento.
-        if (initBalanceDue > 0 && manualOrderStatus !== 'cancelled' && (custPhone.trim() || custEmail.trim())) {
+        if ((!isHistorical || notifyHistoricalCustomer) && initBalanceDue > 0 && manualOrderStatus !== 'cancelled' && (custPhone.trim() || custEmail.trim())) {
           authenticatedFetch('/api/automation/stage-notification', {
             method: 'POST',
             headers: {
@@ -1978,6 +1995,7 @@ function AdminOrdersInner() {
       }
 
       // If initial order was marked as paid, register manual payment ledger event via API
+      let initialPaymentSaved = true;
       if (initAmountPaid > 0) {
         const paymentResponse = await authenticatedFetch(`/api/admin/orders/${orderId}/manual-payment`, {
           method: 'POST',
@@ -1986,13 +2004,15 @@ function AdminOrdersInner() {
             amount: initAmountPaid,
             method: paymentMethodForm || 'MANUAL',
             reference: `Venda Manual - ${orderOrigin}`,
-            notes: `Pagamento inicial registrado na criação manual do pedido #${orderId}`,
+            reason: `Pagamento inicial registrado na criação manual do pedido #${orderId}`,
+            paymentDate: initialPaymentDate || undefined,
             idempotencyKey: `man_init_pay_${orderId}`
           })
         });
         const paymentPayload = await parseApiJson<any>(paymentResponse);
         if (!paymentResponse.ok || !paymentPayload.success) {
-          toast.error(`Pedido criado, mas o pagamento não foi registrado: ${paymentPayload.message || paymentPayload.error || 'erro desconhecido'}`);
+          initialPaymentSaved = false;
+          toast.error(`Pedido #${orderId} salvo. Confira o recebimento na Central Financeira: ${paymentPayload.message || paymentPayload.error || 'falha na confirmação'}`);
         }
       }
 
@@ -2026,7 +2046,7 @@ Total: R$ ${totalSum.toFixed(2)}`;
         auditDetails
       );
 
-      toast.success(`Pedido #${orderId} registrado com sucesso!`);
+      if (initialPaymentSaved) toast.success(`Pedido #${orderId} registrado com sucesso!`);
       
       // Clear Form state
       setCustName('');
@@ -2046,6 +2066,13 @@ Total: R$ ${totalSum.toFixed(2)}`;
       setManualProductMode('ready');
       setSelectedColor('');
       setSelectedSize('');
+      manualOrderId.current = null;
+      setHistoricalSale(false);
+      setSaleDate('');
+      setGarmentHistory('');
+      setStampHistory('');
+      setNotifyHistoricalCustomer(false);
+      setInitialPaymentDate('');
       setManualOrderObs('');
       setManualOrderDeliveryDate('');
       setManualOrderDiscount('');
@@ -2079,7 +2106,9 @@ Total: R$ ${totalSum.toFixed(2)}`;
   const activeOrdersCount = useMemo(() => orders.filter(order => !isAdminOrderCompleted(order) && !isAdminOrderCancelled(order)).length, [orders]);
   const completedOrdersCount = useMemo(() => orders.filter(isAdminOrderCompleted).length, [orders]);
 
+  const orderRange = receiptPeriodRange(orderPeriod);
   const filteredOrders = orders.filter(order => {
+    if (!dateMatchesRange(orderSaleDateKey(order), orderRange)) return false;
     const searchLower = String(searchTerm || '').toLowerCase();
     const matchesSearch = 
       String(order.id || '').toLowerCase().includes(searchLower) || 
@@ -2095,9 +2124,9 @@ Total: R$ ${totalSum.toFixed(2)}`;
       matchesStock = order.stockControl === 'no_move';
     }
 
-    const matchesListView = orderListView === 'completed'
+    const matchesListView = orderListView === 'all' || (orderListView === 'completed'
       ? isAdminOrderCompleted(order)
-      : !isAdminOrderCompleted(order) && !isAdminOrderCancelled(order);
+      : !isAdminOrderCompleted(order) && !isAdminOrderCancelled(order));
 
     return matchesSearch && matchesStatus && matchesStock && matchesListView;
   });
@@ -2406,7 +2435,7 @@ Total: R$ ${totalSum.toFixed(2)}`;
           </div>
 
               <div className="max-w-7xl mx-auto px-2 md:px-4 pb-3">
-                <div className="grid grid-cols-2 gap-2 bg-white border border-black/10 p-1.5">
+                <div className="grid grid-cols-3 gap-2 bg-white border border-black/10 p-1.5">
                   <button
                     type="button"
                     onClick={() => {
@@ -2433,11 +2462,17 @@ Total: R$ ${totalSum.toFixed(2)}`;
                   >
                     Concluídos e entregues ({completedOrdersCount})
                   </button>
+                  <button type="button" aria-pressed={orderListView === 'all'}
+                    onClick={() => { setOrderListView('all'); setStatusFilter('all'); }}
+                    className={cn('px-2 py-2 text-[10px] font-black uppercase border', orderListView === 'all' ? 'bg-black text-white' : 'border-transparent text-gray-500')}>
+                    Todos os pedidos
+                  </button>
                 </div>
               </div>
 
               {/* Integrated Control Toolbar (Filters & Fast Actions) */}
               <div className="sticky top-16 z-30 bg-white/95 backdrop-blur-md p-2 border border-black/10 shadow-xs flex flex-wrap items-center gap-2">
+                <FinancialPeriodPicker value={orderPeriod} onChange={setOrderPeriod} />
                 {/* Search */}
                 <div className="flex-1 min-w-[200px] relative">
                   <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
@@ -2566,7 +2601,7 @@ Total: R$ ${totalSum.toFixed(2)}`;
                           )}
                         </span>
                         <span className="text-[12px] font-black text-black tracking-tighter break-all">#{order.id}</span>
-                        <span className="text-[9px] text-gray-400 font-bold">{formatDate(order.createdAt)}</span>
+                        <span className="text-[9px] text-gray-400 font-bold">{orderSaleDateKey(order)?.split('-').reverse().join('/') || formatDate(order.createdAt)}</span>
                       </div>
                       
                       <div className="flex flex-wrap items-center gap-1.5">
@@ -3593,8 +3628,8 @@ Total: R$ ${totalSum.toFixed(2)}`;
         </React.Suspense>
       ) : (
         <React.Suspense fallback={<div className="p-12 text-center text-sm font-bold uppercase tracking-widest text-black/50 animate-pulse">Carregando Financeiro...</div>}>
-          <AdminFinancial initialSubTab={(['register', 'cashflow', 'payables'].includes(searchParams.get('finance') || '')
-            ? searchParams.get('finance') : 'dashboard') as 'register' | 'cashflow' | 'payables' | 'dashboard'} />
+          <AdminFinancial initialSubTab={(['register', 'cashflow', 'payables', 'orders', 'receipts', 'closeout'].includes(searchParams.get('finance') || '')
+            ? searchParams.get('finance') : 'dashboard') as 'register' | 'cashflow' | 'payables' | 'orders' | 'receipts' | 'closeout' | 'dashboard'} />
         </React.Suspense>
       )}
       </div>
@@ -4524,11 +4559,44 @@ Total: R$ ${totalSum.toFixed(2)}`;
                   </div>
                 </div>
 
+                {manualOrderKind === 'sale' && <div className="border border-black/10 bg-white p-4 space-y-3">
+                  <label className="flex items-center gap-2 text-sm font-bold">
+                    <input type="checkbox" checked={historicalSale} onChange={event => setHistoricalSale(event.target.checked)} />
+                    Registrar venda antiga
+                  </label>
+                  {historicalSale && <>
+                    <p className="text-xs text-gray-600">Informe a data original da venda e confira o que já foi baixado no estoque.</p>
+                    <div className="grid gap-3 sm:grid-cols-3">
+                      <label className="grid gap-1 text-xs font-bold">Data da venda
+                        <input type="date" required max={financialDateKey(new Date()) || undefined} value={saleDate} onChange={event => setSaleDate(event.target.value)} className="min-h-11 border px-2" />
+                      </label>
+                      <label className="grid gap-1 text-xs font-bold">Peças já baixadas?
+                        <select required value={garmentHistory} onChange={event => setGarmentHistory(event.target.value)} className="min-h-11 border px-2">
+                          <option value="">Selecione</option><option value="moved">Sim ou sem controle de peças</option><option value="move">Não, movimentar agora</option>
+                        </select>
+                      </label>
+                      <label className="grid gap-1 text-xs font-bold">Estampas já baixadas?
+                        <select required value={stampHistory} onChange={event => setStampHistory(event.target.value)} className="min-h-11 border px-2">
+                          <option value="">Selecione</option><option value="moved">Sim ou sem estampa de estoque</option><option value="move">Não, movimentar agora</option>
+                        </select>
+                      </label>
+                    </div>
+                    <label className="flex items-center gap-2 text-xs font-bold">
+                      <input type="checkbox" checked={notifyHistoricalCustomer} onChange={event => setNotifyHistoricalCustomer(event.target.checked)} />
+                      Permitir avisos automáticos ao cliente neste pedido
+                    </label>
+                  </>}
+                </div>}
                 {manualOrderKind === 'sale' && <div className="border border-emerald-200 bg-emerald-50/60 p-4 space-y-4">
                   <div>
                     <h4 className="text-[10px] font-black uppercase tracking-widest text-emerald-800">Controle financeiro independente</h4>
-                    <p className="mt-1 text-[9px] text-emerald-900/70">O pedido pode ser entregue com saldo pendente. Apenas valores recebidos entram no faturamento.</p>
+                    <p className="mt-1 text-[9px] text-emerald-900/70">O pedido pode ser entregue com saldo pendente. O caixa usa as datas dos recebimentos.</p>
                   </div>
+                  {(manualOrderPaid || manualOrderPaidAmount > 0) && <label className="grid max-w-xs gap-1 text-xs font-bold">
+                    Data do recebimento {historicalSale ? '' : '(hoje se deixada em branco)'}
+                    <input type="date" required={historicalSale} max={financialDateKey(new Date()) || undefined} value={initialPaymentDate} onChange={event => setInitialPaymentDate(event.target.value)} className="min-h-11 border px-2" />
+                    <span className="text-xs font-normal">Para pagamentos em dias diferentes, registre uma baixa por data no financeiro do pedido.</span>
+                  </label>}
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                     <label className="flex items-center gap-2 border border-emerald-200 bg-white px-3 py-2.5 text-[10px] font-black uppercase cursor-pointer">
                       <input
@@ -4579,7 +4647,7 @@ Total: R$ ${totalSum.toFixed(2)}`;
                 </div>}
 
                 {/* CONTROLE DE ESTOQUE */}
-                <div className="bg-gray-100 p-5 border border-black/10">
+                {!(manualOrderKind === 'sale' && historicalSale) && <div className="bg-gray-100 p-5 border border-black/10">
                   <h4 className="text-[10px] font-black uppercase text-black tracking-widest mb-3 flex items-center gap-1.5">
                     ⚙️ CONTROLE DE ESTOQUE DESTE PEDIDO *
                   </h4>
@@ -4619,7 +4687,7 @@ Total: R$ ${totalSum.toFixed(2)}`;
                     </label>
                   </div>
 
-                </div>
+                </div>}
 
                 <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
                   <div className="flex flex-col gap-1 md:col-span-8">

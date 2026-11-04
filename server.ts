@@ -1,3 +1,4 @@
+import { getMonthlyCloseout, saveMonthlyCloseout } from './server/services/monthlyCloseout.service.js';
 import { getCustomerOrders } from './server/controllers/customerOrders.controller.js';
 import { getCompanyCashRegister, resetCompanyCashRegister } from './server/services/companyCashRegister.service.js';
 import { SECURITY_HEADERS } from './shared/securityHeaders.js';
@@ -617,6 +618,28 @@ apiRouter.post('/admin/financial/cash-register/reset', adminApiLimiter, authenti
     const changed = error.message === 'REGISTER_CHANGED';
     res.status(changed ? 409 : error.message === 'INVALID_RESET' ? 400 : 503).json({ error: changed
       ? 'O caixa mudou. Atualize e confira o saldo antes de zerar.' : 'Não foi possível zerar o indicador do caixa.' });
+  }
+});
+const monthlyCloseoutErrors: Record<string, [number, string]> = {
+  INVALID_MONTH: [400, 'Selecione um mês que já terminou.'],
+  INVALID_CLOSEOUT: [400, 'Confira os valores conciliados e a confirmação do fechamento.'],
+  CLOSEOUT_CHANGED: [409, 'Os dados mudaram desde a consulta. Atualize e confira os valores antes de salvar.'],
+  CLOSEOUT_NOTE_REQUIRED: [400, 'Explique a ausência de inventário ou o motivo da nova versão.']
+};
+apiRouter.get('/admin/financial/monthly-closeout', adminApiLimiter, authenticateAdmin, async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  try { res.json(await getMonthlyCloseout(req.query.month)); }
+  catch (error: any) {
+    const [status, message] = monthlyCloseoutErrors[error.message] || [503, 'Não foi possível consultar os fechamentos.'];
+    res.status(status).json({ message });
+  }
+});
+apiRouter.post('/admin/financial/monthly-closeout', adminApiLimiter, authenticateAdmin, async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  try { res.json(await saveMonthlyCloseout(req.body, (req as import('./server/middleware/auth.middleware.js').AuthenticatedRequest).user)); }
+  catch (error: any) {
+    const [status, message] = monthlyCloseoutErrors[error.message] || [503, 'Não foi possível salvar o fechamento.'];
+    res.status(status).json({ message });
   }
 });
 apiRouter.get("/admin/financial/forecast", adminApiLimiter, authenticateAdmin, getCashForecastController);

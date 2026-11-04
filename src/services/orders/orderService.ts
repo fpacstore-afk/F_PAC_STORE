@@ -209,7 +209,8 @@ export async function registerManualPayment(
   amount: number,
   method: string,
   reason: string,
-  idempotencyKey: string
+  idempotencyKey: string,
+  paymentDate?: string
 ) {
   if (!orderId) throw new Error('ID do pedido não fornecido.');
 
@@ -235,7 +236,8 @@ export async function registerManualPayment(
       amount: effectiveAmount,
       method: method.trim(),
       reason: reason.trim(),
-      idempotencyKey: effectiveKey
+      idempotencyKey: effectiveKey,
+      paymentDate
     })
   });
 
@@ -358,14 +360,16 @@ export async function registerPartialPayment(
   currentAmountPaid: number,
   currentTotal: number,
   operator: string = 'Admin',
-  idempotencyKey: string
+  idempotencyKey: string,
+  paymentDate?: string
 ) {
   return registerManualPayment(
     orderId,
     amount,
     method,
     `Pagamento de R$ ${Number(amount).toFixed(2)} via ${method} por ${operator}`,
-    idempotencyKey
+    idempotencyKey,
+    paymentDate
   );
 }
 

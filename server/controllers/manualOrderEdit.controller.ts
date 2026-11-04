@@ -114,7 +114,7 @@ export async function editManualCustomOrderController(req: Request, res: Respons
       if (gift) updates.giftCost = { knownCost: Math.round(nextItems.reduce((sum, item) => sum + Number(item.totalCostSnapshot || 0), 0) * 100) / 100, unknownUnits: nextItems.reduce((sum, item) => sum + (item.costCoverage === 'complete' ? 0 : item.quantity), 0), coverage: nextItems.every(item => item.costCoverage === 'complete') ? 'complete' : 'partial' };
       try {
         if (order.inventoryAllocationVersion === 1) updates.items = await reconcileSharedStockEdit(tx, db, orderId, order, nextItems, revision);
-        else await reconcileEditedOrderStampsInTransaction(tx, db, orderId, order.items, nextItems, revision);
+        else if (order.skipStampStock !== true) await reconcileEditedOrderStampsInTransaction(tx, db, orderId, order.items, nextItems, revision);
       }
       catch (error: any) { invalid(error.message || 'Confira as reservas das estampas antes de editar.', 409); }
       tx.update(ref, { ...updates, updatedAt: FieldValue.serverTimestamp() });
