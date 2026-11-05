@@ -26,6 +26,7 @@ export function StockVariantStatusSummary({ rows }: { rows: StockVariantRow[] })
 }
 
 export function StockVariantBreakdown({ rows }: { rows: StockVariantRow[] }) {
+  const hasSaleAvailability = rows.some(row => row.saleAvailable !== undefined);
   return (
     <div className="overflow-x-auto rounded-lg border border-black/10 bg-white" onClick={event => event.stopPropagation()}>
       <table className="w-full min-w-[660px] border-collapse text-left text-[10px]">
@@ -35,7 +36,8 @@ export function StockVariantBreakdown({ rows }: { rows: StockVariantRow[] }) {
             <th className="p-2.5">SKU / referência</th>
             <th className="p-2.5 text-center">Físico</th>
             <th className="p-2.5 text-center">Reservado</th>
-            <th className="p-2.5 text-center">Disponível</th>
+            <th className="p-2.5 text-center">{hasSaleAvailability ? 'Prontas disponíveis' : 'Disponível'}</th>
+            {hasSaleAvailability && <th className="p-2.5 text-center">À venda</th>}
             <th className="p-2.5 text-center">Mínimo</th>
             <th className="p-2.5 text-center">Status</th>
           </tr>
@@ -48,12 +50,14 @@ export function StockVariantBreakdown({ rows }: { rows: StockVariantRow[] }) {
               <td className="p-2.5 text-center tabular-nums">{row.physical}</td>
               <td className="p-2.5 text-center tabular-nums">{row.reserved}</td>
               <td className="p-2.5 text-center font-black tabular-nums">{row.available}</td>
+              {hasSaleAvailability && <td className="p-2.5 text-center font-black tabular-nums">{row.saleAvailable ?? '—'}</td>}
               <td className="p-2.5 text-center tabular-nums">{row.minimum}</td>
               <td className="p-2.5 text-center"><span className={`inline-block whitespace-nowrap border px-2 py-1 font-black uppercase ${STATUS[row.status].style}`}>{STATUS[row.status].label}</span></td>
             </tr>
           ))}
         </tbody>
       </table>
+      {hasSaleAvailability && <p className="border-t border-amber-100 bg-amber-50 px-3 py-2 text-[10px] text-amber-950">À venda inclui as peças prontas e pode usar peças lisas compartilhadas entre estampas. Não some esse número ao estoque físico. A disponibilidade do site pode levar alguns minutos para atualizar.</p>}
       {rows.some(row => row.status === 'unallocated') && <p className="border-t border-blue-100 bg-blue-50 px-3 py-2 text-[10px] text-blue-900">Este saldo antigo não informa cor e tamanho. Confira a matriz de estoque antes de distribuí-lo.</p>}
       {rows.some(row => row.status === 'classification_pending') && <p className="border-t border-amber-100 bg-amber-50 px-3 py-2 text-xs text-amber-900">O saldo físico está preservado. Confira o modelo e a ficha antes de liberar estas peças para compra.</p>}
     </div>

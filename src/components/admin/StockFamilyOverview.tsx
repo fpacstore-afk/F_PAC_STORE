@@ -15,7 +15,7 @@ export function StockFamilyOverview({ items, selected, onSelect, loading }: { it
         <p className="my-3 text-3xl font-black tabular-nums">{loading ? '…' : family.physical}<span className="ml-2 text-xs font-medium opacity-60">peças físicas</span></p>
         {family.collars && <div className="mb-3 grid grid-cols-2 gap-2 text-xs"><span>Gola tradicional<strong className="block tabular-nums">{loading ? '…' : family.classic}</strong></span><span>Gola alta<strong className="block tabular-nums">{loading ? '…' : family.high}</strong></span></div>}
         {family.unclassified > 0 && <p className={`mb-3 rounded-md px-2 py-1 text-xs font-bold ${selected === family.id ? 'bg-amber-300 text-black' : 'bg-amber-50 text-amber-900'}`}>{family.unclassified} peças com gola a conferir</p>}
-        <p className="text-xs opacity-65">{loading ? 'Conferindo saldos…' : `${family.plain} lisas · ${family.printed} estampadas`}</p>
+        <p className="text-xs opacity-65">{loading ? 'Conferindo saldos…' : `${family.plain} lisas · ${family.printed} estampadas prontas`}</p>
         <span className="mt-4 flex items-center justify-between border-t border-current/10 pt-3 text-xs font-bold">Gerenciar este tipo <ArrowRight size={15} /></span>
       </button>)}
     </div>

@@ -64,6 +64,7 @@ export default function AdminPos({ onNewOrder, operatorId = 'local' }: { onNewOr
   const { showFinancialValues } = useFinancialPrivacy();
   const [mode, setMode] = useState<Mode>('sale');
   const [variants, setVariants] = useState<Variant[]>([]);
+  const [entryVariants, setEntryVariants] = useState<Variant[]>([]);
   const [aliases, setAliases] = useState<{ alias: string; code: string }[]>([]);
   const [alias, setAlias] = useState('');
   const [conversion, setConversion] = useState({ sourceCode: '', targetCode: '', quantity: 1, stamps: '' });
@@ -92,10 +93,11 @@ export default function AdminPos({ onNewOrder, operatorId = 'local' }: { onNewOr
 
   const refresh = useCallback(async () => {
     const [catalog, sales] = await Promise.all([
-      request<{ variants: Variant[]; aliases: { alias: string; code: string }[] }>(base + '/variants'),
+      request<{ variants: Variant[]; entryVariants?: Variant[]; aliases: { alias: string; code: string }[] }>(base + '/variants'),
       request<{ sales: Sale[] }>(base + '/sales')
     ]);
     setVariants(catalog.variants);
+    setEntryVariants(catalog.entryVariants || catalog.variants);
     setAliases(catalog.aliases || []);
     setPending(sales.sales);
   }, []);
@@ -128,12 +130,13 @@ export default function AdminPos({ onNewOrder, operatorId = 'local' }: { onNewOr
   const inputLocked = (mode === 'sale' && (sale !== null || attempt.current !== null)) ||
     (mode === 'entry' && batch !== null) || (mode === 'count' && countId !== null);
   const selected = mode === 'label' || mode === 'cash' || mode === 'production' ? {} : choices[mode];
+  const currentVariants = mode === 'entry' ? entryVariants : variants;
   const rows = Object.entries(selected).flatMap(([code, quantity]) => {
-    const item = variants.find(row => row.code === code);
+    const item = currentVariants.find(row => row.code === code);
     return item ? [{ ...item, quantity }] : [];
   });
   const total = rows.reduce((sum, row) => sum + row.unitCents * row.quantity, 0) / 100;
-  const filtered = variants.filter(item => {
+  const filtered = currentVariants.filter(item => {
     if (mode === 'sale' && (item.unitCents <= 0 || item.available <= 0)) return false;
     const haystack = normalize([item.name, item.color, item.size, item.sku, item.code, item.neckline].join(' '));
     return normalize(query).split(/\s+/).every(term => haystack.includes(term));
@@ -167,7 +170,7 @@ export default function AdminPos({ onNewOrder, operatorId = 'local' }: { onNewOr
   function scan(value: string) {
     const key = normalize(value);
     if (!key) return;
-    const exact = variants.filter(item => normalize(item.code) === key || (item.sku && normalize(item.sku) === key) ||
+    const exact = currentVariants.filter(item => normalize(item.code) === key || (item.sku && normalize(item.sku) === key) ||
       aliases.some(alias => alias.code === item.code && normalize(alias.alias) === key));
     if (exact.length === 1) add(exact[0]);
     else if (exact.length > 1) setError('Código ambíguo. Selecione a variação pelo nome.');
