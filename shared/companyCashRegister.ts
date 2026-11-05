@@ -23,6 +23,22 @@ export function companyCashMovements(orders: any[], cashflow: any[], investments
   for (const order of orders) {
     const receipts = orderReceiptHistory(order);
     if (receipts.conflict) reviewCount++;
+    const card = order.posCardSettlement;
+    if (card?.state === 'awaiting') continue;
+    if (card?.state === 'settled') {
+      push(`order:${order.id}:deposit`, `Crédito da operadora · pedido ${order.id}`, card.depositCents / 100, 'in', card.date);
+      let retainedRefund = Number(card.refundCents || 0);
+      for (const [index, entry] of [...receipts.outgoing.movements].sort((a, b) => a.date.localeCompare(b.date)).entries()) {
+        const refundCents = Math.round(entry.amount * 100);
+        const retained = Math.min(retainedRefund, refundCents);
+        retainedRefund -= retained;
+        push(`order:${order.id}:out:${index}`, `Estorno · pedido ${order.id}`, (refundCents - retained) / 100, 'out', entry.date);
+      }
+      const undatedRefund = Math.round(receipts.outgoing.undated * 100);
+      if (retainedRefund > undatedRefund) reviewCount++;
+      push(`order:${order.id}:out:undated`, `Estorno a conferir · pedido ${order.id}`, Math.max(0, undatedRefund - retainedRefund) / 100, 'out', null);
+      continue;
+    }
     for (const [type, history] of [['in', receipts.incoming], ['out', receipts.outgoing]] as const) {
       history.movements.forEach((entry, i) => push(`order:${order.id}:${type}:${i}`, `${type === 'in' ? 'Recebimento' : 'Estorno'} · pedido ${order.id}`, entry.amount, type, entry.date));
       push(`order:${order.id}:${type}:undated`, `Pedido ${order.id} · data a conferir`, history.undated, type, null);

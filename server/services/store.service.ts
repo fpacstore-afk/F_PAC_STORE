@@ -181,7 +181,7 @@ function recordIdempotencyKey(
   }
 }
 
-function buildUpdatedInventory(data: any, physicalSlug: string, variantKey: string, updatedVariant: any) {
+export function buildUpdatedInventory(data: any, physicalSlug: string, variantKey: string, updatedVariant: any) {
   const currentVariants = data.variants || {};
   const updatedVariants = { ...currentVariants, [variantKey]: updatedVariant };
   const totalPhysical = Object.values(updatedVariants).reduce<number>((sum, v: any) => {
@@ -197,7 +197,7 @@ function buildUpdatedInventory(data: any, physicalSlug: string, variantKey: stri
 /**
  * Reserves stock for pending / newly created order.
  */
-export async function reserveStock(orderId: string, items: any[], idempotencyKey?: string, orderData?: any, checkoutGuard?: { attemptId: string }) {
+export async function reserveStock(orderId: string, items: any[], idempotencyKey?: string, orderData?: any, checkoutGuard?: { attemptId: string }, validateAllocation?: (items: any[], catalog: any[]) => void) {
   const db = getDb();
   const effectiveIdempotencyKey = idempotencyKey || `reserve_order_${orderId}`;
   return db.runTransaction(async (transaction) => {
@@ -238,6 +238,7 @@ export async function reserveStock(orderId: string, items: any[], idempotencyKey
       if (error.name === 'OutOfStockError') throw new OutOfStockError(error.message, error.details);
       throw error;
     }
+    validateAllocation?.(resolvedItems, catalog);
     const normalizedItems = aggregateInventoryItems(resolvedItems);
     const itemReads: any[] = [];
     for (const item of normalizedItems) {
@@ -388,12 +389,17 @@ async function readReservationCompat(
 }
 
 /** Release an active reservation without touching physical stock. */
-export async function releaseStockReservation(orderId: string, items: any[], idempotencyKey?: string) {
+export async function releaseStockReservation(orderId: string, items: any[], idempotencyKey?: string, transition?: {
+  validate: (order: any) => boolean;
+  update: Record<string, unknown>;
+}) {
   const db = getDb();
   const effectiveIdempotencyKey = idempotencyKey || `release_order_${orderId}`;
   return db.runTransaction(async (transaction) => {
     if (await isIdempotentDuplicate(transaction, db, effectiveIdempotencyKey)) return { success: true, idempotent: true };
-    const orderSnapshot = await transaction.get(db.collection('orders').doc(orderId));
+    const orderRef = db.collection('orders').doc(orderId);
+    const orderSnapshot = await transaction.get(orderRef);
+    if (transition && !transition.validate(orderSnapshot.data())) return { success: true, skipped: true };
     if (orderSnapshot.exists && orderSnapshot.data()?.paymentCreationUncertain) {
       throw Object.assign(new Error('PAYMENT_CONFIRMATION_PENDING: Confirme o pagamento antes de liberar esta reserva.'), { status: 409 });
     }
@@ -461,6 +467,7 @@ export async function releaseStockReservation(orderId: string, items: any[], ide
       transaction.set(resRef, { ...resData, id: resRef.id, productSlug: physicalSlug, variantKey, status: 'released', releasedAt: new Date().toISOString(), updatedAt: new Date().toISOString() }, { merge: true });
       if (legacyRef && legacyRef.path !== resRef.path) transaction.set(legacyRef, { status: 'released', migratedReservationId: resRef.id, updatedAt: new Date().toISOString() }, { merge: true });
     }
+    if (transition) transaction.update(orderRef, transition.update);
     return { success: true };
   });
 }

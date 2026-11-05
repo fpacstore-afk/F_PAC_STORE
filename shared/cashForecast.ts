@@ -1,5 +1,5 @@
 import { calculateRecordedCashFlow, financialDateKey, isActiveFinancialRecord, scheduleOpenBalance } from './cashFlow';
-import { getOrderPendingAmount } from './orderFinancialCore';
+import { getOrderPaidAmount, getOrderPendingAmount, getOrderRefundedAmount } from './orderFinancialCore';
 import { isSalesCashFlowEntry } from './financialMovementScope';
 const roundMoney = (value: number) => Number(value.toFixed(2));
 
@@ -12,6 +12,10 @@ export function calculateCashForecast(orders: any[], payables: any[], cashflow: 
   let unscheduledReceivables = 0, unscheduledPayables = 0;
   let overduePayablesCount = 0, dueTodayPayablesCount = 0, due3DaysPayablesCount = 0;
   for (const order of orders) {
+    if (['reserved', 'charging'].includes(order.posState)) continue;
+    if (order.posCardSettlement?.state === 'awaiting') {
+      unscheduledReceivables += Math.max(0, getOrderPaidAmount(order) - getOrderRefundedAmount(order));
+    }
     const balance = getOrderPendingAmount(order);
     if (!Number.isFinite(balance)) throw new Error('Saldo a receber inválido. Confira os dados do pedido.');
     const planned = scheduleOpenBalance(balance, order.payment?.installments || order.installments || [], order.payment?.dueDate || order.dueDate);

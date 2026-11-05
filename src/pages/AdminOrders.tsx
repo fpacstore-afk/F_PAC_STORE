@@ -7,7 +7,7 @@ import { compatibleGarmentSource } from '../../shared/sharedGarmentStock';
 import { garmentFamily, garmentTitle } from '../../shared/garmentModels';
 import { collection, deleteDoc, doc, getDoc, onSnapshot, orderBy, query, serverTimestamp, setDoc, updateDoc, writeBatch } from 'firebase/firestore';
 import { AnimatePresence, motion } from 'framer-motion';
-import { BadgePercent, BarChart3, BellRing, Boxes, CheckCircle, ChevronDown, ChevronUp, ClipboardCheck, ClipboardList, Eye, EyeOff, Factory, FileSpreadsheet, Gift, Images, Layers, LayoutDashboard, Loader2, Mail, MessageCircle, Package, Plus, Radio, RefreshCw, Search, Sparkles, Trash2, Truck, Users, WalletCards, Warehouse, XCircle } from 'lucide-react';
+import { BadgePercent, BarChart3, BellRing, Boxes, CheckCircle, ChevronDown, ChevronUp, ClipboardCheck, ClipboardList, Eye, EyeOff, Factory, FileSpreadsheet, Gift, Images, Layers, LayoutDashboard, Loader2, Mail, MessageCircle, Package, Plus, Radio, RefreshCw, ScanLine, Search, Sparkles, Trash2, Truck, Users, WalletCards, Warehouse, XCircle } from 'lucide-react';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import QRCode from 'qrcode';
 import toast from 'react-hot-toast';
@@ -98,6 +98,7 @@ const AdminIntelligenceCRM = lazyWithRetry(() => import('../components/AdminInte
 const AdminFinancial = lazyWithRetry(() => import('../components/AdminFinancial').then(m => ({ default: m.AdminFinancial })));
 const AdminPromotions = lazyWithRetry(() => import('../components/AdminPromotions').then(m => ({ default: m.AdminPromotions })));
 const AdminPostPurchase = lazyWithRetry(() => import('../components/AdminPostPurchase'));
+const AdminPos = lazyWithRetry(() => import('../components/admin/pos/AdminPos'));
 const AdminStockCenter = lazyWithRetry(() => import('../components/AdminStockCenter').then(m => ({ default: m.AdminStockCenter })));
 const InventoryAuditCenter = lazyWithRetry(() => import('../components/InventoryAuditCenter').then(m => ({ default: m.InventoryAuditCenter })));
 const AdminStampsManager = lazyWithRetry(() => import('../components/admin/AdminStampsManager').then(m => ({ default: m.AdminStampsManager })));
@@ -118,6 +119,7 @@ type ManagementTab =
   | 'dashboard'
   | 'catalog'
   | 'orders'
+  | 'pdv'
   | 'production'
   | 'shipping'
   | 'receivables'
@@ -139,6 +141,7 @@ const MANAGEMENT_TABS: Array<{ id: ManagementTab; label: string; icon: React.Ele
   { id: 'pricing', label: 'Preços & orçamentos', icon: FileSpreadsheet },
   { id: 'catalog', label: 'Catálogo', icon: Boxes },
   { id: 'orders', label: 'Pedidos', icon: ClipboardList },
+  { id: 'pdv', label: 'PDV', icon: ScanLine },
   { id: 'production', label: 'Produção', icon: Factory },
   { id: 'shipping', label: 'Expedição', icon: Truck },
   { id: 'stock_center', label: 'Estoque', icon: Warehouse },
@@ -165,6 +168,7 @@ const normalizeManagementTab = (value: string | null): ManagementTab | null => {
 
 interface Order {
   id: string;
+  posState?: string;
   customerName: string;
   customerPhone: string;
   customerPhone2?: string;
@@ -607,7 +611,7 @@ function AdminOrdersInner() {
         ...doc.data()
       })) as Order[];
       ordersData.sort((a,b) => (orderDate(b)?.getTime() ?? 0) - (orderDate(a)?.getTime() ?? 0));
-      setOrders(ordersData);
+      setOrders(ordersData.filter(order => !['reserved', 'charging'].includes(order.posState || '')));
       setOrdersError(false);
       setOrdersLoaded(true);
     }, (error) => {
@@ -2227,6 +2231,10 @@ Total: R$ ${totalSum.toFixed(2)}`;
       ) : activeTab === 'catalog' ? (
         <React.Suspense fallback={<div className="p-12 text-center text-sm font-bold uppercase tracking-widest text-black/50 animate-pulse">Carregando Catálogo...</div>}>
           <AdminStampsManager />
+        </React.Suspense>
+      ) : activeTab === 'pdv' ? (
+        <React.Suspense fallback={<div className="p-12 text-center">Carregando PDV…</div>}>
+          <AdminPos key={user?.uid} operatorId={user?.uid} onNewOrder={() => { selectManagementTab('orders'); setIsManualModalOpen(true); }} />
         </React.Suspense>
       ) : activeTab === 'orders' ? (
         <div className="space-y-4">

@@ -1,3 +1,5 @@
+import { createPosRouter } from './server/controllers/pos.controller.js';
+import { expirePosReservations } from './server/services/pos.service.js';
 import { getMonthlyCloseout, saveMonthlyCloseout } from './server/services/monthlyCloseout.service.js';
 import { getCustomerOrders } from './server/controllers/customerOrders.controller.js';
 import { getCompanyCashRegister, resetCompanyCashRegister } from './server/services/companyCashRegister.service.js';
@@ -347,6 +349,7 @@ console.log('----------------------------------------------------');
 
 // 5. API Routes Router
 const apiRouter = express.Router();
+apiRouter.use('/admin/pdv', adminApiLimiter, authenticateAdmin, createPosRouter());
 apiRouter.use('/admin/garment-models', adminApiLimiter, authenticateAdmin, createGarmentModelsRouter());
 apiRouter.use('/admin/pricing-workbench', adminApiLimiter, authenticateAdmin, createPricingRouter());
 apiRouter.use('/admin/orders/:orderId/mockup-approvals', adminApiLimiter, authenticateAdmin, createMockupAdminRouter());
@@ -2331,6 +2334,7 @@ if (process.env.NODE_ENV !== "test") {
       const { autoCancelUnpaidOrders, reconcileUncertainPayments } = await import("./server/services/payment.service.js");
       await reconcileUncertainPayments();
       await autoCancelUnpaidOrders();
+      await expirePosReservations();
     } catch (err: any) {
       if (err?.code === 8 || err?.message?.includes('RESOURCE_EXHAUSTED') || err?.message?.includes('Quota limit exceeded')) {
         logger.warn("⚠️ [STARTUP-WARN] Initial auto-cancel scan deferred due to Firestore quota limit.");
@@ -2362,6 +2366,7 @@ if (process.env.NODE_ENV !== "test") {
       const { autoCancelUnpaidOrders, reconcileUncertainPayments } = await import("./server/services/payment.service.js");
       await reconcileUncertainPayments();
       await autoCancelUnpaidOrders();
+      await expirePosReservations();
     } catch (err: any) {
       if (err?.code === 8 || err?.message?.includes('RESOURCE_EXHAUSTED') || err?.message?.includes('Quota limit exceeded')) {
         logger.warn("⚠️ [CRON-WARN] Background auto-cancel unpaid orders scan deferred due to Firestore quota limit.");

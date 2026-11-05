@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import type { Request, Response } from 'express';
 import { getDb } from '../firebase.js';
 import { getVariantStats } from '../services/store.service.js';
@@ -15,7 +16,8 @@ export async function getInventoryOverview(req: Request, res: Response) {
 /** Immutable monthly count; correcting stock remains an explicit, separately logged action. */
 export async function saveInventoryCount(req: Request, res: Response) {
   try {
-    const { reference, counts } = req.body || {};
+    const { reference, counts, requestId } = req.body || {};
+    if (requestId !== undefined && (typeof requestId !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(requestId))) return res.status(400).json({ message: 'Identificação da contagem inválida.' });
     if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(reference || '') || !Array.isArray(counts) || !counts.length || counts.length > 3000) return res.status(400).json({ message: 'Informe o mês e pelo menos uma contagem física.' });
     const keys = new Set<string>();
     for (const row of counts) {
@@ -23,8 +25,19 @@ export async function saveInventoryCount(req: Request, res: Response) {
       keys.add(`${row.productSlug}:${row.variantKey}`);
     }
     const db = getDb();
-    const ref = db.collection('inventory_counts').doc();
+    const fingerprint = requestId ? createHash('sha256').update(JSON.stringify([reference,
+      counts.map((row: any) => [row.productSlug, row.variantKey, row.counted]).sort()
+    ])).digest('hex') : null;
+    const collection = db.collection('inventory_counts');
+    const ref = requestId ? collection.doc('pos_' + requestId) : collection.doc();
     const result = await db.runTransaction(async tx => {
+      if (fingerprint) {
+        const prior = (await tx.get(ref)).data();
+        if (prior) {
+          if (prior.fingerprint !== fingerprint) throw new Error('Esta identificação já foi usada para outra contagem.');
+          return { id: ref.id, reference, capturedAt: prior.capturedAt, differenceCount: prior.differenceCount, countedVariants: prior.lines.length };
+        }
+      }
       const lines: any[] = [];
       const cached = new Map<string, any>();
       for (const row of counts) {
@@ -48,7 +61,7 @@ export async function saveInventoryCount(req: Request, res: Response) {
       }
       const capturedAt = new Date().toISOString();
       const data = { reference, capturedAt, countedBy: (req as any).user?.email || (req as any).user?.uid || 'Admin', lines, production: pending, differenceCount: lines.filter(line => line.difference !== 0).length };
-      tx.set(ref, data);
+      tx.set(ref, { ...data, ...(fingerprint ? { fingerprint } : {}) });
       return { id: ref.id, reference, capturedAt, differenceCount: data.differenceCount, countedVariants: lines.length };
     });
     return res.status(201).json({ success: true, ...result });
