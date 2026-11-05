@@ -1,13 +1,14 @@
+import { ownBrandRevenueShare, ownBrandSaleItems } from '../../../shared/ownBrandPerformance';
 import { orderSaleDateKey } from '../../../shared/cashFlow';
 import { useNavigate } from 'react-router-dom';
 import { CompanyCashRegister } from '../admin/financial/CompanyCashRegister';
-import { buildCustomerIdentities, loyaltyPaidValue } from '../../../shared/customerPurchases';
+import { buildCustomerIdentities, loyaltyPaidValue, purchasedQuantity } from '../../../shared/customerPurchases';
 import { giftReportRows, summarizeGiftRows } from '../../../shared/giftReporting';
 import { useEffect, useMemo, useState } from 'react';
 import { collection, onSnapshot } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { catalogIntegrity } from '../../../shared/catalogIntegrity';
-import { getOrderPaidAmount, getOrderNetReceived, getOrderPendingAmount } from '../../../shared/orderFinancialCore';
+import { getOrderPendingAmount } from '../../../shared/orderFinancialCore';
 import { summarizeReceipts } from '../../../shared/financialReceipts';
 import { confirmedSalesAmount, dashboardPeriodRange, dateMatchesRange, summarizePayables } from '../../../shared/financialDashboard';
 import { isConfirmedReceivable, periodChange, previousDashboardRange, receiptTrend } from '../../../shared/managementOverview';
@@ -36,14 +37,6 @@ function toDate(value: any): Date | null {
   } catch {
     return null;
   }
-}
-
-function isPaid(order: AnyDoc) {
-  return loyaltyPaidValue(order) > 0;
-}
-
-function orderNet(order: AnyDoc) {
-  return getOrderNetReceived(order);
 }
 
 function sessionOrigin(session: AnyDoc) {
@@ -157,12 +150,24 @@ export default function ManagementDashboard() {
     const customerKeys = new Map<any,string>();
     buildCustomerIdentities(orders).filter(group => group.aliases.size > 0).forEach(group => group.allOrders.forEach(order => customerKeys.set(order, group.key)));
     const customerKey = (order: AnyDoc) => customerKeys.get(order) || '';
-    const paidAll = orders.filter(isPaid);
-    const paid = paidAll.filter(order => inPeriod(orderSaleDateKey(order)));
+    const brandOrders = orders.flatMap(order => {
+      const items = ownBrandSaleItems(order);
+      return items.length ? [{ order, items, share: ownBrandRevenueShare(order, items) }] : [];
+    });
+    const paidAll = brandOrders.filter(({ order }) => loyaltyPaidValue(order) > 0);
+    const paid = paidAll.filter(({ order }) => inPeriod(orderSaleDateKey(order)));
     const receipts = summarizeReceipts(orders, range);
     const previousReceipts = priorRange ? summarizeReceipts(orders, priorRange) : null;
     const trend = receiptTrend(orders, range, selected.days);
-    const averageReceipt = receipts.receivedOrders ? receipts.netReceived / receipts.receivedOrders : 0;
+    let brandNetReceipts = 0;
+    let brandReceivingOrders = 0;
+    for (const { order, share } of brandOrders) {
+      if (!share) continue;
+      const receipt = summarizeReceipts([order], range);
+      brandNetReceipts += Math.round(receipt.netReceived * 100 * share);
+      if (receipt.received > 0) brandReceivingOrders += 1;
+    }
+    const averageReceipt = brandReceivingOrders ? brandNetReceipts / 100 / brandReceivingOrders : 0;
     const periodOrders = orders.filter(order => inPeriod(orderSaleDateKey(order)));
     const periodRecords = (records: AnyDoc[]) => records.filter(record => inPeriod(record.date || record.createdAt || record.created_at));
     const dre = calculateFinancialDRE(
@@ -197,9 +202,9 @@ export default function ManagementDashboard() {
     });
 
     const bestMap = new Map<string, { name: string; color: string; size: string; quantity: number }>();
-    paid.forEach(order => {
-      (order.items || []).forEach((item: AnyDoc) => {
-        const quantity = Math.max(1, Number(item.quantity || item.qty || 1));
+    paid.forEach(({ items }) => {
+      items.forEach((item: AnyDoc) => {
+        const quantity = purchasedQuantity(item);
         const name = String(item.name || item.title || item.slug || 'Produto');
         const color = String(item.color || '—');
         const size = String(item.size || '—');
@@ -215,16 +220,16 @@ export default function ManagementDashboard() {
     const abandoned = cartSessions.filter(session => session.purchaseCompleted !== true).length;
     const abandonment = cartSessions.length ? (abandoned / cartSessions.length) * 100 : 0;
 
-    const firstPurchase = new Map<string, number>();
-    paidAll.forEach(order => {
+    const firstPurchase = new Map<string, string>();
+    paidAll.forEach(({ order }) => {
       const key = customerKey(order);
-      const date = toDate(order.createdAt)?.getTime() || 0;
+      const date = orderSaleDateKey(order);
       if (!key || !date) return;
       const current = firstPurchase.get(key);
       if (!current || date < current) firstPurchase.set(key, date);
     });
     const customersInPeriod = new Map<string, number>();
-    paid.forEach(order => {
+    paid.forEach(({ order }) => {
       const key = customerKey(order);
       if (!key) return;
       customersInPeriod.set(key, (customersInPeriod.get(key) || 0) + 1);
@@ -232,14 +237,20 @@ export default function ManagementDashboard() {
     let newCustomers = 0;
     let returningCustomers = 0;
     customersInPeriod.forEach((_count, key) => {
-      const first = firstPurchase.get(key) || 0;
-      if (!range || inPeriod(new Date(first))) newCustomers += 1;
+      const first = firstPurchase.get(key);
+      if (!range || inPeriod(first)) newCustomers += 1;
       else returningCustomers += 1;
     });
 
-    const allCustomers = new Set(paidAll.map(customerKey).filter(Boolean));
-    const allNet = paidAll.reduce((sum, order) => sum + orderNet(order), 0);
-    const ltv = allCustomers.size ? allNet / allCustomers.size : 0;
+    const allCustomers = new Set<string>();
+    let allNetCents = 0;
+    for (const { order, share } of paidAll) {
+      const key = customerKey(order);
+      if (!key || !share) continue;
+      allCustomers.add(key);
+      allNetCents += Math.round(loyaltyPaidValue(order) * 100 * share);
+    }
+    const ltv = allCustomers.size ? allNetCents / 100 / allCustomers.size : 0;
 
     const originMap = new Map<string, number>();
     filteredSessions.forEach(session => {
@@ -284,7 +295,7 @@ export default function ManagementDashboard() {
       payableSummary,
       averageReceipt,
       paidOrders: paid.length,
-      paidOrdersChange: priorRange ? periodChange(paid.length, paidAll.filter(order => dateMatchesRange(orderSaleDateKey(order), priorRange)).length) : null,
+      paidOrdersChange: priorRange ? periodChange(paid.length, paidAll.filter(({ order }) => dateMatchesRange(orderSaleDateKey(order), priorRange)).length) : null,
       receiptsChange: previousReceipts ? periodChange(receipts.netReceived, previousReceipts.netReceived) : null,
       conversion,
       sessionsCount: filteredSessions.length,

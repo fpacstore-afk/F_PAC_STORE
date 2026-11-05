@@ -145,8 +145,8 @@ export function ManagementDashboardView({ data, period, onPeriodChange, syncStat
     </header>
 
     <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
-      <Kpi icon={ShoppingCart} label="Vendas do período" value={formatMoney(data.salesAmount ?? 0)} helper="Vendas confirmadas pela data da venda, descontados estornos." href={`/gestao?tab=financial&finance=orders&confirmed=1${periodQuery}`} />
-      <Kpi featured icon={CircleDollarSign} label="Recebido no período" value={formatMoney(data.receipts.netReceived)} delta={changeLabel(data.receiptsChange)} deltaNegative={data.receiptsChange !== null && data.receiptsChange < 0} helper="Recebimentos menos estornos, pelas datas registradas." href={`/gestao?tab=financial&finance=receipts${periodQuery}`} />
+      <Kpi icon={ShoppingCart} label="Vendas totais do período" value={formatMoney(data.salesAmount ?? 0)} helper="Vendas confirmadas da marca própria e de personalizados, descontados estornos." href={`/gestao?tab=financial&finance=orders&confirmed=1${periodQuery}`} />
+      <Kpi featured icon={CircleDollarSign} label="Recebido total no período" value={formatMoney(data.receipts.netReceived)} delta={changeLabel(data.receiptsChange)} deltaNegative={data.receiptsChange !== null && data.receiptsChange < 0} helper="Recebimentos de toda a empresa menos estornos, pelas datas registradas." href={`/gestao?tab=financial&finance=receipts${periodQuery}`} />
       <Kpi icon={CreditCard} label="A receber" value={formatMoney(data.pendingAmount)} helper={`Posição atual de ${count.format(data.pendingPayments)} pedido(s) confirmado(s) com saldo.`} href="/gestao?tab=receivables&confirmed=1" />
       <Kpi icon={WalletCards} label="Saldo do caixa" value={cashBalance == null ? '—' : formatMoney(cashBalance)} helper="Saldo do ciclo atual do caixa da empresa." href="/gestao?tab=financial&finance=register" />
     </div>
@@ -156,8 +156,8 @@ export function ManagementDashboardView({ data, period, onPeriodChange, syncStat
       <div className="mt-2 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
         <Kpi icon={TrendingUp} label="Resultado operacional estimado" value={resultReady ? formatMoney(data.dre.operatingProfit) : 'Conferir custos'} helper={resultReady ? 'Pedidos do período após custos e despesas registrados.' : `Custos completos em ${data.dre.costCoveragePercent}% dos pedidos e brindes do período.`} />
         <Kpi icon={WalletCards} label="Despesas operacionais" value={formatMoney(data.operatingExpenses)} helper="Lançamentos do período, incluindo marketing. Retiradas e investimentos têm controles próprios." />
-        <Kpi icon={ShoppingCart} label="Pedidos com pagamento" value={count.format(data.paidOrders)} delta={changeLabel(data.paidOrdersChange)} deltaNegative={data.paidOrdersChange !== null && data.paidOrdersChange < 0} helper="Pedidos do período com valor recebido, inclusive parcial." />
-        <Kpi icon={CreditCard} label="Média recebida por pedido" value={formatMoney(data.averageReceipt)} helper="Recebimento líquido dividido pelos pedidos que receberam no período." />
+        <Kpi icon={ShoppingCart} label="Pedidos pagos · marca própria" value={count.format(data.paidOrders)} delta={changeLabel(data.paidOrdersChange)} deltaNegative={data.paidOrdersChange !== null && data.paidOrdersChange < 0} helper="Pedidos do período com itens da marca própria e recebimento total ou parcial." />
+        <Kpi icon={CreditCard} label="Média recebida · marca própria" value={formatMoney(data.averageReceipt)} helper="Valor líquido por pedido da marca própria com recebimento no período. Pedidos mistos são rateados pelo valor dos itens." />
         <Kpi icon={WalletCards} label="Contas a pagar" value={formatMoney(data.payableSummary.totalOpen)} helper={`${count.format(data.payableSummary.overdueCount)} vencida(s) · ${formatMoney(data.payableSummary.overdueAmount)} em atraso.`} href="/gestao?tab=financial&finance=payables" />
       </div>
     </details>
@@ -200,8 +200,8 @@ export function ManagementDashboardView({ data, period, onPeriodChange, syncStat
           ['Sem atualização 30d', count.format(data.stale30)],
           ['Sem atualização 60d', count.format(data.stale60)],
         ].map(([label, value]) => <div key={label} className="rounded-xl bg-[#f7f7f4] p-3"><div className="text-xl md:text-2xl font-black">{value}</div><div className="text-[11px] text-black/50 leading-snug mt-1">{label}</div></div>)}</div>
-        <div className="text-xs uppercase tracking-wider font-black text-black/45 mb-3">Mais vendidos · por unidades</div>
-        {data.bestSellers.length ? <div className="space-y-3">{data.bestSellers.map((item, index) => <div key={`${item.name}-${item.color}-${item.size}`}><div className="flex justify-between gap-3 text-xs"><span className="font-semibold truncate"><b className="text-amber-700 mr-2">{index + 1}.</b>{item.name} <span className="text-black/45">· {item.color} / {item.size}</span></span><strong className="shrink-0">{count.format(item.quantity)} un.</strong></div><div className="h-1.5 rounded-full bg-black/5 mt-2"><div className="h-full rounded-full bg-[#f5be1b]" style={{ width: `${item.quantity / bestMax * 100}%` }} /></div></div>)}</div> : <div className="py-8 text-center text-sm text-black/45 border border-dashed rounded-xl">Sem pedidos com pagamento criados neste período.</div>}
+        <div className="text-xs uppercase tracking-wider font-black text-black/45 mb-3">Mais vendidos da marca própria · por unidades</div>
+        {data.bestSellers.length ? <div className="space-y-3">{data.bestSellers.map((item, index) => <div key={`${item.name}-${item.color}-${item.size}`}><div className="flex justify-between gap-3 text-xs"><span className="font-semibold truncate"><b className="text-amber-700 mr-2">{index + 1}.</b>{item.name} <span className="text-black/45">· {item.color} / {item.size}</span></span><strong className="shrink-0">{count.format(item.quantity)} un.</strong></div><div className="h-1.5 rounded-full bg-black/5 mt-2"><div className="h-full rounded-full bg-[#f5be1b]" style={{ width: `${item.quantity / bestMax * 100}%` }} /></div></div>)}</div> : <div className="py-8 text-center text-sm text-black/45 border border-dashed rounded-xl">Nenhuma venda paga de produto da marca própria neste período.</div>}
       </div>
       <div className="bg-white border border-black/10 rounded-2xl p-5 md:p-6">
         <Heading icon={Users} title="Clientes e conversão" subtitle="Sessões validadas que autorizaram estatísticas." href="/gestao?tab=intelligence" action="Ver CRM" />
@@ -209,7 +209,7 @@ export function ManagementDashboardView({ data, period, onPeriodChange, syncStat
         <div className="space-y-3 mb-6">{[
           ['Visitas validadas', data.sessionsCount], ['Iniciaram carrinho', data.cartSessionsCount], ['Concluíram compra', data.purchasesCount],
         ].map(([label, value]) => <div key={label} className="flex items-center gap-3 text-xs"><span className="w-32 shrink-0 text-black/60">{label}</span><div className="h-2 flex-1 rounded-full bg-black/5"><div className="h-full rounded-full bg-[#f5be1b]" style={{ width: `${data.sessionsCount ? Number(value) / data.sessionsCount * 100 : 0}%` }} /></div><strong className="w-8 text-right">{count.format(Number(value))}</strong></div>)}</div>
-        <div className="border-t border-black/10 pt-4 grid grid-cols-2 gap-3"><div><div className="text-xs text-black/50">Novos / recorrentes</div><strong className="text-lg">{data.newCustomers} / {data.returningCustomers}</strong></div><div><div className="text-xs text-black/50">Média histórica por cliente identificado</div><strong className="text-lg">{formatMoney(data.ltv)}</strong></div></div>
+        <div className="border-t border-black/10 pt-4 grid grid-cols-2 gap-3"><div><div className="text-xs text-black/50">Novos / recorrentes · marca própria</div><strong className="text-lg">{data.newCustomers} / {data.returningCustomers}</strong></div><div><div className="text-xs text-black/50">Média histórica por cliente · marca própria</div><strong className="text-lg">{formatMoney(data.ltv)}</strong></div></div>
       </div>
     </div>
 

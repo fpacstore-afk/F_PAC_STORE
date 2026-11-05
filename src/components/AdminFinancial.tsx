@@ -1,3 +1,5 @@
+import { purchasedQuantity } from '../../shared/customerPurchases';
+import { ownBrandSaleItems } from '../../shared/ownBrandPerformance';
 import { MonthlyCloseout } from './admin/financial/MonthlyCloseout';
 import { FinancialReceiptsView } from './admin/financial/FinancialReceiptsView';
 import { FinancialPeriodPicker } from './admin/FinancialPeriodPicker';
@@ -550,40 +552,38 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
     const approvedOrders = filteredOrders.filter(o => getOrderPaymentStatus(o) === 'approved');
 
     approvedOrders.forEach(o => {
-      if (o.items && Array.isArray(o.items)) {
-        o.items.forEach((item: any) => {
-          // Robust product matching to consolidate sales stats under the correct canonical product ID
-          const prod = products.find(p => 
-            p.id === item.id || 
-            p.slug === item.id || 
-            p.id === item.slug || 
-            p.slug === item.slug
-          );
-          
-          const key = prod ? prod.id : (item.id || item.slug);
-          if (!key) return;
+      ownBrandSaleItems(o).forEach(item => {
+        // Robust product matching to consolidate sales stats under the correct canonical product ID
+        const prod = products.find(p =>
+          p.id === item.id ||
+          p.slug === item.id ||
+          p.id === item.slug ||
+          p.slug === item.slug
+        );
 
-          const qty = Number(item.quantity) || 1;
-          const price = Number(item.price) || 0;
-          const cost = Number(
-            item.unitCostSnapshot ??
-            item.costPrice ??
-            item.cost ??
-            prod?.costPrice ??
-            prod?.cost ??
-            0
-          );
+        const key = prod ? prod.id : (item.id || item.slug);
+        if (!key) return;
 
-          if (!productsMetrics[key]) {
-            productsMetrics[key] = { quantity: 0, faturamento: 0, totalCost: 0, profit: 0 };
-          }
+        const qty = purchasedQuantity(item);
+        const price = Number(item.price) || 0;
+        const cost = Number(
+          item.unitCostSnapshot ??
+          item.costPrice ??
+          item.cost ??
+          prod?.costPrice ??
+          prod?.cost ??
+          0
+        );
 
-          productsMetrics[key].quantity += qty;
-          productsMetrics[key].faturamento += price * qty;
-          productsMetrics[key].totalCost += cost * qty;
-          productsMetrics[key].profit += (price - cost) * qty;
-        });
-      }
+        if (!productsMetrics[key]) {
+          productsMetrics[key] = { quantity: 0, faturamento: 0, totalCost: 0, profit: 0 };
+        }
+
+        productsMetrics[key].quantity += qty;
+        productsMetrics[key].faturamento += price * qty;
+        productsMetrics[key].totalCost += cost * qty;
+        productsMetrics[key].profit += (price - cost) * qty;
+      });
     });
 
     // Map to list
