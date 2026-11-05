@@ -15,6 +15,7 @@ import { SimpleStyleQuiz } from './components/SimpleStyleQuiz';
 
 import { Logo } from './components/Logo';
 import { RouteMetadata } from './components/RouteMetadata';
+import { PdvMobileInstall } from './components/PdvMobileInstall';
 import { MotionConfig } from 'framer-motion';
 
 interface ErrorBoundaryProps { children: ReactNode; }
@@ -103,6 +104,7 @@ function AppContent() {
   const location = useLocation();
   const { user } = useAuth();
   const isHome = location.pathname === '/';
+  const isPdvApp = /^\/gestao\/pdv\/?$/.test(location.pathname);
   const mainRef = useRef<HTMLElement>(null);
   const previousPath = useRef(location.pathname);
   useEffect(() => {
@@ -116,19 +118,21 @@ function AppContent() {
     return () => animation?.cancel();
   }, [location.pathname, isHome]);
   useEffect(() => {
+    if (isPdvApp) return;
     analyticsTracker.trackPageView(location.pathname);
     if (location.pathname.startsWith('/product/') || location.pathname.startsWith('/produto/')) {
       const prefixLength = location.pathname.startsWith('/product/') ? 9 : 9;
       const slug = location.pathname.substring(prefixLength);
       analyticsTracker.trackProductView(slug, slug);
     }
-  }, [location.pathname, location.search]);
+  }, [location.pathname, location.search, isPdvApp]);
   useEffect(() => {
-    if (user) analyticsTracker.identify(user.uid, user.email || '', user.displayName || '', user.phoneNumber || '');
-  }, [user]);
+    if (!isPdvApp && user) analyticsTracker.identify(user.uid, user.email || '', user.displayName || '', user.phoneNumber || '');
+  }, [user, isPdvApp]);
   return (
-    <main data-site-main ref={mainRef} id="main-content" tabIndex={-1} className={cn("flex-1", !isHome && "pt-[var(--site-header-height)]")}>
+    <main data-site-main ref={mainRef} id="main-content" tabIndex={-1} className={cn("flex-1", !isHome && !isPdvApp && "pt-[var(--site-header-height)]")}>
       <RouteMetadata />
+      {isPdvApp && <PdvMobileInstall />}
       {/* The header is fixed. Keeping this banner inside the page flow makes it
           start below the menu instead of being hidden behind it on the home. */}
 
@@ -137,6 +141,7 @@ function AppContent() {
         <Route path="/termos" element={<Legal kind="terms" />} />
         <Route path="/privacy/recovery" element={<RecoveryPreferences />} />
         <Route path="/aprovar-mockup/:requestId" element={<MockupApproval />} />
+        <Route path="/gestao/pdv" element={<AdminOrders defaultTab="pdv" />} />
         <Route path="/" element={<HomeV2 />} /><Route path="/catalog" element={<ProductCategories />} /><Route path="/catalog/all" element={<Catalog />} /><Route path="/produtos" element={<ProductCategories />} /><Route path="/produtos/:category" element={<ProductCategoryPage />} /><Route path="/estampas" element={<StampsGallery />} /><Route path="/galeria-estampas" element={<StampsGallery />} /><Route path="/prime" element={<PrimeCustomBuilder />} /><Route path="/prime-custom" element={<PrimeCustomBuilder />} /><Route path="/model/force" element={<Navigate to="/catalog/all?line=force" replace />} /><Route path="/model/mark" element={<Navigate to="/catalog/all?line=mark" replace />} /><Route path="/model/prime" element={<Navigate to="/prime" replace />} /><Route path="/model/:modelSlug" element={<ModelStamps />} /><Route path="/bag/recover" element={<RecoverCart />} /><Route path="/bag" element={<Bag />} /><Route path="/collections" element={<Navigate to="/produtos" replace />} /><Route path="/product" element={<Navigate to="/produtos" replace />} /><Route path="/produto" element={<Navigate to="/produtos" replace />} /><Route path="/product/:slug" element={<ProductDetail />} /><Route path="/produto/:slug" element={<ProductDetail />} /><Route path="/checkout" element={<Checkout />} /><Route path="/success" element={<SuccessPage />} /><Route path="/radio" element={<RadioPage />} /><Route path="/clube" element={<ClubeFPAC />} /><Route path="/clube-fpac" element={<ClubeFPAC />} /><Route path="/gestao" element={<AdminOrders />} /><Route path="/gestao/catalogo" element={<Navigate to="/gestao?tab=catalog" replace />} /><Route path="/gestao/operacoes" element={<Navigate to="/gestao?tab=orders" replace />} /><Route path="/admin" element={<Navigate to="/gestao" replace />} /><Route path="/admin/estampas" element={<Navigate to="/gestao?tab=stamps" replace />} /><Route path="/admin/produtos" element={<Navigate to="/gestao?tab=catalog" replace />} /><Route path="/tracking" element={<OrderLookup />} /><Route path="/account" element={<Account />} /><Route path="/order/:orderId" element={<OrderStatus />} /><Route path="/order-status/:orderId" element={<NavigateToOrder />} /><Route path="*" element={<Navigate to="/" replace />} />
       </Routes></Suspense></ErrorBoundary>
     </main>
@@ -160,11 +165,19 @@ export default function App() {
     <Router><MotionConfig reducedMotion="user"><ScrollToTop /><Toaster position="top-right" toastOptions={{ duration: 5000 }} /><AuthProvider><MusicPlayerProvider>
       <div className="min-h-[100dvh] bg-[#ffffff] text-gray-800 font-sans flex flex-col overflow-x-clip" translate="no">
         <a href="#main-content" className="sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-[10000] focus:bg-black focus:px-4 focus:py-3 focus:text-white">Pular para o conteúdo</a>
-        <Navbar /><FlashSaleBadge /><SimpleStyleQuiz /><AppContent /><Footer /><PrivacyPreferences />
-        <FloatingSupport />
-      </div><PlayerMini />
+        <SiteLayout />
+      </div>
     </MusicPlayerProvider></AuthProvider></MotionConfig></Router>
   );
+}
+
+function SiteLayout() {
+  const { pathname } = useLocation();
+  if (/^\/gestao\/pdv\/?$/.test(pathname)) return <AppContent />;
+  return <>
+    <Navbar /><FlashSaleBadge /><SimpleStyleQuiz /><AppContent /><Footer /><PrivacyPreferences />
+    <FloatingSupport /><PlayerMini />
+  </>;
 }
 
 function NavigateToOrder() { const { orderId } = useParams(); return <Navigate to={`/order/${orderId}`} replace />; }

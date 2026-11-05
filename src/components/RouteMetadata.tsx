@@ -11,6 +11,7 @@ const titles: Record<string, string> = {
   '/checkout': 'Finalizar compra',
   '/tracking': 'Acompanhar pedido',
   '/account': 'Minha conta',
+  '/gestao/pdv': 'PDV móvel',
   '/success': 'Pedido recebido',
   '/radio': 'Rádio F PAC',
   '/clube': 'Clube F PAC',
