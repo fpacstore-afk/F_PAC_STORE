@@ -1,3 +1,4 @@
+import { ownBrandSaleItems } from '../../shared/ownBrandPerformance';
 import { FinancialPeriodPicker } from '../components/admin/FinancialPeriodPicker';
 import { dashboardPeriodRange, dateMatchesRange } from '../../shared/financialDashboard';
 import { receiptPeriodRange } from '../../shared/financialReceipts';
@@ -720,7 +721,7 @@ function AdminOrdersInner({ defaultTab }: { defaultTab: ManagementTab }) {
     const paidFilteredOrders = filtered.filter(o => isAdminOrderPaid(o));
 
     // Canonical Product Profitability ranking for filtered paid orders
-    const rankedProducts = calculateProductProfitability(paidFilteredOrders, currentProducts);
+    const rankedProducts = calculateProductProfitability(paidFilteredOrders, currentProducts, ownBrandSaleItems);
 
     // Initialize metrics
     let totalRevenue = 0;
@@ -3454,7 +3455,7 @@ Total: R$ ${totalSum.toFixed(2)}`;
 
                 {/* Top Selling Products Graph & List */}
                 <div className="bg-white border border-black/10 p-6 space-y-4 shadow-sm">
-                  <h3 className="text-xs font-black uppercase tracking-widest border-b border-black/5 pb-2">Artigos Mais Vendidos (Vol. Unidades)</h3>
+                  <h3 className="text-xs font-black uppercase tracking-widest border-b border-black/5 pb-2">Mais vendidos da marca própria · unidades</h3>
                   <div className="space-y-4">
                     {Object.entries(reportData.productSales).length === 0 ? (
                       <p className="text-xs font-bold text-gray-400 uppercase py-6 text-center">Nenhum produto faturado no período</p>
@@ -3487,7 +3488,7 @@ Total: R$ ${totalSum.toFixed(2)}`;
 
               {/* Rentabilidade Detalhada view */}
               <div className="bg-white border border-black/10 p-6 space-y-4 shadow-sm">
-                <h3 className="text-xs font-black uppercase tracking-widest border-b border-black/5 pb-2">Análise de Lucro Bruto por Tipo de Produto</h3>
+                <h3 className="text-xs font-black uppercase tracking-widest border-b border-black/5 pb-2">Lucro bruto por produto da marca própria</h3>
                 <div className="overflow-x-auto">
                   <table className="w-full text-left border-collapse text-[11px] uppercase">
                     <thead>

@@ -1,3 +1,5 @@
+import { ownBrandRevenueShare, ownBrandSaleItems } from '../shared/ownBrandPerformance';
+import { calculateProductProfitability } from '../src/utils/profitability';
 import assert from 'node:assert/strict';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
@@ -71,3 +73,24 @@ console.log('PASS: dashboard comparisons, dated chart, receivables and financial
 
 assert.match(visible, /aria-label="Caixa da empresa"/);
 assert.match(hidden, /aria-label="Caixa da empresa"/);
+
+const prime = { slug: 'prime-fpac', name: 'PRIME F PAC', quantity: 2, price: 120, customization: { prints: [{ source: 'own_art' }] } };
+const uniform = { slug: 'manual-custom-uniform', name: 'Camiseta Linha Confort — ZIMM', quantity: 50, price: 60 };
+const mixed = { id: 'MIXED', isManual: true, total: 3240, payment: { status: 'approved', paidAmount: 3240 }, items: [uniform, prime] };
+assert.deepEqual(ownBrandSaleItems(mixed), [prime]);
+assert.equal(ownBrandRevenueShare(mixed), 240 / 3240);
+assert.equal(ownBrandRevenueShare({ items: [prime, { ...uniform, price: undefined }] }), 0);
+assert.equal(ownBrandRevenueShare({ items: [prime, { isGift: true, quantity: 1 }] }), 1);
+assert.deepEqual(ownBrandSaleItems({ items: [{ ...prime, customProduct: true, garmentModelId: 'fpac-tradicional' }] }), []);
+assert.deepEqual(ownBrandSaleItems({ items: [{ ...prime, manualProductMode: 'custom' }] }), []);
+assert.deepEqual(ownBrandSaleItems({ items: [{ ...prime, customDetails: { companyName: 'Empresa' } }] }), []);
+assert.deepEqual(ownBrandSaleItems({ sourceQuote: { id: 'QUOTE' }, items: [prime] }), []);
+assert.deepEqual(ownBrandSaleItems({ id: 'MANUAL-QUOTE-2026', items: [prime] }), []);
+assert.deepEqual(ownBrandSaleItems({ customProduction: { sizes: [{ quantity: 50 }] }, items: [prime] }), []);
+assert.deepEqual(ownBrandSaleItems({ isGift: true, items: [prime] }), []);
+assert.deepEqual(ownBrandSaleItems({ items: [{ ...prime, manualProductMode: 'assembled', quantity: 50 }] }).map(item => item.quantity), [50]);
+const brandRanking = calculateProductProfitability([mixed], [], ownBrandSaleItems);
+assert.deepEqual(brandRanking.map(item => [item.slug, item.unitsSold, item.totalRevenue]), [['prime-fpac', 2, 240]]);
+assert.equal(calculateProductProfitability([mixed]).reduce((sum, item) => sum + item.unitsSold, 0), 52);
+assert.match(visible, /Mais vendidos da marca própria/);
+console.log('PASS: own-brand rankings keep PRIME and separate corporate lines in historical and mixed orders.');

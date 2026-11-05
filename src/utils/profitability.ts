@@ -342,7 +342,8 @@ export function calculateOrderProfitability(
  */
 export function calculateProductProfitability(
   orders: any[],
-  productCatalog: any[] = []
+  productCatalog: any[] = [],
+  selectItems?: (order: any) => any[]
 ): ProductProfitabilityItem[] {
   const prodMap: Record<string, {
     id: string;
@@ -423,9 +424,10 @@ export function calculateProductProfitability(
     const s = getOrderPaymentStatus(order);
     if (['cancelled', 'rejected'].includes(s)) return;
 
-    const orderProf = calculateOrderProfitability(order, productCatalog);
     const items = order.items && Array.isArray(order.items) ? order.items : [];
-    if (items.length === 0) return;
+    const includedItems = selectItems ? new Set(selectItems(order)) : null;
+    if (items.length === 0 || includedItems?.size === 0) return;
+    const orderProf = calculateOrderProfitability(order, productCatalog);
 
     // Calcular receita bruta de itens do pedido
     const itemDataList = items.map((item: any) => {
@@ -524,6 +526,8 @@ export function calculateProductProfitability(
         runningOtherAllocated = roundMoney(runningOtherAllocated + itemOtherCosts);
       }
 
+      // Allocate against the full order before excluding lines from the report.
+      if (includedItems && !includedItems.has(itemData.item)) return;
       const slug = itemData.slug;
       if (!prodMap[slug]) {
         const name = String(itemData.item.name || (itemData.foundCatalog && itemData.foundCatalog.name) || 'Produto');
