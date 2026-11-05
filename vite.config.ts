@@ -10,6 +10,10 @@ export default defineConfig(({mode}) => {
   return {
     base: '/',
     plugins: [react(), tailwindcss()],
+    build: {
+      // Leave descriptors available for PostCSS on build workers with low limits.
+      rollupOptions: { maxParallelFileOps: 24 },
+    },
     resolve: {
       dedupe: ['react', 'react-dom'],
       alias: {
