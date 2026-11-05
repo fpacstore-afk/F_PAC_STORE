@@ -16,11 +16,18 @@ export function calculateRecordedCashFlow(orders: any[], cashflow: any[] = [], t
   let estimatedShippingOrders = 0;
   let estimatedShippingAmount = 0;
   for (const order of orders) {
-    cashIn += getOrderPaidAmount(order);
-    cashOut += getOrderRefundedAmount(order);
-    const fee = getOrderGatewayFee(order);
-    cashOut += fee.fee + getOrderShippingFinances(order).shippingActualCost;
-    if (!fee.isExact) { estimatedFeeOrders++; estimatedFeeAmount += fee.fee; }
+    const card = order.posCardSettlement;
+    if (card?.state === 'settled') {
+      cashIn += (card.depositCents + card.feeCents) / 100;
+      cashOut += card.feeCents / 100 + Math.max(0, getOrderRefundedAmount(order) - card.refundCents / 100);
+    } else if (card?.state !== 'awaiting') {
+      cashIn += getOrderPaidAmount(order);
+      cashOut += getOrderRefundedAmount(order);
+      const fee = getOrderGatewayFee(order);
+      cashOut += fee.fee;
+      if (!fee.isExact) { estimatedFeeOrders++; estimatedFeeAmount += fee.fee; }
+    }
+    cashOut += getOrderShippingFinances(order).shippingActualCost;
     const shipping = getOrderShippingFinances(order).shippingActualCost;
     const shippingCostRecorded = [order.shippingFinances?.shippingCost, order.shippingFinances?.shippingActualCost,
       order.pricing?.shippingActualCost, order.shippingDetails?.actualCost, order.shippingCost]

@@ -68,6 +68,10 @@ export async function updateOrderProductionStatus(req: Request, res: Response) {
       }
 
       const orderData = orderSnap.data()!;
+      if (['reserved', 'charging'].includes(orderData.posState)) {
+        throw Object.assign(new Error('Confirme ou cancele esta venda no PDV.'), { status: 409, code: 'POS_SALE_PENDING' });
+      }
+
 
       const eligibility = assertProductionOrderEligible(orderData);
       if (!eligibility.eligible) {
@@ -713,6 +717,10 @@ export async function updateOrderPaymentStatus(req: Request, res: Response) {
       }
 
       const orderData = orderSnap.data()!;
+      if (['reserved', 'charging'].includes(orderData.posState)) {
+        throw Object.assign(new Error('Confirme ou cancele esta venda no PDV.'), { status: 409, code: 'POS_SALE_PENDING' });
+      }
+
       const priorEvent = await transaction.get(db.collection('financial_events').doc(deriveLedgerEventId(requestedIdempotencyKey)));
       if (priorEvent.exists) {
         const prior = priorEvent.data()!;
@@ -1069,6 +1077,10 @@ export async function recordBulkStockMovement(req: Request, res: Response) {
       : 'Ajuste manual de estoque';
     const idempotencyKey = typeof req.body?.idempotencyKey === 'string' ? req.body.idempotencyKey.trim() : '';
     const user = (req as any).user;
+    const receiving = req.body?.mode === 'receive';
+    if (receiving && (!idempotencyKey || !String(req.body?.reason || '').trim() || productSlug.includes('/'))) {
+      return res.status(400).json({ error: 'Informe a referência da entrada e a identificação da operação.' });
+    }
 
     if (!productSlug || productSlug.length > 160 || rawUpdates.length === 0 || rawUpdates.length > 100) {
       return res.status(400).json({ error: 'Informe um produto e entre 1 e 100 variações válidas para confirmar o estoque.' });
@@ -1089,7 +1101,7 @@ export async function recordBulkStockMovement(req: Request, res: Response) {
       if (
         !variantKey || variantKey.length > 160 ||
         variantKey === '__proto__' || variantKey === 'constructor' || variantKey === 'prototype' ||
-        !Number.isSafeInteger(quantity) || quantity < 0 || seenVariants.has(variantKey)
+        !Number.isSafeInteger(quantity) || quantity < (receiving ? 1 : 0) || (receiving && quantity > 100000) || seenVariants.has(variantKey)
       ) {
         return res.status(400).json({ error: 'Cada variação deve ser única e ter uma quantidade inteira maior ou igual a zero.' });
       }
@@ -1100,6 +1112,7 @@ export async function recordBulkStockMovement(req: Request, res: Response) {
       .map((update) => `${update.variantKey}:${update.quantity}`)
       .sort()
       .join('|');
+    const signature = receiving ? JSON.stringify(['receive', requestSignature, updates.map(item => [item.variantKey, item.reason]).sort()]) : requestSignature;
 
     const db = getDb();
     let resultMovements: any[] = [];
@@ -1114,7 +1127,7 @@ export async function recordBulkStockMovement(req: Request, res: Response) {
       ]);
       if (idempotencySnap?.exists) {
         const previous = idempotencySnap.data() || {};
-        if (previous.productSlug !== productSlug || previous.requestSignature !== requestSignature || !Array.isArray(previous.movements)) {
+        if (previous.productSlug !== productSlug || previous.requestSignature !== signature || !Array.isArray(previous.movements)) {
           const conflict: any = new Error('Esta confirmação de estoque já foi usada para uma grade diferente.');
           conflict.status = 409;
           conflict.code = 'IDEMPOTENCY_CONFLICT';
@@ -1131,17 +1144,20 @@ export async function recordBulkStockMovement(req: Request, res: Response) {
       const movements: any[] = [];
 
       for (const update of updates) {
+        if (receiving && !Object.hasOwn(variants, update.variantKey)) {
+          throw Object.assign(new Error('Variação não cadastrada. Atualize a entrada.'), { status: 409 });
+        }
         const currentVariant = variants[update.variantKey] || {};
         const stats = getVariantStats(currentVariant, productSlug, update.variantKey);
 
-        if (update.quantity < stats.reservedQuantity) {
+        const newPhysicalQuantity = receiving ? stats.physicalQuantity + update.quantity : update.quantity;
+        if (newPhysicalQuantity < stats.reservedQuantity) {
           throw new OutOfStockError(
             `Ajuste de estoque físico inválido: O novo estoque físico (${update.quantity}) não pode ser menor do que a quantidade reservada por pedidos ativos (${stats.reservedQuantity}).`,
             { item: `${productSlug} (${update.variantKey})`, requested: update.quantity, available: stats.reservedQuantity }
           );
         }
 
-        const newPhysicalQuantity = update.quantity;
         const newReservedQuantity = stats.reservedQuantity;
         const newAvailableQuantity = Math.max(0, newPhysicalQuantity - newReservedQuantity);
 
@@ -1155,7 +1171,7 @@ export async function recordBulkStockMovement(req: Request, res: Response) {
           color: stats.color,
           size: stats.size,
           physicalQuantity: newPhysicalQuantity,
-          physicalCountVerified: true,
+          physicalCountVerified: receiving ? currentVariant.physicalCountVerified === true : true,
           reservedQuantity: newReservedQuantity,
           availableQuantity: newAvailableQuantity,
           stock: newPhysicalQuantity,
@@ -1170,7 +1186,7 @@ export async function recordBulkStockMovement(req: Request, res: Response) {
           productSlug,
           variantKey: update.variantKey,
           sku: stats.sku,
-          type: 'adjust',
+          type: receiving ? 'entry' : 'adjust',
           quantity: update.quantity,
           previousPhysicalQuantity: stats.physicalQuantity,
           newPhysicalQuantity,
@@ -1213,7 +1229,7 @@ export async function recordBulkStockMovement(req: Request, res: Response) {
       if (idempotencyRef) {
         transaction.set(idempotencyRef, {
           productSlug,
-          requestSignature,
+          requestSignature: signature,
           movements,
           createdAt: now
         });
@@ -1359,6 +1375,10 @@ export async function updateOrderShippingStatus(req: Request, res: Response) {
       }
 
       const orderData = orderSnap.data()!;
+      if (['reserved', 'charging'].includes(orderData.posState)) {
+        throw Object.assign(new Error('Confirme ou cancele esta venda no PDV.'), { status: 409, code: 'POS_SALE_PENDING' });
+      }
+
       const isForcedLifecycleCompletion = forceLifecycleCompletion === true;
       const eligibility = assertShippingOrderEligible(orderData, { targetStatus: newStatus });
       const canRepairLegacyProduction = isForcedLifecycleCompletion && eligibility.error === 'SHIPPING_BLOCKED_PRODUCTION';
@@ -1724,6 +1744,10 @@ export async function registerManualPaymentController(req: Request, res: Respons
       }
 
       const orderData = orderSnap.data()!;
+      if (['reserved', 'charging'].includes(orderData.posState)) {
+        throw Object.assign(new Error('Confirme ou cancele esta venda no PDV.'), { status: 409, code: 'POS_SALE_PENDING' });
+      }
+
       const currentPaid = getOrderPaidAmount(orderData);
       const currentPending = getOrderPendingAmount(orderData);
       const currentStatus = getOrderPaymentStatus(orderData);

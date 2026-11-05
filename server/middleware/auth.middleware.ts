@@ -49,6 +49,7 @@ export async function authenticateAdmin(req: AuthenticatedRequest, res: Response
   res.vary('x-sync-secret');
   try {
     const authHeader = req.headers.authorization;
+    const isPosRoute = /^\/api\/admin\/pdv(?:[/?]|$)/.test(req.originalUrl || req.url || '');
     const adminApiKey = (req.headers['x-admin-api-key'] || req.headers['x-api-key']) as string;
     const syncSecret = req.headers['x-sync-secret'] as string;
     
@@ -56,7 +57,7 @@ export async function authenticateAdmin(req: AuthenticatedRequest, res: Response
     const expectedSyncSecret = process.env.SHEETS_SYNC_SECRET;
 
     // 1a. Autenticação estrita por x-admin-api-key para chamadas de sistema/automação interna
-    if (matchesSecret(adminApiKey, expectedAdminKey)) {
+    if (!isPosRoute && matchesSecret(adminApiKey, expectedAdminKey)) {
       req.user = {
         uid: 'system-admin-key',
         email: 'system-admin@fpacstore.com.br',
@@ -101,7 +102,7 @@ export async function authenticateAdmin(req: AuthenticatedRequest, res: Response
         // exists before asking firebase-admin/auth for a verifier so a cold
         // instance does not reject a valid management session with 401.
         getDb();
-        decodedToken = await getAuth().verifyIdToken(token, process.env.ADMIN_CHECK_REVOKED === 'true');
+        decodedToken = await getAuth().verifyIdToken(token, isPosRoute || process.env.ADMIN_CHECK_REVOKED === 'true');
       }
     } catch (tokenErr: any) {
       logger.warn(`🔒 [AUTH-EXPIRED/INVALID] Token inválido em ${req.method} ${req.originalUrl}: ${tokenErr.message}`);

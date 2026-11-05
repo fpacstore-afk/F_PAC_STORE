@@ -159,13 +159,14 @@ export async function applyOrderStampStockInTransaction(
   db: Firestore,
   orderId: string,
   items: any[],
-  action: 'order_debit' | 'order_release' | 'delivery_reconcile'
+  action: 'order_debit' | 'order_release' | 'delivery_reconcile' | 'stock_production'
 ) {
   const markerRef = db.collection('stamp_stock_events').doc(`${orderId}_${action}`);
   if ((await transaction.get(markerRef)).exists) return;
-  const original = action === 'order_debit' ? null : await transaction.get(db.collection('stamp_stock_events').doc(`${orderId}_order_debit`));
-  if (action !== 'order_debit' && !original?.exists) return;
-  const requirements: StampRequirement[] = action === 'order_debit'
+  const debits = action === 'order_debit' || action === 'stock_production';
+  const original = debits ? null : await transaction.get(db.collection('stamp_stock_events').doc(`${orderId}_order_debit`));
+  if (!debits && !original?.exists) return;
+  const requirements: StampRequirement[] = debits
     ? await collectRequirementInputs(transaction, db, items)
     : (Array.isArray(original?.data()?.requirements) ? original.data()!.requirements : []);
 
@@ -221,11 +222,14 @@ export async function applyOrderStampStockInTransaction(
     const deficit = action === 'delivery_reconcile'
       ? Math.min(requirement.quantity, Math.max(0, -(sizeBefore ?? totalBefore)))
       : 0;
-    const delta = action === 'order_debit' ? -requirement.quantity : action === 'order_release' ? requirement.quantity : deficit;
+    const delta = debits ? -requirement.quantity : action === 'order_release' ? requirement.quantity : deficit;
     const sizeDelta = sizeKey ? delta : 0;
     const totalAfter = totalBefore + delta;
     const sizeAfter = sizeKey ? (sizeBefore || 0) + sizeDelta : undefined;
 
+    if (action === 'stock_production' && (totalAfter < 0 || (sizeAfter !== undefined && sizeAfter < 0))) {
+      throw Object.assign(new Error('Estoque físico de estampas insuficiente para produzir as peças.'), { status: 409 });
+    }
     if (sizeKey) update.stockBySize[sizeKey] = sizeAfter!;
     update.totalDelta += delta;
     update.entries.push({ requirement, sizeKey, sizeBefore, sizeDelta, sizeAfter, delta, totalBefore, totalAfter });
@@ -258,7 +262,7 @@ export async function applyOrderStampStockInTransaction(
         createdAt,
         reason: action === 'delivery_reconcile'
           ? 'Entrada de produção para cobrir saldo negativo da medida; a baixa já ocorreu na criação do pedido.'
-          : `Pedido ${orderId}`,
+          : action === 'stock_production' ? 'Produção de peça pronta para o estoque.' : `Pedido ${orderId}`,
       });
       if (quantity && action === 'delivery_reconcile') {
         const consumptionRef = db.collection('stamp_movements').doc(`${orderId}_production_consumption_${stampId}${suffix}`);

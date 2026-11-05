@@ -68,6 +68,10 @@ export async function cancelOrderController(req: Request, res: Response) {
     }
 
     const orderData = orderSnap.data()!;
+    if (['reserved', 'charging'].includes(orderData?.posState)) {
+      return res.status(409).json({ error: 'Confirme ou cancele esta venda no PDV.' });
+    }
+
 
     if (!isUserAdmin) {
       const orderCustomerEmail = (
