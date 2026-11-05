@@ -5,6 +5,11 @@ export type GarmentFamily = 'traditional' | 'oversized' | 'regata';
 export type GarmentChartRow = { size: string; length: string; width: string; sleeve: string; notes?: string };
 const norm = (value: unknown) => String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase();
 
+/** Dry Fit is a separate physical material, not a Suedine source or a collar claim. */
+export function isDryFitGarment(entry: any) {
+  return /\bdry[\s-]*fit\b/.test(norm([entry?.name, entry?.sourceProductName, entry?.baseModel, entry?.garmentModelName].filter(Boolean).join(' ')));
+}
+
 /** Technical fields transcribed from the owner's ZIMM catalogue images (27/10).
  * Prices, quantities and historic quotes are intentionally not changed here. */
 export function applyVerifiedGarmentSpecs(entry: any) {
@@ -44,10 +49,11 @@ export function garmentProfile(entry: any) {
   entry = applyVerifiedGarmentSpecs(entry);
   const family = garmentFamily(entry), supplier = norm(entry?.supplier);
   if (!family || !['zimm', 'tiggas'].includes(supplier) || !entry?.id) return null;
-  const neckline = family === 'regata' ? 'tank' : supplier === 'zimm' ? 'high_closed' : 'classic_open';
-  const collar = family === 'regata' ? 'Decote de regata · sem mangas' : (supplier === 'zimm' ? 'Gola mais alta e fechada' : 'Gola mais baixa e aberta') + (entry.collar ? ` · ${entry.collar}` : '');
-  const shortName = family === 'regata' ? 'Regata' : supplier === 'zimm' ? 'Gola alta' : 'Gola tradicional';
-  const material = String(family === 'regata' ? entry.composition || '' : entry.name || '').replace(/camiseta|camisa|oversized|tradicional/gi, '').trim();
+  const dryFit = isDryFitGarment(entry);
+  const neckline = family === 'regata' ? 'tank' : dryFit ? '' : supplier === 'zimm' ? 'high_closed' : 'classic_open';
+  const collar = family === 'regata' ? 'Decote de regata · sem mangas' : dryFit ? String(entry.collar || '') : (supplier === 'zimm' ? 'Gola mais alta e fechada' : 'Gola mais baixa e aberta') + (entry.collar ? ` · ${entry.collar}` : '');
+  const shortName = family === 'regata' ? 'Regata' : dryFit ? 'Dry Fit' : supplier === 'zimm' ? 'Gola alta' : 'Gola tradicional';
+  const material = String(family === 'regata' || dryFit ? entry.composition || '' : entry.name || '').replace(/camiseta|camisa|oversized|tradicional/gi, '').trim();
   return {
     garmentModelId: String(entry.id), garmentModelName: [shortName, material].filter(Boolean).join(' · '),
     garmentFamily: family, neckline, collar, garmentModelRevision: GARMENT_MODEL_REVISION,

@@ -69,7 +69,7 @@ function createStockSaveIdempotencyKey() {
   const randomPart = uuid || `${Date.now()}${Math.random().toString(36).slice(2)}`;
   return `stock_${randomPart}`;
 }
-const BASE_MODELS = ['Oversized Premium 240GSM', 'Tradicional Suedine', 'Bermuda Linho Cargo', 'Regata', 'Cropped Oversized Feminino', 'Casaco de Moletom', 'Boné de Telinha Trucker'];
+const BASE_MODELS = ['Oversized Premium 240GSM', 'Tradicional Suedine', 'Bermuda Linho Cargo', 'Regata', 'Cropped Oversized Feminino', 'Casaco de Moletom', 'Boné de Telinha Trucker', 'Tradicional Dry Fit'];
 const PRODUCT_NAME_SUGGESTIONS = STOCK_FAMILIES.map(family => family.label);
 
 const DEFAULT_SIZES = ['P', 'M', 'G', 'GG', 'XG'];
@@ -77,12 +77,13 @@ const TECHNICAL_SPEC_OPTIONS = {
   fabric: [
     '90% Algodão / 10% Poliéster',
     '100% Algodão',
+    '100% poliéster; tecido grão de arroz',
     '97% Linho / 3% Elastano',
     'Suedine premium',
     'Moletom premium',
     'Não informado'
   ],
-  gsm: ['160GSM', '190GSM', '240GSM', '250GSM', 'Não informado'],
+  gsm: ['140 g/m²', '160GSM', '190GSM', '240GSM', '250GSM', 'Não informado'],
   fit: [
     'Oversized Premium',
     'Tradicional',
