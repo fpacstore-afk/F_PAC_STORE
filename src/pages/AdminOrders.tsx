@@ -216,7 +216,7 @@ interface Order {
   whatsappLogs?: any[];
 }
 
-function AdminOrdersInner() {
+function AdminOrdersInner({ defaultTab }: { defaultTab: ManagementTab }) {
   const { formatMoney, formatPercent, maskFinancial, showFinancialValues } = useFinancialPrivacy();
   const { user, loading: authLoading, loginWithGoogle, logout } = useAuth();
   const navigate = useNavigate();
@@ -236,7 +236,7 @@ function AdminOrdersInner() {
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [stockFilter, setStockFilter] = useState<'all' | 'moved' | 'not_moved'>('all');
   const [activeTab, setActiveTab] = useState<ManagementTab>(() => {
-    return normalizeManagementTab(searchParams.get('tab')) || 'dashboard';
+    return normalizeManagementTab(searchParams.get('tab')) || defaultTab;
   });
   const [selectedOrderForFinancialDrawer, setSelectedOrderForFinancialDrawer] = useState<any | null>(null);
   // IDs in this set are local exceptions to the global eye state.
@@ -262,10 +262,8 @@ function AdminOrdersInner() {
       setSearchParams({ tab: normalizedTab }, { replace: true });
       return;
     }
-    if (normalizedTab) {
-      setActiveTab(normalizedTab);
-    }
-  }, [searchParams]);
+    setActiveTab(normalizedTab || defaultTab);
+  }, [searchParams, defaultTab]);
 
   const selectManagementTab = useCallback((tab: ManagementTab) => {
     setActiveTab(tab);
@@ -2195,7 +2193,11 @@ Total: R$ ${totalSum.toFixed(2)}`;
               </span>
             )}
             <FinancialPrivacyToggle onToggle={() => setToggledOrderValueIds(new Set())} />
-            <Link to="/" className="border border-white/10 px-3 py-2 text-white/60 hover:text-[#eab308] hover:border-[#eab308]/40 transition-colors">Ver loja</Link>
+            {defaultTab === 'pdv' ? (
+              <Link to="/gestao" className="border border-white/10 px-3 py-2 text-white/60 hover:text-[#eab308]">Gestão completa</Link>
+            ) : (
+              <Link to="/" className="border border-white/10 px-3 py-2 text-white/60 hover:text-[#eab308] hover:border-[#eab308]/40 transition-colors">Ver loja</Link>
+            )}
           </div>
         </div>
       </header>
@@ -2234,6 +2236,9 @@ Total: R$ ${totalSum.toFixed(2)}`;
         </React.Suspense>
       ) : activeTab === 'pdv' ? (
         <React.Suspense fallback={<div className="p-12 text-center">Carregando PDV…</div>}>
+          {defaultTab !== 'pdv' && <div className="mx-auto mb-3 flex max-w-7xl justify-end">
+            <Link to="/gestao/pdv" className="border border-black/15 bg-white px-4 py-2 text-sm font-bold hover:border-black">Abrir PDV móvel</Link>
+          </div>}
           <AdminPos key={user?.uid} operatorId={user?.uid} onNewOrder={() => { selectManagementTab('orders'); setIsManualModalOpen(true); }} />
         </React.Suspense>
       ) : activeTab === 'orders' ? (
@@ -4761,10 +4766,10 @@ Total: R$ ${totalSum.toFixed(2)}`;
   );
 }
 
-export default function AdminOrders() {
+export default function AdminOrders({ defaultTab = 'dashboard' }: { defaultTab?: ManagementTab }) {
   return (
     <FinancialPrivacyProvider>
-      <AdminOrdersInner />
+      <AdminOrdersInner defaultTab={defaultTab} />
     </FinancialPrivacyProvider>
   );
 }
