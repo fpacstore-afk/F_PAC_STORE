@@ -27,6 +27,13 @@ const regata = garmentProfile(source('ZIM-010','Zimm','Linha Regata',''));
 assert.equal(regata!.neckline,'tank');
 assert.deepEqual(regata!.sizeChart.find(row=>row.size==='M'),{size:'M',length:'67 cm',width:'55 cm',sleeve:''});
 assert.equal(regata!.gsm,'160 g/m²');
+const dryEntry = { ...source('DRY-ZIMM-140','Zimm','Camiseta Dry Fit',''), composition: '100% poliéster; tecido grão de arroz', weight: '140 g/m²' };
+const dryProfile = garmentProfile(dryEntry)!;
+assert.equal(dryProfile.neckline,'','A Dry Fit sem gola confirmada não herda gola alta');
+assert.equal(dryProfile.fabric,dryEntry.composition);
+assert.equal(dryProfile.gsm,dryEntry.weight);
+assert.deepEqual(dryProfile.sizeChart,[],'Medidas não informadas não são inventadas');
+assert.equal(compatibleGarmentSource({baseModel:'Tradicional Suedine'},{baseModel:'Tradicional Dry Fit',garmentModelId:dryEntry.id}),false,'Dry Fit não compartilha a base Suedine');
 assert.equal(garmentTitle('Camisa', {garmentModelName:'Gola alta'}),'Camisa — Gola alta');
 assert.equal(compatibleGarmentSource({baseModel:'Tradicional Suedine'},{baseModel:'Tradicional Suedine',garmentModelId:'TIG-001',sourceProductName:'Camiseta 30.1'}),false);
 assert.equal(compatibleGarmentSource({baseModel:'Tradicional Suedine'},{baseModel:'Tradicional Suedine',garmentModelId:'TIG-002',sourceProductName:'Camiseta Suedine'}),true);
@@ -156,4 +163,16 @@ try {
   const retry:any = await (await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body})).json();
   assert.equal(retry.alreadyApplied,true);
 } finally { await new Promise<void>((resolve,reject)=>listener.close(error=>error?reject(error):resolve())); }
+// Preparing models must reuse an already classified physical base, including
+// when the stock editor created it under a noncanonical document ID.
+await db.collection('pricing_workbench').doc('catalog').set({catalog:{entries:[dryEntry]}});
+await db.collection('products').doc('dry-existing').set({id:'dry-existing',slug:'dry-existing',name:'Camiseta Dry Fit',baseModel:'Tradicional Dry Fit',productFinish:'plain',status:'draft',garmentModelId:dryEntry.id,modelSeparationRequired:true,sizes:dryEntry.sizes,colors:[{name:'Preto'}]});
+await db.collection('inventory').doc('dry-existing').set({variants:{Preto_M:{physicalQuantity:5,stock:5,reservedQuantity:0,availableQuantity:5,available:true}},stock:5,totalPhysicalStock:5,totalReservedStock:0});
+assert.equal((await initializeGarmentModels(db,'isolated')).created,0,'Existing classified Dry Fit base is reused');
+assert.equal((await db.collection('products').doc('garment-dry-zimm-140').get()).exists,false,'No duplicate base is created');
+assert.equal((await inv('dry-existing')).variants.Preto_M.physicalQuantity,5,'Preparing the grid preserves its existing balance');
+const anotherDry = {...dryEntry,id:'DRY-ZIMM-140-NEW'};
+await db.collection('pricing_workbench').doc('catalog').set({catalog:{entries:[anotherDry]}});
+assert.equal((await initializeGarmentModels(db,'isolated')).created,1);
+assert.equal((await db.collection('products').doc('garment-dry-zimm-140-new').get()).data().baseModel,'Tradicional Dry Fit');
 console.log('PASS supplier identity, measurements, classification, atomic/idempotent duplicate unification preserving stock and reservations, HTTP JSON requests, single public source, and subsequent transfers to the surviving pool.');

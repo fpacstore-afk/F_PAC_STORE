@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { requireIsolatedTestDb } from './requireIsolatedTestDb.js';
-import { cancelPosSale, chargePosSale, completePosSale, expirePosReservations, getPosSale, loadPosVariants, preparePosSale } from '../server/services/pos.service.js';
+import { cancelPosSale, chargePosSale, completePosSale, expirePosReservations, getPosSale, isPosEntryBaseEligible, loadPosVariantCatalog, loadPosVariants, preparePosSale } from '../server/services/pos.service.js';
 import { reserveStock } from '../server/services/store.service.js';
 import { recordBulkStockMovement } from '../server/controllers/admin.controller.js';
 import { saveInventoryCount } from '../server/controllers/inventoryCount.controller.js';
@@ -20,6 +20,23 @@ await invRef.set({ variants: { [key]: { physicalQuantity: 1, reservedQuantity: 0
 const getVariant = async () => (await invRef.get()).data()!.variants[key];
 const [variant] = await loadPosVariants();
 assert.match(variant.code, /^FP[A-F0-9]{20}$/);
+const entryBase = {
+  slug: 'entry-base', productFinish: 'plain', name: 'Regata lisa', status: 'draft',
+  parentSlug: 'prime', is_prime: true, customizable: true, price: 59,
+  colors: ['Branco'], sizes: ['P', 'M', 'G', 'GG'], baseModel: 'Regata', garmentModelId: 'ZIM-010'
+};
+await db.collection('products').doc('entry-base').set(entryBase);
+const entryRef = db.collection('inventory').doc('entry-base');
+await entryRef.set({ variants: Object.fromEntries(entryBase.sizes.map(size => [`Branco_${size}`, { physicalQuantity: 0, reservedQuantity: 0, available: false }])) });
+const entryCatalog = await loadPosVariantCatalog();
+assert.equal(entryCatalog.variants.some(item => item.slug === 'entry-base'), false, 'internal bases remain outside direct POS sales');
+assert.equal(entryCatalog.entryVariants.filter(item => item.slug === 'entry-base').length, 4, 'existing internal base variants can receive goods');
+assert.equal(isPosEntryBaseEligible({ ...entryBase, status: 'archived' }, 'Branco_P'), false);
+assert.equal(isPosEntryBaseEligible({ ...entryBase, mergedIntoProductId: 'other' }, 'Branco_P'), false);
+assert.equal(isPosEntryBaseEligible({ ...entryBase, garmentModelId: undefined, modelSeparationRequired: true }, 'Branco_P'), false);
+assert.equal(isPosEntryBaseEligible({ ...entryBase, productFinish: 'printed' }, 'Branco_P'), false);
+const entryOnly = entryCatalog.entryVariants.find(item => item.slug === 'entry-base')!;
+await assert.rejects(preparePosSale({ requestId: randomUUID(), lines: [{ code: entryOnly.code, quantity: 1, unitCents: 5900 }] }, user), /Saldo insuficiente/);
 const id = randomUUID();
 const lines = [{ code: variant.code, quantity: 1, unitCents: 8990 }];
 await assert.rejects(preparePosSale({ requestId: id, lines: [{ ...lines[0], unitCents: 1 }] }, user), /preço mudou/);
@@ -47,6 +64,19 @@ async function invoke(handler: any, body: any) {
   await handler({ body, user }, res);
   return res;
 }
+const receipt = {
+  productSlug: 'entry-base', mode: 'receive', idempotencyKey: randomUUID(), reason: 'Entrada de regatas brancas',
+  updates: [{ variantKey: 'Branco_P', quantity: 2 }, { variantKey: 'Branco_M', quantity: 2 }, { variantKey: 'Branco_G', quantity: 5 }, { variantKey: 'Branco_GG', quantity: 2 }]
+};
+assert.equal((await invoke(recordBulkStockMovement, receipt)).code, 200);
+assert.equal((await invoke(recordBulkStockMovement, receipt)).payload.replayed, true);
+const received = (await entryRef.get()).data()!;
+assert.deepEqual(receipt.updates.map(item => received.variants[item.variantKey].physicalQuantity), [2, 2, 5, 2]);
+assert.equal(received.totalPhysicalStock, 11, 'replaying the receipt cannot add the goods twice');
+const receiptMovements = (await db.collection('stock_movements').get()).docs.map(doc => doc.data()).filter(item => item.idempotencyKey === receipt.idempotencyKey);
+assert.equal(receiptMovements.length, 4);
+assert.ok(receiptMovements.every(item => item.type === 'entry' && item.previousPhysicalQuantity === 0));
+await assert.rejects(preparePosSale({ requestId: randomUUID(), lines: [{ code: entryOnly.code, quantity: 1, unitCents: 5900 }] }, user), /Saldo insuficiente/);
 const entry = {
   productSlug: 'plain-test', mode: 'receive', idempotencyKey: randomUUID(), reason: 'Fornecedor e compra de teste',
   updates: [{ variantKey: key, quantity: 2 }]
@@ -161,7 +191,10 @@ try {
   const authorized = await fetch(path, { headers: { authorization: 'Bearer admin-test' } });
   assert.equal(authorized.status, 200);
   assert.match(authorized.headers.get('cache-control') || '', /no-store/);
-  assert.doesNotMatch(await authorized.text(), /unitCostSnapshot|privateCosts|actorEmail/);
+  const response = await authorized.json();
+  assert.ok(response.entryVariants.some((item: any) => item.slug === 'entry-base'));
+  assert.ok(!response.variants.some((item: any) => item.slug === 'entry-base'));
+  assert.doesNotMatch(JSON.stringify(response), /unitCostSnapshot|privateCosts|actorEmail/);
 } finally {
   resetAuthForTesting();
   delete process.env.ADMIN_API_KEY;

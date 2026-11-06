@@ -5,7 +5,7 @@ import { linkPosAlias, loadPosAliases, transformPosGarments } from '../services/
 import { logger } from '../utils/logger.js';
 import {
   PosError, cancelPosSale, chargePosSale, completePosSale, expirePosReservations, getPosSale,
-  isPosStockConflict, listPendingPosSales, loadPosVariants, preparePosSale
+  isPosStockConflict, listPendingPosSales, loadPosVariantCatalog, preparePosSale
 } from '../services/pos.service.js';
 
 export function createPosRouter() {
@@ -31,8 +31,8 @@ export function createPosRouter() {
   router.get('/cards', handle(() => listPosCardSettlements()));
   router.post('/cards/:id/settle', handle((req, operator) => settlePosCard(req.params.id, req.body, operator)));
   router.get('/variants', handle(async () => {
-    const [variants, aliases] = await Promise.all([loadPosVariants(), loadPosAliases()]);
-    return { variants, aliases };
+    const [catalog, aliases] = await Promise.all([loadPosVariantCatalog(), loadPosAliases()]);
+    return { ...catalog, aliases };
   }));
   router.post('/aliases', handle((req, operator) => linkPosAlias(req.body, operator)));
   router.post('/transform', handle((req, operator) => transformPosGarments(req.body, operator)));

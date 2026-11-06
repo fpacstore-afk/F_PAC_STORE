@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { FieldValue } from 'firebase-admin/firestore';
 import { financialDateKey } from '../../shared/cashFlow.js';
 import { requiresGarmentClassification } from '../../shared/garmentModels.js';
+import { normalizeProductStatus } from '../../shared/productPublication.js';
 import { isGarmentVariantAllowed, stockSlug, variantAvailable } from '../../shared/sharedGarmentStock.js';
 import { getDb } from '../firebase.js';
 import { deriveLedgerEventId } from './financialLedger.service.js';
@@ -38,6 +39,14 @@ export function isPosVariantEligible(product: any, key: string) {
     !['inactive', 'archived', 'deleted', 'draft'].includes(String(product.status || '').toLowerCase()) &&
     !requiresGarmentClassification(product) && isGarmentVariantAllowed(product, key);
 }
+
+/** Internal blank bases may receive merchandise even when not published for sale. */
+export function isPosEntryBaseEligible(product: any, key: string) {
+  const status = normalizeProductStatus(product.status);
+  return product.productFinish === 'plain' && (status === 'active' || status === 'draft') &&
+    product.rangeArchived !== true && !product.mergedIntoProductId &&
+    !requiresGarmentClassification(product) && isGarmentVariantAllowed(product, key);
+}
 function projection(order: any) {
   return {
     orderId: String(order.id),
@@ -53,7 +62,7 @@ function projection(order: any) {
   };
 }
 
-export async function loadPosVariants(): Promise<PosVariant[]> {
+export async function loadPosVariantCatalog(): Promise<{ variants: PosVariant[]; entryVariants: PosVariant[] }> {
   const db = getDb();
   const [products, inventories] = await Promise.all([db.collection('products').get(), db.collection('inventory').get()]);
   const bySlug = new Map<string, FirebaseFirestore.DocumentData>(inventories.docs.map(doc => [doc.id, doc.data()]));
@@ -63,26 +72,35 @@ export async function loadPosVariants(): Promise<PosVariant[]> {
     const slug = stockSlug(product);
     slugCounts.set(slug, (slugCounts.get(slug) || 0) + 1);
   }
-  return catalog.flatMap((product: any) => {
+  const rows = catalog.flatMap((product: any) => {
     const slug = stockSlug(product);
     const inventory = bySlug.get(slug);
-    if (!inventory || slugCounts.get(slug) !== 1 || product.parentSlug) return [];
+    if (!inventory || slugCounts.get(slug) !== 1) return [];
     return Object.entries(inventory.variants || {}).flatMap(([key, variant]: [string, any]) => {
-      if (!variant || !isPosVariantEligible(product, key)) return [];
+      if (!variant) return [];
+      const saleEligible = isPosVariantEligible(product, key);
+      const entryEligible = saleEligible || isPosEntryBaseEligible(product, key);
+      if (!entryEligible) return [];
       const stats = getVariantStats(variant, slug, key);
       const finish = product.productFinish === 'plain' ? 'plain' : 'ready';
       const verified = finish === 'plain' || product.productFinish !== 'printed' || variant.physicalCountVerified === true;
       const code = 'FP' + createHash('sha256').update(JSON.stringify([slug, key])).digest('hex').slice(0, 20).toUpperCase();
-      return [{
+      const item: PosVariant = {
         code, productId: product.id, slug, variantKey: key,
         name: String(product.name || slug), color: stats.color, size: stats.size,
         neckline: String(product.neckline || product.collar || ''), finish,
         sku: String(stats.sku || ''), unitCents: unitCents(product),
         available: verified ? variantAvailable(inventory, key) : 0,
         physical: stats.physicalQuantity, reserved: stats.reservedQuantity
-      }];
+      };
+      return [{ item, saleEligible }];
     });
   });
+  return { variants: rows.filter(row => row.saleEligible).map(row => row.item), entryVariants: rows.map(row => row.item) };
+}
+
+export async function loadPosVariants(): Promise<PosVariant[]> {
+  return (await loadPosVariantCatalog()).variants;
 }
 
 export async function preparePosSale(input: any, operator: PosOperator) {

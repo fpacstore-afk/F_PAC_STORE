@@ -13,9 +13,16 @@ export type StockVariantRow = {
   physical: number;
   reserved: number;
   available: number;
+  /** Customer-facing availability, which may include a shared blank garment. */
+  saleAvailable?: number;
   minimum: number;
   active: boolean;
   status: StockVariantStatus;
+};
+
+export type SaleAvailability = {
+  availableQuantity: number;
+  variants?: Record<string, { available?: boolean; availableQuantity?: number }>;
 };
 
 type InventoryEntry = InventoryState[string] | undefined;
@@ -98,6 +105,22 @@ export function buildStockVariantRows(product: StockProduct, inventoryEntry?: In
       active,
       status,
     };
+  });
+}
+
+/** Use the storefront projection for sale status without changing physical stock. */
+export function withSaleAvailability(rows: StockVariantRow[], sale: SaleAvailability): StockVariantRow[] {
+  return rows.map(row => {
+    // An old aggregate without a colour/size cannot be assigned to a variant.
+    if (row.key === '__unallocated__') return row;
+    const projected = sale.variants?.[row.key];
+    const saleAvailable = projected?.available === false ? 0 : quantity(projected?.availableQuantity);
+    // A ready-stock variant can be inactive while its shared blank is sellable.
+    const active = row.active || saleAvailable > 0;
+    const status: StockVariantStatus = row.status === 'classification_pending'
+      ? 'classification_pending'
+      : !active ? 'inactive' : saleAvailable === 0 ? 'out' : saleAvailable <= row.minimum ? 'critical' : 'safe';
+    return { ...row, active, saleAvailable, status };
   });
 }
 

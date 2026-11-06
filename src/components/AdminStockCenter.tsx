@@ -22,8 +22,9 @@ import { normalizeProductStatus } from '../../shared/productPublication';
 import { stockProductIdentity, matchesStockProduct, duplicateProductReferences, hasDuplicateProductReference } from '../lib/stockProductIdentity';
 import { stockMovementDisplay } from '../lib/stockMovementDisplay';
 import { getStockCategory, OVERSIZED_CATEGORY } from '../lib/stockCategory';
-import { buildStockVariantRows, summarizeStockVariants } from '../lib/stockVariantRows';
+import { buildStockVariantRows, summarizeStockVariants, withSaleAvailability, type SaleAvailability } from '../lib/stockVariantRows';
 import { StockVariantBreakdown, StockVariantStatusSummary } from './StockVariantBreakdown';
+import { subscribePublicCatalog } from '../services/publicProducts';
 import { 
   Plus, Minus, Search, Database, Clock, AlertTriangle, 
   CheckCircle2, Box, Sparkles, RefreshCw, Filter, Calendar, 
@@ -68,6 +69,11 @@ export function AdminStockCenter() {
   // Admin access validation (matches the AdminOrders restriction)
   const isDevBypass = import.meta.env.DEV && localStorage.getItem('admin_bypass') === 'true';
   const isAdmin = isAdminIdentity(user) || isDevBypass;
+  const [saleCatalog, setSaleCatalog] = useState<{ products: any[]; availability: Record<string, SaleAvailability> } | null>(null);
+  useEffect(() => {
+    if (!isAdmin) return;
+    return subscribePublicCatalog(catalog => setSaleCatalog(catalog), () => setSaleCatalog(null));
+  }, [isAdmin]);
 
   // Sub-tab: 'stock' (Unified Gestão de Estoque)
   const [activeSubTab, setActiveSubTab] = useState<'stock' | 'catalog'>('stock');
@@ -336,13 +342,28 @@ export function AdminStockCenter() {
       });
     });
 
-    return items.map(item => ({
-      ...item,
-      variantRows: buildStockVariantRows(item, item.stockGroup === 'printed' ? countedReadyInventory((item.slug && inventory[item.slug]) || (item.id && inventory[item.id])) : (item.slug && inventory[item.slug]) || (item.id && inventory[item.id]) || undefined),
-      identity: stockProductIdentity(item, stockDesigns),
-      duplicateReference: hasDuplicateProductReference(item.sku, duplicateReferences)
-    }));
-  }, [products, inventory, stockDesigns, duplicateReferences]);
+    return items.map(item => {
+      const ownInventory = (item.slug && inventory[item.slug]) || (item.id && inventory[item.id]) || undefined;
+      const physicalRows = buildStockVariantRows(item, item.stockGroup === 'printed' ? countedReadyInventory(ownInventory) : ownInventory);
+      const identifiers = new Set([item.id, item.slug].filter(Boolean));
+      const publicProduct = item.stockGroup === 'printed'
+        ? saleCatalog?.products.find(product => [product.id, product.slug].some(id => id && identifiers.has(id)))
+        : undefined;
+      const projection = publicProduct && (saleCatalog?.availability[publicProduct.slug] || saleCatalog?.availability[publicProduct.id]);
+      const validProjection = projection && typeof projection.availableQuantity === 'number' && Number.isFinite(projection.availableQuantity)
+        && projection.variants && typeof projection.variants === 'object';
+      return {
+        ...item,
+        variantRows: validProjection ? withSaleAvailability(physicalRows, projection) : physicalRows,
+        saleAvailability: validProjection ? {
+          quantity: Math.max(0, projection.availableQuantity),
+          shared: publicProduct.fulfillment === 'made_to_order'
+        } : undefined,
+        identity: stockProductIdentity(item, stockDesigns),
+        duplicateReference: hasDuplicateProductReference(item.sku, duplicateReferences)
+      };
+    });
+  }, [products, inventory, stockDesigns, duplicateReferences, saleCatalog]);
 
   const stockForReview = useMemo(() => Object.entries(inventory).flatMap(([slug, value]) => {
     const product = products.find(p => p.slug === slug || p.id === slug);
@@ -843,7 +864,7 @@ export function AdminStockCenter() {
                 <h3 className="text-xs font-black uppercase tracking-widest italic flex items-center gap-1.5 text-neutral-800">
                   <SlidersHorizontal size={14} className="text-[#eab308]" /> ITENS DO INVENTÁRIO CADASTRO E FISCAL
                 </h3>
-                <p className="text-[10px] text-gray-400">Totalizadores de estoque integrados para fins contábeis e vendas automatizadas do e-commerce</p>
+                <p className="text-[10px] text-gray-500">O físico conta peças lisas e estampadas prontas. À venda pode incluir a mesma base lisa compartilhada entre estampas.</p>
               </div>
 
               {/* Action Buttons */}
@@ -1057,6 +1078,7 @@ export function AdminStockCenter() {
                             <div className="text-sm font-mono font-black text-black">
                               {item.totalStock} <span className="text-[9px] text-gray-400 font-sans font-bold">Un.</span>
                             </div>
+                            {item.stockGroup === 'printed' && <span className="mt-1 block text-[9px] font-bold text-amber-800">{item.saleAvailability ? `À venda: ${item.saleAvailability.quantity} un.${item.saleAvailability.shared ? ' · base lisa compartilhada' : ''}` : 'Venda não confirmada'}</span>}
                           </td>
 
                           {/* 5. Minimum stock */}
@@ -1074,6 +1096,7 @@ export function AdminStockCenter() {
                               aria-label={`${expandedVariantIds.has(item.unifiedId) ? 'Ocultar' : 'Mostrar'} detalhes de cor e tamanho de ${item.identity.displayName}`}
                               className="mx-auto inline-flex min-h-11 items-center justify-center gap-1 rounded-md px-1.5 text-amber-800 hover:bg-amber-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-amber-600"
                             >
+                              {item.stockGroup === 'printed' && <span className="text-[8px] font-bold">{item.saleAvailability ? 'Venda:' : 'Prontas:'}</span>}
                               <StockVariantStatusSummary rows={item.variantRows} />
                               <ChevronRight size={15} aria-hidden="true" className={`shrink-0 transition-transform ${expandedVariantIds.has(item.unifiedId) ? 'rotate-90' : ''}`} />
                             </button>
@@ -1173,10 +1196,11 @@ export function AdminStockCenter() {
                           <span className="font-mono text-[9px] font-bold text-neutral-800 break-all select-all">{item.sku}</span>
                         </div>
                         <div>
-                          <span className="text-[7.5px] font-black text-gray-400 block uppercase">Estoque</span>
+                          <span className="text-[7.5px] font-black text-gray-400 block uppercase">Físico</span>
                           <span className="font-mono text-xs font-black text-black">
                             {item.totalStock} <span className="text-[8px] text-gray-400 font-sans font-bold">Un.</span>
                           </span>
+                          {item.stockGroup === 'printed' && <span className="mt-1 block text-[8px] font-bold text-amber-800">{item.saleAvailability ? `À venda: ${item.saleAvailability.quantity}${item.saleAvailability.shared ? ' · base compartilhada' : ''}` : 'Venda não confirmada'}</span>}
                         </div>
                         <div>
                           <span className="text-[7.5px] font-black text-gray-400 block uppercase">Status</span>
@@ -1188,6 +1212,7 @@ export function AdminStockCenter() {
                             aria-label={`${expandedVariantIds.has(item.unifiedId) ? 'Ocultar' : 'Mostrar'} detalhes de cor e tamanho de ${item.identity.displayName}`}
                             className="inline-flex min-h-10 items-center justify-center gap-1 rounded-md px-1 text-amber-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-amber-600"
                           >
+                            {item.stockGroup === 'printed' && <span className="text-[8px] font-bold">{item.saleAvailability ? 'Venda:' : 'Prontas:'}</span>}
                             <StockVariantStatusSummary rows={item.variantRows} />
                             <ChevronRight size={14} aria-hidden="true" className={`shrink-0 transition-transform ${expandedVariantIds.has(item.unifiedId) ? 'rotate-90' : ''}`} />
                           </button>
