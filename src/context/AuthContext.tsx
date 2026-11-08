@@ -1,3 +1,5 @@
+import { MfaChallenge } from '../components/MfaChallenge';
+import { mfaResolverFromError } from '../lib/authMfa';
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { 
   onAuthStateChanged, 
@@ -8,6 +10,8 @@ import {
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
   sendPasswordResetEmail,
+  validatePassword,
+  type MultiFactorResolver,
   updateProfile as updateFirebaseProfile
 } from 'firebase/auth';
 import { doc, getDoc, setDoc, onSnapshot } from 'firebase/firestore';
@@ -45,6 +49,7 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const [pendingMfa, setPendingMfa] = useState<MultiFactorResolver | null>(null);
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
@@ -184,7 +189,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       provider.setCustomParameters({ prompt: 'select_account' });
       await signInWithPopup(auth, provider);
     } catch (error: any) {
-      handleAuthError(error);
+      if (!beginMfa(error)) handleAuthError(error);
     }
   };
 
@@ -192,12 +197,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       await signInWithEmailAndPassword(auth, email, pass);
     } catch (error: any) {
-      handleAuthError(error);
+      if (!beginMfa(error)) handleAuthError(error);
     }
   };
 
   const registerWithEmail = async (email: string, pass: string, name: string) => {
     try {
+      const policy = await validatePassword(auth, pass);
+      if (!policy.isValid) throw { code: 'auth/password-does-not-meet-requirements' };
       const result = await createUserWithEmailAndPassword(auth, email, pass);
       await updateFirebaseProfile(result.user, { displayName: name });
       
@@ -216,12 +223,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const beginMfa = (error: unknown) => {
+    const resolver = mfaResolverFromError(auth, error);
+    if (!resolver) return false;
+    setPendingMfa(resolver);
+    return true;
+  };
+
   const handleAuthError = (error: any) => {
     console.warn('Falha de autenticação:', authErrorCode(error));
     toast.error(authErrorMessage(error));
   };
 
   const logout = async () => {
+    setPendingMfa(null);
     await signOut(auth);
     window.dispatchEvent(new Event('fpac:clear-checkout-details'));
   };
@@ -245,6 +260,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       updateProfile 
     }}>
       {children}
+      {pendingMfa && <MfaChallenge resolver={pendingMfa} onComplete={() => setPendingMfa(null)} onCancel={() => setPendingMfa(null)} />}
     </AuthContext.Provider>
   );
 };

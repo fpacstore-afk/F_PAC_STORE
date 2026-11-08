@@ -1,0 +1,32 @@
+import assert from 'node:assert/strict';
+import { planAuthSecurityConfiguration, planRecaptchaAuditConfiguration, summarizeAuthSecurity } from '../server/services/authSecurityConfiguration.service';
+import { completeTotpSignIn, totpFactors } from '../src/lib/authMfa';
+import { authErrorMessage } from '../src/lib/authSecurity';
+
+const current: any = { multiFactorConfig: { state: 'DISABLED', factorIds: ['phone'] }, passwordPolicyConfig: { enforcementState: 'OFF', forceUpgradeOnSignin: false, constraints: { minLength: 6, maxLength: 4096 } }, recaptchaConfig: { recaptchaKeys: [{ key: 'private-fixture-key' }], emailPasswordEnforcementState: 'OFF' } };
+const before = JSON.stringify(current), patch = planAuthSecurityConfiguration(current);
+assert.equal(patch.multiFactorConfig?.state, 'ENABLED');
+assert.deepEqual(patch.multiFactorConfig?.factorIds, [], 'enabling TOTP must not enable previously disabled SMS');
+assert.equal(patch.multiFactorConfig?.providerConfigs?.[0]?.totpProviderConfig?.adjacentIntervals, 1);
+assert.equal(patch.passwordPolicyConfig?.constraints?.minLength, 12);
+assert.equal(patch.passwordPolicyConfig?.forceUpgradeOnSignin, false, 'existing users must not be forced to change credentials');
+assert.equal(patch.emailPrivacyConfig?.enableImprovedEmailPrivacy, true);
+assert.equal(patch.recaptchaConfig, undefined, 'new reCAPTCHA terms/billing must not be silently accepted');
+assert.equal(JSON.stringify(current), before);
+assert.ok(!JSON.stringify(summarizeAuthSecurity(current)).includes('private-fixture-key'));
+const stronger: any = { ...current, multiFactorConfig: { state: 'ENABLED', factorIds: ['phone'], providerConfigs: [{ state: 'ENABLED', totpProviderConfig: { adjacentIntervals: 0 } }] }, passwordPolicyConfig: { constraints: { minLength: 20, requireNumeric: true } } };
+const preserved = planAuthSecurityConfiguration(stronger);
+assert.deepEqual(preserved.multiFactorConfig?.factorIds, ['phone']); assert.equal(preserved.multiFactorConfig?.providerConfigs?.[0]?.totpProviderConfig?.adjacentIntervals, 0);
+assert.equal(preserved.passwordPolicyConfig?.constraints?.minLength, 20); assert.equal(preserved.passwordPolicyConfig?.constraints?.requireNumeric, true);
+assert.throws(() => planAuthSecurityConfiguration({ passwordPolicyConfig: { forceUpgradeOnSignin: true } } as any));
+let completed = 0;
+const resolver: any = { hints: [{ factorId: 'phone', uid: 'phone-factor' }, { factorId: 'totp', uid: 'totp-factor' }], resolveSignIn: async assertion => { assert.equal(assertion.factorId, 'totp'); completed++; return { user: { uid: 'verified-user' } }; } };
+assert.equal(totpFactors(resolver).length, 1);
+for (const [factor, code] of [['other', '123456'], ['phone-factor', '123456'], ['totp-factor', '123'], ['totp-factor', 'abcdef']]) await assert.rejects(completeTotpSignIn(resolver, factor, code));
+assert.equal(completed, 0);
+assert.equal((await completeTotpSignIn(resolver, 'totp-factor', '123 456')).user.uid, 'verified-user'); assert.equal(completed, 1);
+for (const code of ['auth/invalid-verification-code','auth/invalid-multi-factor-session','auth/requires-recent-login']) assert.ok(!authErrorMessage({ code, message: 'private-code-123456' }).includes('123456'));
+console.log('PASS provider configuration preserves stronger settings and disabled SMS, logs no keys, preserves existing logins, excludes reCAPTCHA activation, and validates TOTP factor ownership/code before completing sign-in.');
+
+assert.equal(planRecaptchaAuditConfiguration({ recaptchaConfig: { emailPasswordEnforcementState: 'OFF', managedRules: [{ endScore: 0.5, action: 'BLOCK' }] } }).recaptchaConfig?.emailPasswordEnforcementState, 'AUDIT');
+for (const state of ['AUDIT','ENFORCE'] as const) assert.deepEqual(planRecaptchaAuditConfiguration({ recaptchaConfig: { emailPasswordEnforcementState: state } }), {}, 'separate approval cannot downgrade existing protection');

@@ -357,6 +357,65 @@ jobs:
       - name: Deploy validated Firebase rules
         run: npx firebase-tools deploy --only firestore:rules,storage --project "$GCP_PROJECT_ID" --non-interactive
 
+      - name: Configure and verify owner-authorized Auth security
+        if: github.event_name == 'push' && (contains(github.event.head_commit.message, '[auth-hardening-20261108]') || contains(github.event.head_commit.message, '[recaptcha-audit-20261108]'))
+        run: |
+          IMAGE="$(gcloud run revisions describe "${{ steps.candidate.outputs.revision }}" \
+            --project "$GCP_PROJECT_ID" --region "$GCP_REGION" \
+            --format='value(spec.containers[0].image)')"
+          RUNTIME_SA="$(gcloud run services describe "$CLOUD_RUN_SERVICE" \
+            --project "$GCP_PROJECT_ID" --region "$GCP_REGION" \
+            --format='value(spec.template.spec.serviceAccountName)')"
+          test -n "$IMAGE"
+          test -n "$RUNTIME_SA"
+          # Match only the Firebase credential binding already used by this revision.
+          # Values stay in Secret Manager; payment/admin integration keys are not copied.
+          FIREBASE_JOB_SECRET="$(gcloud run revisions describe "${{ steps.candidate.outputs.revision }}" \
+            --project "$GCP_PROJECT_ID" --region "$GCP_REGION" --format=json | python3 -c '
+          import json,sys
+          data=json.load(sys.stdin); spec=data.get("spec",{}); env=spec.get("containers",[{}])[0].get("env",[])
+          entry=next((e for e in env if e.get("name")=="FIREBASE_SERVICE_ACCOUNT"),{}); ref=entry.get("valueFrom",{}).get("secretKeyRef",{})
+          name=ref.get("name",""); aliases=dict(part.split(":",1) for part in data.get("metadata",{}).get("annotations",{}).get("run.googleapis.com/secrets","").split(",") if ":" in part)
+          name=aliases.get(name,name)
+          print("FIREBASE_SERVICE_ACCOUNT="+name+":"+ref.get("key","latest") if name else "")')"
+          FIREBASE_JOB_ARGS=()
+          if [ -n "$FIREBASE_JOB_SECRET" ]; then
+            FIREBASE_JOB_ARGS=("--set-secrets=$FIREBASE_JOB_SECRET")
+          fi
+          if [ "${{ contains(github.event.head_commit.message, '[recaptcha-audit-20261108]') }}" = "true" ]; then
+            gcloud services enable recaptchaenterprise.googleapis.com --project "$GCP_PROJECT_ID" --quiet
+          fi
+          AUTH_JOB_STATUS=0
+          gcloud run jobs deploy fpac-auth-security-20261108 \
+            --project "$GCP_PROJECT_ID" --region "$GCP_REGION" \
+            --image "$IMAGE" --service-account "$RUNTIME_SA" \
+            --command /cnb/lifecycle/launcher --args node,build-server/configure-auth-security.cjs \
+            --set-env-vars="AUTH_SECURITY_APPLY=${{ contains(github.event.head_commit.message, '[auth-hardening-20261108]') && 'owner-approved-20261108' || '' }},AUTH_RECAPTCHA_APPLY=${{ contains(github.event.head_commit.message, '[recaptcha-audit-20261108]') && 'owner-approved-audit-20261108' || '' }},NODE_ENV=production,FIREBASE_PROJECT_ID=$GCP_PROJECT_ID,FIREBASE_DATABASE_ID=ai-studio-a7d50f8c-9b01-4490-9a13-dd8892e0c41a" \
+            "${FIREBASE_JOB_ARGS[@]}" \
+            --tasks=1 --max-retries=0 --task-timeout=180s \
+            --cpu=1 --memory=3Gi --execute-now --wait --quiet || AUTH_JOB_STATUS=$?
+          if [ "$AUTH_JOB_STATUS" -ne 0 ]; then
+            LAST_AUTH_EXECUTION="$(gcloud run jobs executions list \
+              --job fpac-auth-security-20261108 --project "$GCP_PROJECT_ID" --region "$GCP_REGION" \
+              --sort-by='~metadata.creationTimestamp' --limit=1 --format='value(metadata.name)' 2>/dev/null || true)"
+            if [ -n "$LAST_AUTH_EXECUTION" ]; then
+              gcloud run jobs executions describe "$LAST_AUTH_EXECUTION" \
+                --project "$GCP_PROJECT_ID" --region "$GCP_REGION" \
+                --format='json(status.conditions,status.failedCount,status.succeededCount)' || true
+            fi
+            # This task logs only fixed diagnostics, never account data or credentials.
+            gcloud logging read \
+              'resource.type="cloud_run_job" AND resource.labels.job_name="fpac-auth-security-20261108"' \
+              --project "$GCP_PROJECT_ID" --freshness=10m --limit=12 \
+              --format='value(textPayload)' || true
+            exit "$AUTH_JOB_STATUS"
+          fi
+
+          gcloud logging read \
+            'resource.type="cloud_run_job" AND resource.labels.job_name="fpac-auth-security-20261108" AND (textPayload:"AUTH_SECURITY_BEFORE" OR textPayload:"AUTH_SECURITY_AFTER")' \
+            --project "$GCP_PROJECT_ID" --freshness=10m --limit=4 --order=asc \
+            --format='value(textPayload)'
+
       - name: Restore prior Cloud Run revision after a post-deploy failure
         if: failure() && steps.candidate.outputs.previous_revision != ''
         env:
