@@ -1,3 +1,4 @@
+import { AccountSecurity } from '../components/AccountSecurity';
 import React, { useState, useEffect } from 'react';
 import { useAuth, UserProfile } from '../context/AuthContext';
 import { ShieldCheck, Loader2, Save, LogOut, User, ChevronRight } from 'lucide-react';
@@ -135,11 +136,13 @@ export default function Account() {
                   required 
                   type="password" 
                   autoComplete={authMode === 'register' ? 'new-password' : 'current-password'}
+                  minLength={authMode === 'register' ? 12 : undefined}
                   value={authPass} 
                   onChange={(e) => setAuthPass(e.target.value)} 
                   className="w-full bg-white border border-black/10 p-4 text-xs focus:outline-none focus:border-[#eab308]" 
-                  placeholder="******"
+                  placeholder={authMode === 'register' ? 'Pelo menos 12 caracteres' : 'Sua senha'}
                 />
+                {authMode === 'register' && <p className="mt-2 text-xs text-gray-600">Use pelo menos 12 caracteres. Uma frase fácil de lembrar é uma boa opção.</p>}
               </div>
 
               {authMode === 'login' && (
@@ -235,6 +238,8 @@ export default function Account() {
             <LogOut size={14} /> Sair da Conta
           </button>
         </div>
+
+        {user && <AccountSecurity key={user.uid} user={user} />}
 
         <div className="bg-black/5 border border-black/10 p-8">
           <div className="flex items-center gap-3 mb-8 pb-4 border-b border-black/5">

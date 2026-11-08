@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "NODE_ENV=development node --import tsx server.ts",
-    "build": "vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=build-server/server.cjs && esbuild scripts/reorganize_stock_range.ts --bundle --platform=node --format=cjs --packages=external --outfile=build-server/reorganize-stock-range.cjs && esbuild scripts/apply_catalog_integer_prices.ts --bundle --platform=node --format=cjs --packages=external --outfile=build-server/apply-catalog-integer-prices.cjs && npm run verify:public-build",
+    "build": "vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=build-server/server.cjs && esbuild scripts/reorganize_stock_range.ts --bundle --platform=node --format=cjs --packages=external --outfile=build-server/reorganize-stock-range.cjs && esbuild scripts/apply_catalog_integer_prices.ts --bundle --platform=node --format=cjs --packages=external --outfile=build-server/apply-catalog-integer-prices.cjs && esbuild scripts/configure_auth_security.ts --bundle --platform=node --format=cjs --packages=external --outfile=build-server/configure-auth-security.cjs && npm run verify:public-build",
     "start": "NODE_ENV=production node build-server/server.cjs",
     "clean": "rm -rf dist build-server",
     "lint": "tsc --noEmit",
@@ -105,7 +105,8 @@
     "test:checkout-recovery-maintenance": "NODE_ENV=test node --import tsx scripts/test_checkout_recovery_maintenance.ts",
     "test:webhook-formats": "NODE_ENV=test node --import tsx scripts/test_webhook_notification_formats.ts",
     "test:storefront-price-presentation": "node --import tsx scripts/test_storefront_price_presentation.ts",
-    "test:catalog-integer-prices": "NODE_ENV=test node --import tsx scripts/test_catalog_integer_prices.ts"
+    "test:catalog-integer-prices": "NODE_ENV=test node --import tsx scripts/test_catalog_integer_prices.ts",
+    "test:auth-security-configuration": "node --import tsx scripts/test_auth_security_configuration.ts"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
