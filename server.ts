@@ -1,3 +1,4 @@
+import { createProductReview } from './server/controllers/reviews.controller.js';
 import { createPosRouter } from './server/controllers/pos.controller.js';
 import { expirePosReservations } from './server/services/pos.service.js';
 import { getMonthlyCloseout, saveMonthlyCloseout } from './server/services/monthlyCloseout.service.js';
@@ -453,6 +454,8 @@ apiRouter.get("/checkout/config", publicApiLimiter, (req, res) => {
     }
   });
 });
+
+apiRouter.post('/reviews', publicApiLimiter, sharedRequestLimit('product-review', 5, 60 * 60_000), checkoutIdentity, createProductReview);
 
 apiRouter.post("/checkout/process-payment", checkoutLimiter, checkoutIdentity, processPayment);
 apiRouter.post("/checkout/attempt", paymentStatusLimiter, checkoutIdentity, resumePayment);
@@ -1940,6 +1943,10 @@ apiRouter.post("/sheets/sync-back", adminApiLimiter, authenticateAdmin, async (r
 apiRouter.get('/customer/orders', publicApiLimiter, getCustomerOrders);
 
 apiRouter.get("/orders/:orderId/tracking", publicApiLimiter, async (req, res) => {
+  res.setHeader('Cache-Control', 'private, no-store');
+  res.setHeader('Referrer-Policy', 'no-referrer');
+  res.vary('Authorization');
+  res.vary('x-tracking-token');
   try {
     const { orderId } = req.params;
     const database = getDb();
@@ -1952,7 +1959,8 @@ apiRouter.get("/orders/:orderId/tracking", publicApiLimiter, async (req, res) =>
 
     // Validate access: Firebase Ownership OR Valid trackingAccessToken
     const authHeader = req.headers.authorization;
-    const queryToken = (req.query.token as string) || (req.query.trackingAccessToken as string);
+    const queryToken = (typeof req.query.token === 'string' ? req.query.token : '') ||
+      (typeof req.query.trackingAccessToken === 'string' ? req.query.trackingAccessToken : '');
     const headerToken = req.headers['x-tracking-token'] as string;
 
     const access = await verifyOrderTrackingAccess(orderData, authHeader, queryToken, headerToken);
@@ -1967,7 +1975,7 @@ apiRouter.get("/orders/:orderId/tracking", publicApiLimiter, async (req, res) =>
     const sanitized = sanitizeTrackingResponse(orderId, orderData);
     res.json(sanitized);
   } catch (e: any) {
-    res.status(500).json({ error: e.message });
+    res.status(503).json({ error: 'Não foi possível consultar o rastreio. Tente novamente em instantes.' });
   }
 });
 

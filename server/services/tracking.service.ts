@@ -62,7 +62,7 @@ export async function verifyOrderTrackingAccess(
     const idToken = authHeader.substring(7).trim();
     if (idToken) {
       try {
-        const decodedToken = await getAuth().verifyIdToken(idToken);
+        const decodedToken = await getAuth().verifyIdToken(idToken, true);
         const orderUserId = (
           order.userId ||
           order.customerInfo?.userId ||

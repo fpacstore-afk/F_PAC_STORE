@@ -31,7 +31,7 @@ export async function cancelOrderController(req: Request, res: Response) {
       const token = authHeader.substring(7).trim();
       if (token) {
         try {
-          decodedToken = await getAuth().verifyIdToken(token, process.env.ADMIN_CHECK_REVOKED === 'true');
+          decodedToken = await getAuth().verifyIdToken(token, true);
           authEmail = decodedToken?.email?.trim().toLowerCase();
           authUid = decodedToken?.uid;
           isEmailVerified = decodedToken?.email_verified === true;
@@ -259,7 +259,7 @@ export async function requestOrderReturnController(req: Request, res: Response) 
       const token = authHeader.substring(7).trim();
       if (token) {
         try {
-          decodedToken = await getAuth().verifyIdToken(token, process.env.ADMIN_CHECK_REVOKED === 'true');
+          decodedToken = await getAuth().verifyIdToken(token, true);
           authEmail = decodedToken?.email?.trim().toLowerCase();
           authUid = decodedToken?.uid;
           isEmailVerified = decodedToken?.email_verified === true;

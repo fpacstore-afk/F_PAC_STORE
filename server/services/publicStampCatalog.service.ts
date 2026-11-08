@@ -72,7 +72,7 @@ export function toPublicStamp(id: string, data: any): PublicStamp | null {
     status: 'active',
     availableForCustomization,
     readyToShip,
-    displayOrder: Number.isFinite(Number(data?.displayOrder)) ? Number(data.displayOrder) : 9999,
+    displayOrder: Number.isFinite(Number(data?.displayOrder)) ? Number(data.displayOrder) : Number.isFinite(Number(data?.slotIndex)) ? Number(data.slotIndex) : 9999,
     availableSizes: Array.isArray(data?.availableSizes)
       ? data.availableSizes.map((value: unknown) => String(value).trim()).filter(Boolean).slice(0, 5)
       : [],
@@ -80,8 +80,10 @@ export function toPublicStamp(id: string, data: any): PublicStamp | null {
 }
 
 export async function getPublicStampCatalog(): Promise<{ stamps: PublicStamp[] }> {
-  const snapshot = await getDb().collection('designs').get();
-  const stamps = snapshot.docs
+  const db = getDb();
+  const [legacy, current] = await Promise.all([db.collection('estampas').get(), db.collection('designs').get()]);
+  const documents = new Map([...legacy.docs, ...current.docs].map(document => [document.id, document]));
+  const stamps = [...documents.values()]
     .map(document => toPublicStamp(document.id, document.data()))
     .filter((stamp): stamp is PublicStamp => Boolean(stamp))
     .sort((a, b) => a.displayOrder - b.displayOrder || a.name.localeCompare(b.name, 'pt-BR'));
