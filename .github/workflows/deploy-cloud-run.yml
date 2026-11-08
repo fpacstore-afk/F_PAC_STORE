@@ -411,10 +411,14 @@ jobs:
             exit "$AUTH_JOB_STATUS"
           fi
 
-          gcloud logging read \
+          # The job itself already verifies the read-back configuration and exits nonzero on failure.
+          # Reading its sanitized logs is optional; the deploy identity may lack Logs Viewer.
+          if ! gcloud logging read \
             'resource.type="cloud_run_job" AND resource.labels.job_name="fpac-auth-security-20261108" AND (textPayload:"AUTH_SECURITY_BEFORE" OR textPayload:"AUTH_SECURITY_AFTER")' \
             --project "$GCP_PROJECT_ID" --freshness=10m --limit=4 --order=asc \
-            --format='value(textPayload)'
+            --format='value(textPayload)' 2>/dev/null; then
+            echo "Auth security job completed and verified its configuration; sanitized logs are available to authorized viewers in Cloud Console."
+          fi
 
       - name: Restore prior Cloud Run revision after a post-deploy failure
         if: failure() && steps.candidate.outputs.previous_revision != ''
