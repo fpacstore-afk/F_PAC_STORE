@@ -12,7 +12,7 @@ const environment = await initializeTestEnvironment({ projectId: 'demo-fpac-ecom
 try {
   await environment.withSecurityRulesDisabled(async context => {
     const db = context.firestore();
-    for (const [path, data] of Object.entries({ 'products/shirt': { name: 'Audit fixture', costPrice: 35 }, 'inventory/shirt': { stock: 10 }, 'config/brand': { logo: '/logo.png' }, 'config/private': { internal: true }, 'designs/fp-stock': { name: 'FP preta', stockBalance: 6, stockBySize: { '8x6': 2 } }, 'instagram_media_library/fixture': { url: 'https://res.cloudinary.com/example/image/upload/sample.jpg', caption: 'Rascunho privado' } })) await setDoc(doc(db, path), data);
+    for (const [path, data] of Object.entries({ 'products/shirt': { name: 'Audit fixture', costPrice: 35 }, 'inventory/shirt': { stock: 10 }, 'config/brand': { logo: '/logo.png' }, 'config/private': { internal: true }, 'estampas/legacy-private': { name: 'Legacy', stockBalance: 8, cost: 35 }, 'designs/fp-stock': { name: 'FP preta', stockBalance: 6, stockBySize: { '8x6': 2 } }, 'instagram_media_library/fixture': { url: 'https://res.cloudinary.com/example/image/upload/sample.jpg', caption: 'Rascunho privado' } })) await setDoc(doc(db, path), data);
   });
   const guest = environment.unauthenticatedContext().firestore();
   const customer = environment.authenticatedContext('customer', { email: 'customer@example.invalid', email_verified: true }).firestore();
@@ -60,6 +60,10 @@ try {
     await assertFails(getDocs(collection(db, 'products')));
     await assertFails(getDoc(doc(db, 'inventory/shirt')));
     await assertFails(getDoc(doc(db, 'designs/fp-stock')));
+    await assertFails(getDoc(doc(db, 'estampas/legacy-private')));
+    await assertFails(getDocs(collection(db, 'estampas')));
+    await assertFails(setDoc(doc(db, 'interactions/unused-write'), { userId: 'customer', payload: 'unsolicited' }));
+    await assertFails(setDoc(doc(db, 'reviews/direct-bypass'), { productId: 'shirt', name: 'Cliente', rating: 5, comment: 'Review', userId: null, verified: false, createdAt: '2026-11-08' }));
     await assertFails(getDocs(collection(db, 'designs')));
     await assertFails(getDoc(doc(db, 'config/private')));
     await assertFails(getDocs(collection(db, 'config')));
@@ -74,6 +78,7 @@ try {
   await assertSucceeds(getDocs(collection(manager, 'products')));
   await assertSucceeds(getDoc(doc(manager, 'inventory/shirt')));
   await assertSucceeds(getDoc(doc(manager, 'designs/fp-stock')));
+  await assertSucceeds(getDoc(doc(manager, 'estampas/legacy-private')));
   await assertSucceeds(getDocs(collection(manager, 'designs')));
   await assertSucceeds(getDocs(collection(manager, 'config')));
   await assertSucceeds(getDoc(doc(manager, 'instagram_media_library/fixture')));

@@ -32,20 +32,6 @@ service cloud.firestore {
              data.items is list && data.items.size() <= 60;
     }
 
-    function isValidReview(data) {
-      return data.keys().hasAll(['productId', 'name', 'rating', 'comment', 'verified', 'createdAt']) &&
-             data.productId is string && data.productId.size() <= 128 &&
-             data.name is string && data.name.size() <= 200 &&
-             data.rating is number && data.rating >= 1 && data.rating <= 5 &&
-             data.comment is string && data.comment.size() <= 1000 &&
-             data.verified is bool && data.verified == false &&
-             (!('userId' in data) ||
-               (isSignedIn() && data.userId == request.auth.uid) ||
-               (!isSignedIn() && data.userId == null)) &&
-             (!('styleInfo' in data) || data.styleInfo == null || (data.styleInfo is string && data.styleInfo.size() <= 100)) &&
-             (!('id' in data) || data.id == null || (data.id is string && data.id.size() <= 128));
-    }
-
     match /orders/{orderId} {
       // Orders contain private costs and operational notes. Customer reads go
       // through /api/customer/orders or the authorized tracking projection.
@@ -90,8 +76,8 @@ service cloud.firestore {
     }
 
     match /estampas/{estampaId} {
-      allow read: if true;
-      allow write: if isAdmin();
+      // Legacy records also contain internal production data. Use /api/stamps.
+      allow read, write: if isAdmin();
     }
 
     // Raw design records include stock quantities and production metadata.
@@ -307,7 +293,8 @@ service cloud.firestore {
 
     match /reviews/{reviewId} {
       allow read: if true;
-      allow create: if isValidId(reviewId) && isValidReview(incoming());
+      // Public submissions must pass the server validation and shared abuse limit.
+      allow create: if isAdmin();
       allow update: if isAdmin() ||
                     (isSignedIn() &&
                      'userId' in resource.data &&
@@ -327,10 +314,9 @@ service cloud.firestore {
                      resource.data.userId == request.auth.uid);
     }
 
-    // Interaction Collections
+    // Legacy collection has no current client writer. Keep it restricted.
     match /interactions/{id} {
-       allow create: if isSignedIn() && incoming().userId == request.auth.uid;
-       allow read, update, delete: if isAdmin();
+       allow read, write: if isAdmin();
     }
 
     // Analytics Visitor Tracking Sessions

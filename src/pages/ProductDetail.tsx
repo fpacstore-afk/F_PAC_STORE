@@ -61,7 +61,7 @@ import { PrintConfiguration } from "../types/cart";
 import toast from "react-hot-toast";
 import { SizeChart } from "../components/SizeChart";
 import { Helmet } from 'react-helmet-async';
-import { getPublicApiUrl } from '../lib/api';
+import { authenticatedFetch, parseApiJson, getPublicApiUrl } from '../lib/api';
 import { motion, AnimatePresence } from "framer-motion";
 import { getActivePromotion } from "../services/promotions/getActivePromotion";
 import { WeeklyPromotion } from "../types/promotions";
@@ -249,8 +249,7 @@ export default function ProductDetail() {
       matchesCat = stamp.category === stampSelectedCategory;
     }
 
-    const keyId = stamp.id || `slot-${stamp.slotIndex}`;
-    const hasStock = isAvailable(keyId) && getStock(keyId) > 0;
+    const hasStock = stamp.availableForCustomization === true;
 
     return matchesSearch && matchesCat && hasStock;
   });
@@ -354,9 +353,6 @@ export default function ProductDetail() {
 
     setSubmittingReview(true);
     try {
-      const newReviewRef = doc(collection(db, "reviews"));
-      const reviewId = newReviewRef.id;
-
       let styleInfo = "";
       if (reviewSize && reviewStyle) {
         styleInfo = `Veste ${reviewSize} (Estilo ${reviewStyle})`;
@@ -370,20 +366,21 @@ export default function ProductDetail() {
       }
 
       const reviewData = {
-        id: reviewId,
         productId: product.id,
         name: reviewName,
         rating: reviewRating,
         comment: reviewComment,
         styleInfo: styleInfo || undefined,
-        verified: false,
-        createdAt: new Date().toISOString(),
-        userId: user?.uid || null,
       };
 
-      const cleanData = sanitizeFirestoreData(reviewData);
-
-      await setDoc(newReviewRef, cleanData);
+      const response = await authenticatedFetch('/api/reviews', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(reviewData),
+      });
+      const result = await parseApiJson<any>(response);
+      if (!response.ok || typeof result.id !== 'string') throw new Error(result.error || 'Não foi possível enviar o depoimento.');
+      const reviewId = result.id;
 
       // Save to localStorage so they can delete it
       try {
@@ -402,7 +399,7 @@ export default function ProductDetail() {
       setReviewComment("");
       setReviewSize("");
       setReviewStyle("");
-    } catch (err) {
+    } catch (err: any) {
       console.error("Erro ao salvar depoimento:", err);
       try {
         handleFirestoreError(err, OperationType.CREATE, `reviews`);
@@ -410,7 +407,7 @@ export default function ProductDetail() {
         // Log/throw standard
       }
       toast.error(
-        "Erro ao enviar depoimento. Verifique os dados e tente novamente.",
+        err.message || "Erro ao enviar depoimento. Verifique os dados e tente novamente.",
       );
     } finally {
       setSubmittingReview(false);
@@ -649,21 +646,18 @@ export default function ProductDetail() {
     });
     setActivePrintIdx(0);
 
-    const q = query(collection(db, "estampas"), orderBy("slotIndex", "asc"));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const data = snapshot.docs
-        .map((docSnap) => {
-          const raw = docSnap.data();
-          return {
-            id: docSnap.id,
-            ...raw,
-            category: normalizeStampCategory(raw.category, raw.name, raw.description, raw.tags)
-          };
-        })
-        .filter((e: any) => e.image); // Only show slots that have an image
-      setDynamicEstampas(data);
+    let active = true;
+    void fetchPublicStamps().then(({ stamps }) => {
+      if (!active) return;
+      setDynamicEstampas(stamps.filter(stamp => stamp.availableForCustomization && stamp.pngUrl).map(stamp => ({
+        ...stamp,
+        image: stamp.pngUrl,
+        category: normalizeStampCategory(stamp.category, stamp.name, stamp.description, stamp.tags),
+      })));
+    }).catch(() => {
+      if (active) toast.error('Não foi possível carregar as estampas. Atualize a página para tentar novamente.');
     });
-    return () => unsubscribe();
+    return () => { active = false; };
   }, [isPrime]);
 
   // Persist and restore customizer state drafts to avoid any data loss after page reloads
@@ -2603,8 +2597,7 @@ export default function ProductDetail() {
                                   <div className="grid grid-cols-3 sm:grid-cols-4 gap-1.5 max-h-[160px] overflow-y-auto pr-1">
                                     {dynamicEstampas
                                       .filter((stamp) => {
-                                        const keyId = stamp.id || `slot-${stamp.slotIndex}`;
-                                        const available = isAvailable(keyId) && getStock(keyId) > 0;
+                                        const available = stamp.availableForCustomization === true;
                                         const locAllowed =
                                           !stamp.allowedLocations ||
                                           stamp.allowedLocations.length === 0 ||
@@ -2670,7 +2663,8 @@ export default function ProductDetail() {
                                       (s) => s.name === config.stamp
                                     );
                                     const locConfig =
-                                      selectedStampObj?.locationConfigs?.[config.location];
+                                      selectedStampObj?.locationConfigs?.[config.location] ||
+                                      (selectedStampObj?.availableSizes?.length ? { sizes: selectedStampObj.availableSizes } : null);
 
                                     if (!locConfig) {
                                       return (
@@ -2680,15 +2674,10 @@ export default function ProductDetail() {
                                       );
                                     }
                                     const sizes = locConfig.sizes || [];
-                                    const quantities = locConfig.quantities || [];
 
                                     const validSizes = sizes
-                                      .map((size: string, sidx: number) => {
-                                        const qty = quantities[sidx];
-                                        const hasStock =
-                                          qty !== undefined &&
-                                          qty !== null &&
-                                          Number(qty) > 0;
+                                      .map((size: string) => {
+                                        const hasStock = selectedStampObj.availableForCustomization === true;
                                         return {
                                           size: size?.trim() || "",
                                           hasStock,

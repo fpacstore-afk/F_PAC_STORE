@@ -102,7 +102,7 @@ export async function authenticateAdmin(req: AuthenticatedRequest, res: Response
         // exists before asking firebase-admin/auth for a verifier so a cold
         // instance does not reject a valid management session with 401.
         getDb();
-        decodedToken = await getAuth().verifyIdToken(token, isPosRoute || process.env.ADMIN_CHECK_REVOKED === 'true');
+        decodedToken = await getAuth().verifyIdToken(token, true);
       }
     } catch (tokenErr: any) {
       logger.warn(`🔒 [AUTH-EXPIRED/INVALID] Token inválido em ${req.method} ${req.originalUrl}: ${tokenErr.message}`);

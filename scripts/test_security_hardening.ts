@@ -8,11 +8,12 @@ import { isAdminIdentity } from '../shared/adminIdentity.ts';
 import { sharedRequestLimit } from '../server/middleware/requestSecurity.ts';
 import { redactLogText, sanitizeLogData } from '../server/utils/logger.ts';
 import { SECURITY_HEADERS } from '../shared/securityHeaders.ts';
+import { verifyOrderTrackingAccess } from '../server/services/tracking.service.ts';
 import { cancelOrderController, requestOrderReturnController } from '../server/controllers/order.controller.ts';
 
 const db = requireIsolatedTestDb();
 const previousRevocation = process.env.ADMIN_CHECK_REVOKED;
-process.env.ADMIN_CHECK_REVOKED = 'true';
+process.env.ADMIN_CHECK_REVOKED = 'false';
 const app = express(); app.use(express.json());
 setAuthDbForTesting(db);
 const identities: Record<string, any> = {
@@ -51,6 +52,17 @@ try {
     assert.equal(isAdminIdentity({ uid: 'u', email: 'fpacstore@gmail.com', emailVerified: true }), true);
     assert.equal(matchesSecret(['secret'], 'secret'), false);
     assert.equal(matchesSecret('secret', 'secret'), true);
+  });
+  await check('admin and order tracking check revocation even when the old environment flag is false', async () => {
+    setAuthTokenVerifierForTesting(null);
+    const normal = getAuth().verifyIdToken;
+    try {
+      assert.equal((await fetch(base+'/admin', { headers: { Authorization: 'Bearer verified' } })).status, 200);
+      assert.equal((await verifyOrderTrackingAccess({ userId: 'customer' }, 'Bearer customer')).authorized, true);
+      getAuth().verifyIdToken = (async (_token: string, checkRevoked?: boolean) => { assert.equal(checkRevoked, true); throw new Error('auth/id-token-revoked'); }) as any;
+      assert.equal((await fetch(base+'/admin', { headers: { Authorization: 'Bearer verified' } })).status, 401);
+      assert.equal((await verifyOrderTrackingAccess({ userId: 'customer' }, 'Bearer customer')).authorized, false);
+    } finally { getAuth().verifyIdToken = normal; setAuthTokenVerifierForTesting(async token => { if (!identities[token]) throw new Error('revoked'); return identities[token]; }); }
   });
   await check('unverified email cannot cancel or return another customer order', async () => {
     for (const route of ['cancel','return']) assert.equal((await fetch(base+`/${route}/security-fixture`, { method: 'POST', headers: { Authorization: 'Bearer unverified', 'Content-Type': 'application/json' }, body: JSON.stringify({ reason: 'fixture' }) })).status, 403);
@@ -93,6 +105,40 @@ const appServer = store.listen(0,'127.0.0.1');
 await new Promise<void>(resolve=>appServer.once('listening',resolve));
 const url=`http://127.0.0.1:${(appServer.address() as any).port}`;
 try {
+  await check('review API validates content, derives identity and shares the write budget', async () => {
+    await db.collection('products').doc('review-shirt').set({ name: 'Review shirt', status: 'active', price: 99 });
+    await db.collection('products').doc('hidden-review-shirt').set({ status: 'draft' });
+    const review = { productId: 'review-shirt', name: 'Cliente', rating: 5, comment: 'Muito boa' };
+    const post = (body: any, token?: string) => fetch(url+'/api/reviews', { method: 'POST', headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: 'Bearer '+token } : {}) }, body: JSON.stringify(body) });
+    const auth = getAuth().verifyIdToken;
+    getAuth().verifyIdToken = (async (token: string, revoked?: boolean) => { assert.equal(revoked, true); if (token !== 'review-owner') throw new Error('revoked'); return { uid: 'review-owner' }; }) as any;
+    try {
+      assert.equal((await post({ ...review, rating: 6 })).status, 400);
+      assert.equal((await post({ ...review, productId: 'hidden-review-shirt' })).status, 404);
+      assert.equal((await post(review, 'revoked')).status, 401);
+      const guest = await post({ ...review, userId: 'victim', verified: true, createdAt: 'forged', admin: true });
+      assert.equal(guest.status, 201);
+      const stored = (await db.collection('reviews').doc((await guest.json()).id).get()).data();
+      assert.equal(stored.userId, null); assert.equal(stored.verified, false); assert.equal(stored.admin, undefined); assert.notEqual(stored.createdAt, 'forged');
+      const owner = await post({ ...review, userId: 'victim' }, 'review-owner');
+      assert.equal(owner.status, 201);
+      assert.equal((await db.collection('reviews').doc((await owner.json()).id).get()).data().userId, 'review-owner');
+      const limited = await post(review);
+      assert.equal(limited.status, 429); assert.ok(Number(limited.headers.get('retry-after')) > 0);
+      assert.equal((await db.collection('reviews').get()).size, 2);
+    } finally { getAuth().verifyIdToken = auth; }
+  });
+  await check('order tracking rejects another customer and malformed tokens without caching or leaking details', async () => {
+    const auth = getAuth().verifyIdToken;
+    getAuth().verifyIdToken = (async (_token: string, revoked?: boolean) => { assert.equal(revoked, true); return { uid: 'attacker' }; }) as any;
+    try {
+      for (const suffix of ['', '?token[invalid]=fixture', '?token=a&token=b']) {
+        const response = await fetch(url+'/api/orders/security-fixture/tracking'+suffix, { headers: { Authorization: 'Bearer attacker' } });
+        assert.equal(response.status, 403); assert.equal(response.headers.get('cache-control'), 'private, no-store');
+        assert.doesNotMatch(await response.text(), /victim|customerEmail|total|TypeError/);
+      }
+    } finally { getAuth().verifyIdToken = auth; }
+  });
   await check('unknown API routes never echo query credentials or user-controlled URLs', async () => {
     const response = await fetch(url+'/api/unknown-route?token=private-fixture&email=fixture@example.invalid');
     assert.equal(response.status, 404);
