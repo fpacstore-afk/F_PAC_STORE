@@ -1,3 +1,5 @@
+import { StorefrontPrice } from '../components/StorefrontPrice';
+import { formatStorefrontAmount } from '../lib/storefrontPrice';
 import { isAdminIdentity } from '../../shared/adminIdentity';
 import { GarmentModelSelector } from '../components/GarmentModelSelector';
 import { CatalogUnavailable } from '../components/CatalogUnavailable';
@@ -1421,22 +1423,7 @@ export default function ProductDetail() {
 
                 <div className="flex justify-between items-baseline mb-4.5 p-2 rounded-xl bg-neutral-50 border border-neutral-100">
                   <span className="text-[8px] text-gray-400 font-black uppercase font-mono tracking-widest pl-1">Valor do Modelo Prime:</span>
-                  <div className="flex items-center gap-2 pr-1 font-bold">
-                    {hasDiscount && (
-                      <span className="text-xs font-bold text-gray-400 line-through font-mono">
-                        R$ {originalPrice.toFixed(2).replace(".", ",")}
-                      </span>
-                    )}
-                    <div className="flex items-baseline gap-0.5">
-                      <span className="text-[10px] text-zinc-950">R$</span>
-                      <span className="text-xl text-zinc-950 italic">
-                        {effectivePrice.toFixed(2).split(".")[0]}
-                        <span className="text-xs opacity-60 font-medium font-sans">
-                          ,{effectivePrice.toFixed(2).split(".")[1]}
-                        </span>
-                      </span>
-                    </div>
-                  </div>
+                  <StorefrontPrice price={effectivePrice} originalPrice={hasDiscount ? originalPrice : undefined} />
                 </div>
 
                 <button
@@ -2083,22 +2070,7 @@ export default function ProductDetail() {
                       CURADORIA F PAC
                     </span>
                     <div className="flex items-baseline gap-2 flex-wrap">
-                      {hasDiscount && (
-                        <span className="text-sm font-bold text-gray-400 line-through font-mono">
-                          R$ {originalPrice.toFixed(2).replace(".", ",")}
-                        </span>
-                      )}
-                      <div className="flex items-baseline gap-1">
-                        <span className="text-xs font-black text-[#eab308] uppercase">
-                          R$
-                        </span>
-                        <span className="text-3xl font-black tracking-tighter italic text-zinc-950">
-                          {effectivePrice.toFixed(2).split(".")[0]}
-                          <span className="text-sm opacity-60 ml-0.5 font-bold">
-                            ,{effectivePrice.toFixed(2).split(".")[1]}
-                          </span>
-                        </span>
-                      </div>
+                      <StorefrontPrice price={effectivePrice} originalPrice={hasDiscount ? originalPrice : undefined} size="detail" />
                       {hasDiscount && (
                         <span className="text-[10px] font-black bg-emerald-500/10 text-emerald-600 px-2 py-0.5 rounded-md border border-emerald-500/20 uppercase tracking-wider">
                           -{discountPercent}% OFF
@@ -2111,11 +2083,8 @@ export default function ProductDetail() {
                       PIX COM 5% OFF EXTRA
                     </span>
                     <p className="text-[10.5px] font-black text-gray-500 uppercase tracking-widest font-mono">
-                      SAI POR R${" "}
-                      {(effectivePrice * 0.95).toLocaleString("pt-BR", {
-                        minimumFractionDigits: 2,
-                        maximumFractionDigits: 2,
-                      })}{" "}
+                      SAI POR {" "}
+                      {formatStorefrontAmount(effectivePrice * 0.95)}{" "}
                       NO PIX
                     </p>
                   </div>
@@ -3154,20 +3123,7 @@ export default function ProductDetail() {
                                   <span className="text-[8px] text-neutral-400 font-bold uppercase tracking-wider font-mono">
                                     VALOR UNITÁRIO
                                   </span>
-                                  <div className="flex items-baseline gap-1.5 flex-wrap">
-                                    {recPrices.hasDiscount && (
-                                      <span className="text-xs text-gray-400 line-through font-bold font-mono">
-                                        R$ {recPrices.originalPrice.toFixed(2).replace(".", ",")}
-                                      </span>
-                                    )}
-                                    <span className="text-base sm:text-lg font-black text-zinc-950">
-                                      R${" "}
-                                      {recPrices.effectivePrice.toLocaleString("pt-BR", {
-                                        minimumFractionDigits: 2,
-                                        maximumFractionDigits: 2,
-                                      })}
-                                    </span>
-                                  </div>
+                                  <StorefrontPrice price={recPrices.effectivePrice} originalPrice={recPrices.hasDiscount ? recPrices.originalPrice : undefined} />
                                 </div>
                               );
                             })()}

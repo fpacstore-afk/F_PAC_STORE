@@ -107,7 +107,7 @@ assert.equal(getCanvasStampBox({ left: '50%', top: '50%' }, 400, 400), null);
 assert.equal(PRIME_PRINT_SIZE_SURCHARGE['30x40'], 0);
 assert.equal(PRIME_PRINT_SIZE_SURCHARGE['20x30'], 0);
 assert.equal(PRIME_PRINT_SIZE_SURCHARGE['10x5'], 0);
-assert.equal(PRIME_CUSTOM_FIXED_PRICE, 119.90);
+assert.equal(PRIME_CUSTOM_FIXED_PRICE, 119);
 
 // PRIME uses registered dimensions and accepts only artwork IDs from its catalog.
 assert.equal(normalizePrimePrintSize('Peito 10 × 12 cm'), '10x12');
@@ -225,7 +225,7 @@ assert.deepEqual(primeProfile?.printAreas.slice(0, 2).map(area => [area.maxWidth
 for (const id of ['cropped', 'traditional', 'hoodie', 'shorts', 'cap'] as const) {
   assert.equal(getCustomizationProfileById(id)?.enabled, true, `${id} must be enabled in PRIME`);
   assert.equal(getCustomizationProfileById(id)?.pricingMode, 'fixed');
-  assert.equal(getCustomizationProfileById(id)?.fixedPrice, 119.90);
+  assert.equal(getCustomizationProfileById(id)?.fixedPrice, 119);
 }
 
 console.log('PRIME fixed-price, sizing, mockup and scalable customization checks passed.');
@@ -281,10 +281,10 @@ import { calculatePrimePrice } from '../shared/primePricing';
 import { primeBaseOptions } from '../shared/primeBaseOptions';
 const includedSleeve = { stampId: 'logo', location: 'Manga Esquerda', printSize: '2x3' };
 const priced = (...sizes: string[]) => calculatePrimePrice('oversized', [includedSleeve, ...sizes.map((printSize, i) => ({ stampId: 'design', location: i === 0 ? 'Frente' : 'Costas', printSize }))]).total;
-assert.equal(priced(), 79.9);
-for (const [sizes, expected] of [ [['15x15'],84.9], [['15x15','15x15'],89.9], [['30x30'],94.9], [['30x30','30x30'],99.9], [['30x40'],109.9], [['30x40','30x40'],119.9], [['15x15','30x30'],99.9], [['30x40','15x15'],114.9], [['30x30','30x40'],114.9] ] as [string[],number][]) assert.equal(priced(...sizes), expected);
-assert.equal(calculatePrimePrice('oversized', []).total, 82.9);
-assert.equal(calculatePrimePrice('traditional', [includedSleeve]).total, 119.9);
+assert.equal(priced(), 79);
+for (const [sizes, expected] of [ [['15x15'],84], [['15x15','15x15'],89], [['30x30'],94], [['30x30','30x30'],99], [['30x40'],109], [['30x40','30x40'],119], [['15x15','30x30'],99], [['30x40','15x15'],114], [['30x30','30x40'],114] ] as [string[],number][]) assert.equal(priced(...sizes), expected);
+assert.equal(calculatePrimePrice('oversized', []).total, 82);
+assert.equal(calculatePrimePrice('traditional', [includedSleeve]).total, 119);
 assert.equal(priced('15x15','30x40'), priced('30x40','15x15'));
 for (const model of ['oversized','traditional','cropped'] as MeasuredPrimeModel[]) {
   const logo = placePrimeArtwork(model,'GG','sleeve','2x3',art,undefined,true);

@@ -1,3 +1,5 @@
+import { StorefrontPrice } from '../components/StorefrontPrice';
+import { formatStorefrontAmount } from '../lib/storefrontPrice';
 import { PrimePrintPreview } from '../components/PrimePrintPreview';
 import { loadPrimeArtworkBounds } from '../lib/primeArtworkBounds';
 import { isPrimePlacementModel, getPrimeAreaGeometry, placePrimeArtwork, type ArtworkBounds, type PrimeAreaId, type PrimeArtPosition } from '../../shared/primePlacement';
@@ -68,7 +70,7 @@ const PRIME_FALLBACK_PRODUCTS = (Object.keys(PRODUCT_VISUALS) as ProductVisualKi
   images: [`/product-visuals/${kind}-front-v1.webp`],
 
 }));
-const money = (value: number) => value.toFixed(2).replace('.', ',');
+const money = formatStorefrontAmount;
 
 function getPlacements(kind: ProductVisualKind): Placement[] {
   const profile = getCustomizationProfileById(kind);
@@ -476,17 +478,17 @@ export default function PrimeCustomApproved() {
                 <button type="button" disabled={!canApplyArtwork || busy} onClick={() => void applyArtwork()} className="mt-2.5 min-h-11 w-full rounded-lg bg-[#f5bd19] px-4 text-[9px] font-black uppercase flex items-center justify-center gap-1.5 disabled:cursor-not-allowed disabled:bg-black/10 disabled:text-black/35"><Check size={14} /> {busy ? 'Preparando arte...' : 'Aplicar na peça'}</button>
               </div>}
 
-              <div className="mt-3 flex items-center justify-between border-t border-black/5 pt-3"><div><p className="text-[8px] font-black uppercase tracking-wider text-black/35">Configuração</p><p className="text-xs font-bold">{appliedCount}/{profile.maxPrints} aplicações</p></div>{activeApplied && <button type="button" onClick={() => setApplied(current => { const next = { ...current }; delete next[activePlacement.id]; return next; })} className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-red-200 px-3 text-[8px] font-black uppercase text-red-700"><Trash2 size={13} /> {visualKind === 'oversized' && isSleeve && activeApplied.source === 'catalog' ? 'Retirar da manga (+ R$ 3,00)' : profile.fixedSleeve && isSleeve ? 'Remover estampa fixa' : 'Remover'}</button>}</div>
+              <div className="mt-3 flex items-center justify-between border-t border-black/5 pt-3"><div><p className="text-[8px] font-black uppercase tracking-wider text-black/35">Configuração</p><p className="text-xs font-bold">{appliedCount}/{profile.maxPrints} aplicações</p></div>{activeApplied && <button type="button" onClick={() => setApplied(current => { const next = { ...current }; delete next[activePlacement.id]; return next; })} className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-red-200 px-3 text-[8px] font-black uppercase text-red-700"><Trash2 size={13} /> {visualKind === 'oversized' && isSleeve && activeApplied.source === 'catalog' ? 'Retirar da manga (+ R$ 3)' : profile.fixedSleeve && isSleeve ? 'Remover estampa fixa' : 'Remover'}</button>}</div>
             </section>
 
             <section className="rounded-2xl bg-black p-4 md:p-5 text-white shadow-xl">
               {profile.fixedSleeve && <div className="mb-4 space-y-1 text-xs text-white/80">
-                {visualKind === 'oversized' && <><p>Peça com estampa de manga: R$ {money(priceBreakdown.base)}</p><p>Estampas adicionais: R$ {money(priceBreakdown.prints)}</p>{priceBreakdown.removal > 0 && <p>Retirada da estampa de manga: + R$ 3,00</p>}</>}
+                {visualKind === 'oversized' && <><p>Peça com estampa de manga: R$ {money(priceBreakdown.base)}</p><p>Estampas adicionais: R$ {money(priceBreakdown.prints)}</p>{priceBreakdown.removal > 0 && <p>Retirada da estampa de manga: + R$ 3</p>}</>}
                 {sleeveSetup === 'error' && <p role="status">A estampa de manga incluída está indisponível. Tente carregar novamente ou escolha outra do catálogo.</p>}
                 {sleeveSetup === 'loading' && <p role="status">Preparando estampa de manga incluída...</p>}
                 {(visualKind === 'oversized' && priceBreakdown.removal > 0 || sleeveSetup === 'error') && <button type="button" disabled={!defaultSleeveArt || sleeveSetup === 'loading'} onClick={() => void restoreSleeve()} className="min-h-9 underline text-[#f5bd19]">{sleeveSetup === 'error' ? 'Tentar carregar a estampa incluída' : 'Recolocar estampa de manga incluída'}</button>}
               </div>}
-              <div className="flex items-end justify-between gap-4"><div><p className="text-[8px] font-black uppercase tracking-[0.18em] text-white/45">PRIME CUSTOM</p><p className="mt-1 text-3xl font-black text-[#f5bd19]">{(isRegisteredProduct || visualKind === 'oversized') ? `R$ ${money(price)}` : 'Em prévia'}</p><p className="text-[9px] text-white/55">{(isRegisteredProduct || visualKind === 'oversized') ? `R$ ${money(pixPrice)} no PIX` : 'Compra indisponível'}</p></div><div className="text-right text-[8px] uppercase tracking-wider text-white/45"><Sparkles size={18} className="ml-auto mb-1 text-[#f5bd19]" />Sua criação<br />na F PAC</div></div>
+              <div className="flex items-end justify-between gap-4"><div><p className="text-[8px] font-black uppercase tracking-[0.18em] text-white/45">PRIME CUSTOM</p><p className="mt-1">{(isRegisteredProduct || visualKind === 'oversized') ? <StorefrontPrice price={price} size="detail" dark /> : 'Em prévia'}</p><p className="text-[9px] text-white/55">{(isRegisteredProduct || visualKind === 'oversized') ? `${money(pixPrice)} no PIX` : 'Compra indisponível'}</p></div><div className="text-right text-[8px] uppercase tracking-wider text-white/45"><Sparkles size={18} className="ml-auto mb-1 text-[#f5bd19]" />Sua criação<br />na F PAC</div></div>
               <button type="button" onClick={finish} disabled={!canPurchase || (appliedCount === 0 && visualKind !== 'oversized') || busy || sleeveSetup !== 'ready'} className="mt-4 min-h-13 w-full rounded-xl bg-[#f5bd19] px-4 text-[10px] font-black uppercase tracking-[0.1em] text-black flex items-center justify-center gap-2 disabled:cursor-not-allowed disabled:opacity-40"><ShoppingCart size={18} /> Adicionar à sacola <ChevronRight size={16} /></button>
             </section>
           </aside>
@@ -499,8 +501,8 @@ export default function PrimeCustomApproved() {
         <div className="mx-auto flex max-w-lg items-center gap-3">
           <div className="min-w-[108px]">
             <p className="text-[7px] font-black uppercase tracking-[0.14em] text-black/40">PRIME CUSTOM</p>
-            <p className="text-lg font-black leading-tight text-black">{(isRegisteredProduct || visualKind === 'oversized') ? `R$ ${money(price)}` : 'Em prévia'}</p>
-            <p className="text-[8px] text-black/45">{(isRegisteredProduct || visualKind === 'oversized') ? `R$ ${money(pixPrice)} no PIX` : 'Compra indisponível'}</p>
+            <p className="leading-tight">{(isRegisteredProduct || visualKind === 'oversized') ? <StorefrontPrice price={price} size="compact" /> : 'Em prévia'}</p>
+            <p className="text-[8px] text-black/45">{(isRegisteredProduct || visualKind === 'oversized') ? `${money(pixPrice)} no PIX` : 'Compra indisponível'}</p>
           </div>
           <button type="button" onClick={finish} disabled={!canPurchase || (appliedCount === 0 && visualKind !== 'oversized') || busy || sleeveSetup !== 'ready'} className="min-h-12 flex-1 rounded-xl bg-[#f5bd19] px-3 text-[9px] font-black uppercase tracking-[0.08em] text-black flex items-center justify-center gap-2 disabled:cursor-not-allowed disabled:bg-black/10 disabled:text-black/35"><ShoppingCart size={17} /> Adicionar à sacola</button>
         </div>

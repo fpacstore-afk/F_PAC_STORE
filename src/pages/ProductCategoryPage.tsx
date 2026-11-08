@@ -1,3 +1,4 @@
+import { StorefrontPrice } from '../components/StorefrontPrice';
 import { CatalogUnavailable } from '../components/CatalogUnavailable';
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link, Navigate, useNavigate, useParams, useSearchParams } from 'react-router-dom';
@@ -8,7 +9,7 @@ import { db } from '../lib/firebase';
 import { products as staticProducts } from '../data/products';
 import { productMatchesStorefrontCategory, buildSellableCatalog, productMatchesCommercialLine, type CommercialLine } from '../lib/catalogProducts';
 import { getProductUrl, getDisplayPrices } from '../lib/utils';
-import { formatBRL } from '../lib/money';
+import { formatStorefrontCurrency } from '../lib/storefrontPrice';
 import { subscribePublicProductSnapshot } from '../services/publicProducts';
 import { STOCK_FAMILIES } from '../../shared/stockFamilies';
 
@@ -106,7 +107,7 @@ export default function ProductCategoryPage() {
         <div className="mb-3 grid grid-cols-3 gap-2 rounded-2xl border border-black/10 bg-white p-2 shadow-sm">
           {(['prime', 'mark', 'force'] as const).filter(line => line !== 'prime' || PRIME_PRODUCT_BY_CATEGORY[category]).map(line => (
             <button key={line} type="button" onClick={() => selectLine(line)} className={`min-h-12 rounded-xl px-2 text-[9px] md:text-xs font-black uppercase tracking-[0.12em] transition-colors ${selectedLine === line ? 'bg-black text-[#eab308]' : 'bg-[#f5f5f2] text-black'}`}>
-              <span className="block">{line}</span><span className={`mt-0.5 block text-[7px] font-bold ${selectedLine === line ? 'text-white/50' : 'text-black/35'}`}>{line === 'prime' ? 'Preço no configurador' : catalogError ? 'Indisponível' : linePrices[line] !== null ? `A partir de ${formatBRL(linePrices[line]!)}` : `${lineCounts[line]} ${lineCounts[line] === 1 ? 'produto' : 'produtos'}`}</span>
+              <span className="block">{line}</span><span className={`mt-0.5 block text-[7px] font-bold ${selectedLine === line ? 'text-white/50' : 'text-black/35'}`}>{line === 'prime' ? 'Preço no configurador' : catalogError ? 'Indisponível' : linePrices[line] !== null ? `A partir de ${formatStorefrontCurrency(linePrices[line]!)}` : `${lineCounts[line]} ${lineCounts[line] === 1 ? 'produto' : 'produtos'}`}</span>
             </button>
           ))}
         </div>
@@ -155,8 +156,7 @@ export default function ProductCategoryPage() {
                     <h2 className="mt-1 text-xs md:text-lg font-black uppercase text-black leading-tight line-clamp-2">{product.name}</h2>
                     <div className="mt-3 flex items-end justify-between gap-3">
                       <div>
-                        {prices.hasDiscount && <p className="text-xs text-gray-400 line-through">R$ {prices.originalPrice.toFixed(2).replace('.', ',')}</p>}
-                        <p className="font-black text-sm md:text-lg text-black">R$ {prices.effectivePrice.toFixed(2).replace('.', ',')}</p>
+                        <StorefrontPrice price={prices.effectivePrice} originalPrice={prices.hasDiscount ? prices.originalPrice : undefined} />
                       </div>
                       <span className="w-8 h-8 rounded-full bg-black text-white flex items-center justify-center group-hover:bg-[#eab308] group-hover:text-black transition-colors">
                         <ArrowRight size={17} />

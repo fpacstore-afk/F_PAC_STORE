@@ -1,6 +1,6 @@
 import { parsePrimePrintSize, isCatalogSleeveSize } from './primeArtworkSizing';
 
-export const OVERSIZED_PRIME_BASE_PRICE = 79.90;
+export const OVERSIZED_PRIME_BASE_PRICE = 79;
 export const REMOVE_CATALOG_SLEEVE_PRICE = 3;
 export type PrimePricePrint = { stampId?: string; location?: string; printSize?: string; source?: string };
 export function isIncludedPrimeSleeve(print: PrimePricePrint): boolean {
@@ -18,7 +18,7 @@ export function primePrintTier(size: string): 0 | 1 | 2 {
 /** Store-approved oversized table. Largest print pays the first-print rate;
  * each additional print pays its own tier's second-print rate. */
 export function calculatePrimePrice(model: string, prints: PrimePricePrint[]) {
-  if (model !== 'oversized') return { total: 119.90, base: 119.90, prints: 0, removal: 0 };
+  if (model !== 'oversized') return { total: 119, base: 119, prints: 0, removal: 0 };
   const tiers = prints.filter(print => !isIncludedPrimeSleeve(print)).map(print => primePrintTier(print.printSize || '')).sort((a, b) => b - a);
   const printPrice = tiers.reduce((sum, tier, index) => sum + (index === 0 ? [5, 15, 30][tier] : [5, 5, 10][tier]), 0);
   const removal = prints.some(isIncludedPrimeSleeve) ? 0 : REMOVE_CATALOG_SLEEVE_PRICE;

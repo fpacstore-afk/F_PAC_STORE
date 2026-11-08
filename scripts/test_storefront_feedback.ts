@@ -37,7 +37,7 @@ for (const model of ['oversized','traditional','cropped'] as const) {
   assert.deepEqual(validatePrimeArtworkPlacement(placed,model,'M','Manga Esquerda','3x2',true),placed);
   assert.throws(()=>placePrimeArtwork(model,'M','sleeve_right','3x2',art,undefined,true));
 }
-assert.equal(calculatePrimePrice('oversized',[{location:'Manga Esquerda',printSize:'3x2',source:'catalog'}]).total,79.9);
+assert.equal(calculatePrimePrice('oversized',[{location:'Manga Esquerda',printSize:'3x2',source:'catalog'}]).total,79);
 
 const config = {heroUrl:'/old.png',heroMedia:{url:'/current.png',type:'image',objectFit:'contain',active:true}};
 assert.equal(resolveBrandMedia(config,'heroMedia','heroUrl')?.url,'/current.png');

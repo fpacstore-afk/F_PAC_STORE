@@ -1,3 +1,4 @@
+import { formatStorefrontCurrency } from '../lib/storefrontPrice';
 import React from 'react';
 import { ShoppingBag } from 'lucide-react';
 import { useFixedControlHeight } from '../hooks/useFixedControlHeight';
@@ -17,7 +18,7 @@ export function ProductPurchaseBar({ unitPrice, quantity, color, size, available
   const purchaseBarRef = useFixedControlHeight('--purchase-control-height');
   const hasOptions = Boolean(color && size) && !optionPrompt;
   const unavailable = hasOptions && !available;
-  const total = (unitPrice * quantity).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+  const total = formatStorefrontCurrency(unitPrice * quantity);
   return <div ref={purchaseBarRef} data-purchase-bar="product" aria-label="Compra da peça"
     className="fixed inset-x-0 bottom-0 border-t border-black/10 bg-white/95 px-3 py-2 shadow-[0_-8px_24px_rgba(0,0,0,.1)] backdrop-blur-xl md:hidden">
     <div className="mx-auto flex max-w-lg items-center gap-3">

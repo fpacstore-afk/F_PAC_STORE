@@ -1,3 +1,4 @@
+import { StorefrontPrice } from './StorefrontPrice';
 import { isAdminIdentity } from '../../shared/adminIdentity';
 import { observeHeaderCatalog, type HeaderCatalogState } from '../services/headerCatalog';
 import { matchesStorefrontSearch } from '../lib/storefrontSearch';
@@ -705,16 +706,7 @@ export function Navbar() {
                                   {(() => {
                                     const pPrices = getDisplayPrices(p);
                                     return (
-                                      <div className="flex items-baseline gap-1.5 shrink-0">
-                                        {pPrices.hasDiscount && (
-                                          <span className="font-mono text-[9px] text-gray-500 line-through">
-                                            R$ {pPrices.originalPrice.toFixed(2).replace('.', ',')}
-                                          </span>
-                                        )}
-                                        <span className="font-mono text-[10px] md:text-xs font-bold text-[#eab308]">
-                                          R$ {pPrices.effectivePrice.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                                        </span>
-                                      </div>
+                                      <StorefrontPrice price={pPrices.effectivePrice} originalPrice={pPrices.hasDiscount ? pPrices.originalPrice : undefined} size="compact" dark className="shrink-0" />
                                     );
                                   })()}
                                 </div>
