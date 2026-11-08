@@ -17,7 +17,7 @@ Na consulta inicial:
 
 O site passa a tratar o desafio de segundo fator retornado pelo Firebase tanto no login Google quanto no login com senha. O código de 6 números é validado contra um fator pertencente ao desafio. A sessão é concluída pelo provedor, sem aceitar autenticação apenas no navegador. Erros exibidos não contêm códigos, tokens ou detalhes da conta.
 
-Em **Minha conta → Segurança da conta**, o titular pode configurar seu aplicativo autenticador. O fluxo exige e-mail verificado, confirmação recente de identidade e um código do aparelho do titular. A chave e o QR code existem somente na memória da página, são gerados localmente e não são registrados em perfil, armazenamento persistente, backend ou logs. A aplicação não oferece exclusão de fatores nesta alteração.
+Em **Minha conta → Segurança da conta**, o titular pode configurar seu aplicativo autenticador. O fluxo exige e-mail verificado, confirmação recente de identidade e um código do aparelho do titular. O Firebase fornece a chave de configuração; a aplicação mantém sua cópia somente na memória da página e gera o QR code localmente. Essa cópia não é registrada em perfil, armazenamento persistente, backend da loja ou logs. O próprio Firebase é responsável pelo armazenamento e pela validação do fator após o cadastro confirmado pelo titular. A aplicação não oferece exclusão de fatores nesta alteração.
 
 A ativação do recurso TOTP no projeto não cadastra automaticamente um autenticador em nenhuma conta. O titular precisa finalizar a configuração no próprio aparelho. Até essa confirmação, não se deve afirmar que a conta está protegida por dois fatores.
 
