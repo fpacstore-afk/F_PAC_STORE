@@ -30,3 +30,7 @@ assert.equal(isFirestoreQuotaExhausted({ code: 7, message: 'Permission denied' }
 assert.equal(isFirestoreQuotaExhausted({ code: 14, message: 'Service unavailable' }), false);
 
 console.log('Deployment runbook matches the production workflow.');
+
+const authSecurity = workflow.split('- name: Configure and verify owner-authorized Auth security')[1]?.split('- name: Restore prior Cloud Run revision')[0] || '';
+assert.match(authSecurity, /if ! gcloud logging read/, 'optional Auth job log reads cannot turn a verified configuration into a deployment failure');
+assert.match(authSecurity, /exit "\$AUTH_JOB_STATUS"/, 'an actual Auth configuration failure must still fail the deployment');

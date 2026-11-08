@@ -41,3 +41,9 @@ Fontes primárias:
 - https://docs.cloud.google.com/identity-platform/docs/password-policy
 - https://docs.cloud.google.com/identity-platform/docs/recaptcha-enterprise
 - https://docs.cloud.google.com/recaptcha/docs/billing-information
+
+## Resultado da aplicação
+
+A execução `fpac-auth-security-20261108-p4p7d` terminou com sucesso. O script de produção releu e confirmou TOTP opcional habilitado, proteção contra enumeração ativa, política ENFORCE com mínimo de 12 caracteres e ausência de atualização forçada no login. Não houve cadastro de fatores em contas de usuários. A consulta pública da política também retornou ENFORCE após a execução.
+
+A leitura posterior dos logs pela conta de CI recebeu negação de permissão; a publicação foi ajustada para tratar essa consulta como opcional, sem conceder Logs Viewer ou outras permissões. Uma falha real na aplicação/verificação da configuração continua interrompendo o processo. reCAPTCHA permanece pendente de consentimento, e a ativação do autenticador de cada conta depende da confirmação do próprio titular no aparelho.
