@@ -249,8 +249,7 @@ export default function ProductDetail() {
       matchesCat = stamp.category === stampSelectedCategory;
     }
 
-    const keyId = stamp.id || `slot-${stamp.slotIndex}`;
-    const hasStock = isAvailable(keyId) && getStock(keyId) > 0;
+    const hasStock = stamp.availableForCustomization === true;
 
     return matchesSearch && matchesCat && hasStock;
   });
@@ -2664,7 +2663,8 @@ export default function ProductDetail() {
                                       (s) => s.name === config.stamp
                                     );
                                     const locConfig =
-                                      selectedStampObj?.locationConfigs?.[config.location];
+                                      selectedStampObj?.locationConfigs?.[config.location] ||
+                                      (selectedStampObj?.availableSizes?.length ? { sizes: selectedStampObj.availableSizes } : null);
 
                                     if (!locConfig) {
                                       return (
@@ -2674,15 +2674,10 @@ export default function ProductDetail() {
                                       );
                                     }
                                     const sizes = locConfig.sizes || [];
-                                    const quantities = locConfig.quantities || [];
 
                                     const validSizes = sizes
-                                      .map((size: string, sidx: number) => {
-                                        const qty = quantities[sidx];
-                                        const hasStock =
-                                          qty !== undefined &&
-                                          qty !== null &&
-                                          Number(qty) > 0;
+                                      .map((size: string) => {
+                                        const hasStock = selectedStampObj.availableForCustomization === true;
                                         return {
                                           size: size?.trim() || "",
                                           hasStock,

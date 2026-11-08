@@ -15,14 +15,15 @@ const db = requireIsolatedTestDb();
 let passed = 0;
 async function test(name: string, fn: () => unknown | Promise<unknown>) { await fn(); passed++; console.log(`PASS ${name}`); }
 await test('legacy stamps use the public projection and current records control visibility', async () => {
-  await db.collection('estampas').doc('legacy-art').set({ name: 'Legacy art', image: '/legacy.png', slotIndex: 2, stockBalance: 8, cost: 35, masterFileUrl: '/private.psd' });
+  await db.collection('estampas').doc('legacy-art').set({ name: 'Legacy art', image: '/legacy.png', slotIndex: 2, locationConfigs: { Frente: { sizes: ['8x6'], quantities: [8], cost: 35 } }, stockBalance: 8, cost: 35, masterFileUrl: '/private.psd' });
   await db.collection('estampas').doc('hidden-art').set({ image: '/legacy-hidden.png' });
   await db.collection('designs').doc('hidden-art').set({ status: 'inactive', pngUrl: '/hidden.png' });
   await db.collection('designs').doc('current-art').set({ name: 'Current', pngUrl: '/current.png', displayOrder: 1 });
   const catalog = await getPublicStampCatalog();
   assert.deepEqual(catalog.stamps.map(stamp => stamp.id), ['current-art', 'legacy-art']);
   assert.equal(catalog.stamps[1].pngUrl, '/legacy.png');
-  assert.doesNotMatch(JSON.stringify(catalog), /stockBalance|cost|masterFileUrl|private\.psd|hidden-art/);
+  assert.deepEqual(catalog.stamps[1].locationConfigs, { Frente: { sizes: ['8x6'] } });
+  assert.doesNotMatch(JSON.stringify(catalog), /stockBalance|quantities|cost|masterFileUrl|private\.psd|hidden-art/);
   for (const [collection, id] of [['estampas', 'legacy-art'], ['estampas', 'hidden-art'], ['designs', 'hidden-art'], ['designs', 'current-art']]) await db.collection(collection).doc(id).delete();
 });
 await test('recursive allowlist excludes legacy costs and supplier metadata', () => {

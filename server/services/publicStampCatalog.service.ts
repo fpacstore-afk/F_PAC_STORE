@@ -24,6 +24,7 @@ export type PublicStamp = {
   readyToShip: boolean;
   displayOrder: number;
   availableSizes: string[];
+  locationConfigs: Record<string, { sizes: string[] }>;
 };
 
 /** Public projection deliberately excludes stock balances, production files, and edit history. */
@@ -73,6 +74,9 @@ export function toPublicStamp(id: string, data: any): PublicStamp | null {
     availableForCustomization,
     readyToShip,
     displayOrder: Number.isFinite(Number(data?.displayOrder)) ? Number(data.displayOrder) : Number.isFinite(Number(data?.slotIndex)) ? Number(data.slotIndex) : 9999,
+    locationConfigs: Object.fromEntries(Object.entries(data?.locationConfigs && typeof data.locationConfigs === 'object' ? data.locationConfigs : {}).slice(0, 20)
+      .filter(([location]) => location.length <= 100 && !['__proto__', 'constructor', 'prototype'].includes(location))
+      .map(([location, config]: [string, any]) => [location, { sizes: Array.isArray(config?.sizes) ? config.sizes.filter((size: unknown) => typeof size === 'string' && size.length <= 80).slice(0, 20) : [] }])),
     availableSizes: Array.isArray(data?.availableSizes)
       ? data.availableSizes.map((value: unknown) => String(value).trim()).filter(Boolean).slice(0, 5)
       : [],
