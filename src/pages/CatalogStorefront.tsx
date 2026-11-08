@@ -1,3 +1,4 @@
+import { StorefrontPrice } from '../components/StorefrontPrice';
 import { matchesStorefrontSearch } from '../lib/storefrontSearch';
 import { CatalogUnavailable } from '../components/CatalogUnavailable';
 import React, { useEffect, useMemo, useState } from 'react';
@@ -297,8 +298,7 @@ export default function CatalogStorefront() {
                       {product.modelClassificationPending && <p className="mt-1 text-xs text-amber-800">Escolha um modelo com saldo conferido</p>}
                       <div className="mt-auto pt-3 flex items-end justify-between gap-2">
                         <div>
-                          {prices.hasDiscount && <p className="mt-1 text-xs text-black/35 line-through">R$ {prices.originalPrice.toFixed(2).replace('.', ',')}</p>}
-                          <p className="text-sm md:text-lg font-black text-black">R$ {prices.effectivePrice.toFixed(2).replace('.', ',')}</p>
+                          <StorefrontPrice price={prices.effectivePrice} originalPrice={prices.hasDiscount ? prices.originalPrice : undefined} />
                         </div>
                         <Link to={productTarget} aria-label={isPrime ? 'Personalizar produto' : 'Ver produto'} className={`grid h-9 w-9 place-items-center rounded-full transition-colors ${isPrime ? 'bg-[#eab308] text-black' : 'bg-black text-white hover:bg-[#eab308] hover:text-black'}`}><ArrowRight size={14} /></Link>
                       </div>

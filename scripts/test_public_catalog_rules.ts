@@ -126,7 +126,7 @@ try {
   await assertSucceeds(getMetadata(ref(adminStorage, 'customer-artworks/private.bin')));
   await assertSucceeds(listAll(ref(adminStorage, 'catalog-media')));
   console.log('8 private artwork Firestore and 16 real Storage rule checks passed.');
-  for (const collectionName of ['visitor_sessions', 'identity_quiz_sessions', 'promotion_analytics', 'analytics_conversions', 'public_ingestion_limits']) {
+  for (const collectionName of ['visitor_sessions', 'identity_quiz_sessions', 'promotion_analytics', 'analytics_conversions', 'public_ingestion_limits', 'catalog_price_changes']) {
     await environment.withSecurityRulesDisabled(async context => { await setDoc(doc(context.firestore(), collectionName, 'existing'), { protected: true }); });
     for (const db of [guest, customer, unverified]) {
       await assertFails(getDoc(doc(db, collectionName, 'existing')));

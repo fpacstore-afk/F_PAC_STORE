@@ -315,6 +315,10 @@ service cloud.firestore {
     }
 
     // Legacy collection has no current client writer. Keep it restricted.
+    match /catalog_price_changes/{id} {
+      allow read, write: if false;
+    }
+
     match /interactions/{id} {
        allow read, write: if isAdmin();
     }

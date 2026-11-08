@@ -89,7 +89,7 @@ export const CUSTOMIZATION_PRODUCT_PROFILES: Readonly<Record<CustomizationProfil
     productSlug: 'traditional',
     parentSlug: 'prime',
     pricingMode: 'fixed',
-    fixedPrice: 119.90,
+    fixedPrice: 119,
     maxPrints: 3,
     printAreas: [FRONT_30X40, BACK_30X40, { id: 'left-sleeve', positionId: 'manga_esquerda', label: 'Manga esquerda', viewSide: 'front', maxWidthCm: 10, maxHeightCm: 12, defaultSizeCm: '2x3' }],
   },
@@ -103,7 +103,7 @@ export const CUSTOMIZATION_PRODUCT_PROFILES: Readonly<Record<CustomizationProfil
     productSlug: 'cropped',
     parentSlug: 'prime',
     pricingMode: 'fixed',
-    fixedPrice: 119.90,
+    fixedPrice: 119,
     maxPrints: 3,
     printAreas: [{ ...FRONT_30X40, maxHeightCm: 35 }, BACK_30X40, { id: 'left-sleeve', positionId: 'manga_esquerda', label: 'Manga esquerda', viewSide: 'front', maxWidthCm: 10, maxHeightCm: 12, defaultSizeCm: '2x3' }],
   },
@@ -117,7 +117,7 @@ export const CUSTOMIZATION_PRODUCT_PROFILES: Readonly<Record<CustomizationProfil
     productSlug: 'hoodie',
     parentSlug: 'prime',
     pricingMode: 'fixed',
-    fixedPrice: 119.90,
+    fixedPrice: 119,
     maxPrints: 2,
     printAreas: [HOODIE_FRONT, BACK_30X40],
   },
@@ -131,7 +131,7 @@ export const CUSTOMIZATION_PRODUCT_PROFILES: Readonly<Record<CustomizationProfil
     productSlug: 'shorts',
     parentSlug: 'prime',
     pricingMode: 'fixed',
-    fixedPrice: 119.90,
+    fixedPrice: 119,
     maxPrints: 2,
     printAreas: [{ id: 'front', positionId: 'bermuda_frente', label: 'Frente', viewSide: 'front', maxWidthCm: 3, maxHeightCm: 3, defaultSizeCm: '2x3', rotationDeg: -12, orientationInstruction: 'Inclinação de 12° para acompanhar o bolso cargo.' }, { id: 'back', positionId: 'bermuda_costas', label: 'Costas', viewSide: 'back', maxWidthCm: 10, maxHeightCm: 10, defaultSizeCm: '10x10' }],
   },
@@ -145,7 +145,7 @@ export const CUSTOMIZATION_PRODUCT_PROFILES: Readonly<Record<CustomizationProfil
     productSlug: 'cap',
     parentSlug: 'prime',
     pricingMode: 'fixed',
-    fixedPrice: 119.90,
+    fixedPrice: 119,
     maxPrints: 1,
     // The customer-facing area is 8 cm tall × 12 cm wide. Catalog print sizes
     // retain their standard width × height order (e.g. 6 × 8 cm).
@@ -154,7 +154,7 @@ export const CUSTOMIZATION_PRODUCT_PROFILES: Readonly<Record<CustomizationProfil
 });
 
 export const ACTIVE_CUSTOMIZATION_PROFILE_ID: CustomizationProfileId = 'oversized';
-export const PRIME_CUSTOM_FIXED_PRICE = 119.90; // Legacy previews for models whose graduated table is not yet set;
+export const PRIME_CUSTOM_FIXED_PRICE = 119; // Legacy previews for models whose graduated table is not yet set;
 
 export const getCustomizationProfileById = (
   id: string | null | undefined,

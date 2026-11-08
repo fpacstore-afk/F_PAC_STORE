@@ -29,7 +29,7 @@ import { fetchPublicStamps } from '../services/publicStamps';
 import { getPublicApiUrl } from '../lib/api';
 import { productMatchesCommercialLine, buildSellableCatalog } from '../lib/catalogProducts';
 import { getDisplayPrices, getProductUrl } from '../lib/utils';
-import { formatBRL } from '../lib/money';
+import { StorefrontPrice } from '../components/StorefrontPrice';
 
 const INSTAGRAM_URL = 'https://www.instagram.com/f_pac_store';
 
@@ -161,8 +161,7 @@ export default function HomeV2() {
               <Link to={target} className="mt-1 block min-h-10 text-xs font-black uppercase leading-tight text-black line-clamp-2 md:text-sm">{productTitle}</Link>
               <div className="mt-3 flex items-end justify-between gap-2">
                 <div>
-                  {price.hasDiscount && <p className="text-[10px] text-black/40 line-through">{formatBRL(price.originalPrice)}</p>}
-                  <p className="text-base font-black text-black md:text-lg">{formatBRL(price.effectivePrice)}</p>
+                  <StorefrontPrice price={price.effectivePrice} originalPrice={price.hasDiscount ? price.originalPrice : undefined} />
                   
                 </div>
                 <Link to={target} aria-label={isPrimeProduct ? 'Personalizar produto' : 'Ver produto'} className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-black text-[#eab308] transition-colors hover:bg-[#eab308] hover:text-black"><ArrowRight size={16} /></Link>

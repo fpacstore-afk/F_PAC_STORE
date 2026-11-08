@@ -115,7 +115,7 @@ await check('PRIME pricing requires the correct plain base and recalculates grad
   await assert.rejects(calculateOrderPricing(input), /peça lisa disponível/);
   await db.collection('products').doc('fixture-base').update({ status: 'active' });
   const result = await calculateOrderPricing(input);
-  assert.equal(result.verifiedItems[0].price, 87.90);
+  assert.equal(result.verifiedItems[0].price, 87);
   await db.collection('designs').doc('fixture-design').update({ compatibleProducts: ['Bermudas'] });
   await assert.rejects(calculateOrderPricing(input), /não está liberada para este modelo PRIME/);
   await db.collection('designs').doc('fixture-design').update({ compatibleProducts: ['Camisetas'] });
@@ -155,9 +155,9 @@ await check('checkout rejects oversized catalog sleeves, right-side catalog logo
   const quote = () => calculateOrderPricing({ customerInfo: { cep:'89234100' }, items:[item] });
   await assert.rejects(quote(), /não está cadastrada/);
   await db.collection('designs').doc('fixture-design').update({ availableSizes: ['2x3', '3x2', '10x10'] });
-  assert.equal((await quote()).verifiedItems[0].price,79.9);
+  assert.equal((await quote()).verifiedItems[0].price,79);
   item.printConfigs[0].printSize = '3x2';
-  assert.equal((await quote()).verifiedItems[0].price,79.9);
+  assert.equal((await quote()).verifiedItems[0].price,79);
   item.printConfigs[0].printSize = '10x10'; await assert.rejects(quote(), /2 × 3/);
   item.printConfigs[0].printSize = '2x3'; item.printConfigs[0].location = 'Manga Direita'; await assert.rejects(quote(), /braço esquerdo/);
   item.slug='hoodie-custom'; await assert.rejects(quote(), /Área de estampa/);

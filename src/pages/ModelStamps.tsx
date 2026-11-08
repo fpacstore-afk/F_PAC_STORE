@@ -1,3 +1,4 @@
+import { StorefrontPrice } from '../components/StorefrontPrice';
 import { subscribePublicProductSnapshot } from '../services/publicProducts';
 import React, { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate, useSearchParams } from 'react-router-dom';
@@ -755,16 +756,7 @@ export default function ModelStamps() {
                           return (
                             <div className="flex flex-col">
                               <span className="text-[8px] text-neutral-400 font-bold uppercase tracking-wider font-mono">VALOR UNITÁRIO</span>
-                              <div className="flex items-baseline gap-1.5 flex-wrap">
-                                {prices.hasDiscount && (
-                                  <span className="text-xs text-gray-400 line-through font-bold font-mono">
-                                    R$ {prices.originalPrice.toFixed(2).replace('.', ',')}
-                                  </span>
-                                )}
-                                <span className="text-base sm:text-lg font-black text-zinc-950">
-                                  R$ {prices.effectivePrice.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                </span>
-                              </div>
+                              <StorefrontPrice price={prices.effectivePrice} originalPrice={prices.hasDiscount ? prices.originalPrice : undefined} />
                             </div>
                           );
                         })()}
