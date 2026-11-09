@@ -1,3 +1,4 @@
+import { stockMovementDisplay } from '../src/lib/stockMovementDisplay';
 import assert from 'node:assert/strict';
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
@@ -80,3 +81,10 @@ assert.match(printedMarkup, /peças lisas compartilhadas/);
 const plainMarkup = renderToStaticMarkup(React.createElement(StockVariantBreakdown, { rows }));
 assert.doesNotMatch(plainMarkup, /À venda/, 'plain stock keeps its own physical availability display');
 console.log('✅ SKUs, disponibilidade e status por cor/tamanho: verificações aprovadas.');
+
+for (const type of ['entry','purchase_entry','manual_entry','add']) assert.equal(stockMovementDisplay({type,quantity:2},[]).type,'Entrada','real receipts must appear in the Entrada filter');
+for (const type of ['exit','subtract','loss','production_consumption']) {
+  const display = stockMovementDisplay({type,quantity:2},[]);
+  assert.equal(display.type,'Saída');assert.equal(display.quantity,-2,'legacy outbound rows keep the correct sign');
+}
+assert.equal(stockMovementDisplay({type:'reservation_create',quantity:2,previousPhysicalQuantity:5,newPhysicalQuantity:5},[]).quantity,0,'reservations never pretend to move physical stock');
