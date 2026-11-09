@@ -1,3 +1,8 @@
+import React from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
+import { StaticRouter } from 'react-router-dom';
+import { SizeChart } from '../src/components/SizeChart';
+import { getProductDetailLabels } from '../src/lib/productPresentation';
 import assert from 'node:assert/strict';
 import { categoryCatalogView } from '../src/lib/categoryCatalog';
 import { buildSellableCatalog, getProductCommercialLines } from '../src/lib/catalogProducts';
@@ -31,6 +36,15 @@ try {
     assert.equal(explicit.categoryProducts.length,1,'an empty line is not an empty category');
     assert.equal(categoryCatalogView(products,'missing',null).filteredProducts.length,0);
   }
+  const expectedSizeLabels = { oversized:'Tamanho da camiseta',traditional:'Tamanho da camiseta',cropped:'Tamanho do cropped',hoodie:'Tamanho do casaco',shorts:'Tamanho da bermuda',regata:'Tamanho da regata',cap:'Tamanho do boné' };
+  for (const [kind, label] of Object.entries(expectedSizeLabels)) {
+    const labels = getProductDetailLabels({ name: kind, productType:kind, baseModel:kind });
+    assert.equal(labels.sizeHeading,label);
+    assert.equal(labels.showCollar,!['shorts','regata','cap'].includes(kind));
+  }
+  const chart = renderToStaticMarkup(React.createElement(StaticRouter, {location:'/product/cargo'}, React.createElement(SizeChart, {model:'shorts',customData:[{size:'M',length:'50 cm',width:'40 cm',sleeve:'20 cm'}],availableSizes:['M']})));
+  assert.match(chart,/50 cm/);
+  assert.doesNotMatch(chart,/<svg|De uma axila|Do ombro|MANGA:/i,'shorts never borrow a shirt drawing or measuring instructions');
   const cargo = { id:'cargo', slug:'cargo-live-shape', name:'Bermuda de Linho Cargo', status:'active', category:'Bermuda de Linho Cargo', productType:'shorts', collection:'TODOS', baseModel:'Bermuda Linho Cargo', productFinish:'printed', stockBaseSlug:'cargo-base', stockMode:'shared', price:69, promotionalPrice:59, is_prime:false, images:['/product-visuals/shorts-front-v1.webp'], colors:[{name:'Off White'},{name:'Bege'},{name:'Preto'}], sizes:['M','G','GG'] };
   const base = { ...cargo, id:'cargo-base', slug:'cargo-base', name:'Bermuda de Linho Cargo lisa', status:'draft', productFinish:'plain', stockBaseSlug:undefined };
   await db.collection('products').doc(cargo.id).set(cargo);

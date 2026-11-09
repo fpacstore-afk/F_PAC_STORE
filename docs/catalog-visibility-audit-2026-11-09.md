@@ -12,6 +12,8 @@ A categoria abre sem filtro comercial, com a opção Todos selecionada. FORCE e 
 
 Uma linha vazia informa que existem outras opções na categoria e oferece acesso a Todos. Uma categoria efetivamente sem produtos tem uma mensagem distinta. Erros de carregamento continuam sendo apresentados como indisponibilidade, sem parecer um catálogo vazio. Produtos inativos, rascunhos e bases internas continuam fora da vitrine pública.
 
+Na página de compra, os rótulos de tamanho seguem o tipo de peça. Bermuda, regata e boné não recebem uma ficha de gola de camiseta; acabamentos e modelagem ausentes permanecem em conferência. O aviso de peças base também usa texto aplicável aos diferentes produtos. A tabela de bermudas não apresenta desenho, manga ou pontos de medição de camiseta.
+
 ## Verificação
 
 - Conferência da projeção pública: 24 produtos, distribuídos em cinco categorias com produtos publicados; as outras duas categorias estão sem produtos publicados.

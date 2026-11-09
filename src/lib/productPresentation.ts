@@ -55,3 +55,13 @@ export function getSpritePosition(kind: ProductVisualKind): string {
   return `${column * 50}% ${row * 100}%`;
 }
 
+
+/** Customer-facing labels follow the physical product, independently of the collection. */
+export function getProductDetailLabels(product: any) {
+  const kind = getProductVisualKind(product);
+  const sizeHeading: Record<ProductVisualKind, string> = {
+    oversized: 'Tamanho da camiseta', traditional: 'Tamanho da camiseta', cropped: 'Tamanho do cropped',
+    hoodie: 'Tamanho do casaco', shorts: 'Tamanho da bermuda', regata: 'Tamanho da regata', cap: 'Tamanho do boné',
+  };
+  return { sizeHeading: sizeHeading[kind], showCollar: !['shorts', 'regata', 'cap'].includes(kind) };
+}

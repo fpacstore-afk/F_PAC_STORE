@@ -4,7 +4,7 @@ import { formatStorefrontAmount } from '../lib/storefrontPrice';
 import { isAdminIdentity } from '../../shared/adminIdentity';
 import { GarmentModelSelector } from '../components/GarmentModelSelector';
 import { CatalogUnavailable } from '../components/CatalogUnavailable';
-import { getProductVisualKind } from '../lib/productPresentation';
+import { getProductDetailLabels, getProductVisualKind } from '../lib/productPresentation';
 import React, { useState, useEffect } from "react";
 import { useParams, Link, useNavigate, useSearchParams } from "react-router-dom";
 import { getProductBySlug, products as staticProducts } from "../data/products";
@@ -142,6 +142,7 @@ export default function ProductDetail() {
     return { ...catalogProduct, ...physical, id: catalogProduct.id, slug: catalogProduct.slug, name: catalogProduct.name, price: catalogProduct.price, images: catalogProduct.images, parentSlug: undefined, stockBaseSlug: baseSlug || id, stockAvailabilitySlug: baseSlug || id, modelClassificationPending: false };
   }, [catalogProduct, chosenGarmentId]);
   const needsModelSelection = Boolean(product?.modelClassificationPending && catalogProduct?.garmentOptions?.length);
+  const detailLabels = getProductDetailLabels(product);
   const pendingModelMessage = needsModelSelection
     ? 'Selecione o modelo acima para conferir as medidas, as cores e o estoque desta peça.'
     : 'Este modelo está em conferência. Fale com a F PAC para confirmar a disponibilidade.';
@@ -2191,7 +2192,7 @@ export default function ProductDetail() {
               <div className="space-y-3">
                 <div className="flex justify-between items-center mb-1">
                   <h3 className="text-xs font-black uppercase tracking-widest text-[#eab308] font-mono">
-                    2. Tamanho da Camiseta
+                    2. {detailLabels.sizeHeading}
                   </h3>
                   <button
                     id="btn-guia-tamanhos"
@@ -2768,7 +2769,7 @@ export default function ProductDetail() {
               })()}
 
 
-              {madeToOrderProduct && <div className="border border-amber-200 bg-amber-50 p-3 rounded-xl text-xs text-amber-950"><strong>Produzido sob encomenda</strong><p className="mt-1">A disponibilidade considera as camisas lisas por cor e tamanho. Peças já estampadas são atendidas primeiro; as demais seguem para personalização. Confirme o prazo de produção com a F PAC antes de comprar.</p></div>}
+              {madeToOrderProduct && <div className="border border-amber-200 bg-amber-50 p-3 rounded-xl text-xs text-amber-950"><strong>Produzido sob encomenda</strong><p className="mt-1">A disponibilidade considera as peças base por cor e tamanho. Peças já estampadas são atendidas primeiro; as demais seguem para personalização. Confirme o prazo de produção com a F PAC antes de comprar.</p></div>}
               {/* Quantity Selector */}
               <div className="space-y-2.5 bg-white border border-neutral-100 p-4 rounded-2xl">
                 <div className="flex justify-between items-center">
@@ -2943,18 +2944,18 @@ export default function ProductDetail() {
                       MODELAGEM / FIT
                     </span>
                     <span className="text-[11px] font-extrabold text-zinc-950 uppercase mt-0.5 block">
-                      {product.fit || "STREETWEAR OVERSIZED BOXY"}
+                      {product.fit || "MODELAGEM EM CONFERÊNCIA"}
                     </span>
                   </div>
 
-                  <div className="bg-neutral-50/40 p-3.5 rounded-2xl border border-neutral-100 text-left">
+                  {detailLabels.showCollar && <div className="bg-neutral-50/40 p-3.5 rounded-2xl border border-neutral-100 text-left">
                     <span className="text-[8px] font-black tracking-widest text-gray-400 uppercase font-mono block">
                       GOLA
                     </span>
                     <span className="text-[11px] font-extrabold text-zinc-950 uppercase mt-0.5 block">
-                      {product.collar || "RIBANA CANELADA 3.0CM COM REFORÇO DE OMBRO A OMBRO"}
+                      {product.collar || "ACABAMENTO EM CONFERÊNCIA"}
                     </span>
-                  </div>
+                  </div>}
 
                   <div className="bg-neutral-50/40 p-3.5 rounded-2xl border border-neutral-100 text-left">
                     <span className="text-[8px] font-black tracking-widest text-gray-400 uppercase font-mono block">

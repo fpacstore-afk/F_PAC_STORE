@@ -102,7 +102,7 @@ export function SizeChart({ onClose, customData, model, availableSizes, specific
   const hasCustomData = Boolean(customData && customData.length > 0);
   const activeRows = specific && !customData?.length ? (availableSizes || []).map(size => ({ size, length: '', width: '', sleeve: '' })) : resolveProductSizeChart(model, customData, availableSizes);
   const pending = !activeRows.some(row => row.length || row.width);
-  const drawings = activeRows.filter(row => [row.length, row.width, row.sleeve].every(value => Number.isFinite(parseFloat(value)) && parseFloat(value) > 0)).map(row => ({ size: row.size, height: parseFloat(row.length), width: parseFloat(row.width), sleeve: parseFloat(row.sleeve) }));
+  const drawings = (model === 'shorts' || model === 'regata' ? [] : activeRows).filter(row => [row.length, row.width, row.sleeve].every(value => Number.isFinite(parseFloat(value)) && parseFloat(value) > 0)).map(row => ({ size: row.size, height: parseFloat(row.length), width: parseFloat(row.width), sleeve: parseFloat(row.sleeve) }));
 
   return (
     <div id="guia-de-medidas" className="max-w-4xl mx-auto mt-4 md:mt-8 mb-8 animate-in fade-in slide-in-from-bottom-4 duration-700 px-4 scroll-mt-24">
@@ -166,19 +166,19 @@ export function SizeChart({ onClose, customData, model, availableSizes, specific
               <span className="w-10 h-10 rounded-full bg-[#eab308]/10 border border-[#eab308]/30 flex items-center justify-center text-[#eab308] group-hover:bg-[#eab308] group-hover:text-black transition-colors">
                 <div className="w-2 h-2 rounded-full bg-current" />
               </span>
-              <span className="opacity-60">ALTURA: Do ombro até a barra</span>
+              <span className="opacity-60">{model === 'shorts' ? 'MEDIDAS: Confira os pontos de medição da ficha do produto' : 'ALTURA: Do ombro até a barra'}</span>
           </div>
           <div className="flex flex-col gap-4 items-center group">
               <span className="w-10 h-10 rounded-full bg-black/5 border border-black/10 flex items-center justify-center text-black group-hover:bg-black group-hover:text-white transition-colors">
                 <div className="w-2 h-2 rounded-full bg-current" />
               </span>
-              <span className="opacity-60">LARGURA: De uma axila a outra</span>
+              <span className="opacity-60">{model === 'shorts' ? 'Compare com uma bermuda semelhante' : 'LARGURA: De uma axila a outra'}</span>
           </div>
           <div className="flex flex-col gap-4 items-center group">
               <span className="w-10 h-10 rounded-full bg-[#eab308]/10 border border-[#eab308]/30 flex items-center justify-center text-[#eab308] group-hover:bg-[#eab308] group-hover:text-black transition-colors">
                 <div className="w-2 h-2 rounded-full bg-current" />
               </span>
-              <span className="opacity-60">{model === 'regata' ? 'SEM MANGAS' : 'MANGA: Do ombro até o punho'}</span>
+              {model !== 'shorts' && <span className="opacity-60">{model === 'regata' ? 'SEM MANGAS' : 'MANGA: Do ombro até o punho'}</span>}
           </div>
         </div>
       )}
