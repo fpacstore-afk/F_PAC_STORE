@@ -13,11 +13,12 @@ Uma segunda falha mantinha `inventory.available = false` depois de receber peça
 - Entradas, reservas, liberações, produção, ajustes e devoluções sincronizam o indicador agregado de disponibilidade. Saldos físicos, reservas e produtos permanecem separados.
 - Foi acrescentada conferência autenticada de todos os registros de estoque. O reparo altera exclusivamente o indicador agregado desatualizado, sem criar entrada de compra, contagem ou pedido. Uma impressão digital da prévia impede aplicar uma correção após mudança concorrente. O reparo tem registro privado e repetição idempotente; `active = false` e variantes desativadas continuam protegidos.
 - Movimentações individuais validam operação, identificadores e quantidade inteira e protegem a repetição com uma chave transacional. Recebimentos em variantes prontas antes zeradas ficam verificáveis sem conferir retroativamente saldos antigos não contados.
+- A vitrine e o botão de aumentar quantidade da sacola usam o mesmo limite por modelo e por estoque compartilhado, inclusive entre estampas diferentes. Botões de quantidade e remoção têm nomes acessíveis.
 - Totais públicos de produtos com opções de modelo excluem cores/tamanhos que o produto não oferece. Dados numéricos inválidos não autorizam uma venda.
 
 ## Validação
 
-A suíte inclui testes existentes de compras, preços, reservas, pagamentos simulados, cancelamento, devolução, produção, expedição, pedidos manuais, PDV, caixa, financeiro, upload, autenticação e proteção de dados. Foram adicionados onze cenários específicos de estoque e um conjunto de reparo de disponibilidade, cobrindo repetição, falta real, saldo compartilhado, última unidade, reposição, edição de reserva integral e concorrência da prévia.
+A suíte inclui testes existentes de compras, preços, reservas, pagamentos simulados, cancelamento, devolução, produção, expedição, pedidos manuais, PDV, caixa, financeiro, upload, autenticação e proteção de dados. Foram adicionados treze cenários específicos de estoque e um conjunto de reparo de disponibilidade, cobrindo repetição, falta real, saldo compartilhado, última unidade, reposição, edição de reserva integral e concorrência da prévia.
 
 Testes de mutação utilizam banco em memória isolado; os novos testes proíbem chamadas de rede. Nenhuma cobrança, pedido fictício ou notificação a cliente é usada para certificar a correção. O histórico real é consultado pelo painel administrativo. A consulta e a correção dos indicadores calculados em produção preservam quantidades e reservas.
 

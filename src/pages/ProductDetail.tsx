@@ -1,3 +1,4 @@
+import { cartAvailabilityIssues } from '../../shared/cartAvailability';
 import { StorefrontPrice } from '../components/StorefrontPrice';
 import { formatStorefrontAmount } from '../lib/storefrontPrice';
 import { isAdminIdentity } from '../../shared/adminIdentity';
@@ -208,7 +209,7 @@ export default function ProductDetail() {
     return false;
   };
   const { addItem, items } = useCart();
-  const { isAvailable, getStock, inventory } = useInventory();
+  const { isAvailable, getStock, inventory, products: stockCatalogProducts } = useInventory();
 
   const [selectedSize, setSelectedSize] = useState<string>("");
   const [selectedColor, setSelectedColor] = useState<string>("");
@@ -941,6 +942,10 @@ export default function ProductDetail() {
     }
 
     if (product.modelClassificationPending) { toast.error('Escolha um modelo com estoque conferido.'); return; }
+    const proposed = [...items, { productId: product.id, slug: product.slug, parentSlug: product.parentSlug, garmentModelId: product.garmentModelId, stockBaseSlug: product.stockBaseSlug, color: selectedColor, size: selectedSize, variantKey, quantity: qtyToAdd }];
+    if (cartAvailabilityIssues(proposed, getStock, stockCatalogProducts).length) {
+      toast.error('As peças já adicionadas compartilham este estoque. Revise a quantidade na sacola.'); return;
+    }
     addItem({
       id: product.garmentModelId ? `${product.id}::${product.garmentModelId}` : product.id,
       garmentModelId: product.garmentModelId, garmentModelName: product.garmentModelName, neckline: product.neckline, stockBaseSlug: product.stockBaseSlug,
