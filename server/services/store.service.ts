@@ -320,7 +320,7 @@ export async function reserveStock(orderId: string, items: any[], idempotencyKey
         stock: totals.totalPhysical,
         totalPhysicalStock: totals.totalPhysical,
         totalReservedStock: totals.totalReserved,
-        totalAvailableStock: totals.totalAvailable,
+        totalAvailableStock: totals.totalAvailable, available: totals.totalAvailable > 0,
         variants: totals.updatedVariants,
         updatedAt: FieldValue.serverTimestamp()
       });
@@ -450,7 +450,7 @@ export async function releaseStockReservation(orderId: string, items: any[], ide
       const updatedVariant = { ...variantData, physicalQuantity: stats.physicalQuantity, reservedQuantity: newReservedQuantity, availableQuantity: newAvailableQuantity, stock: stats.physicalQuantity, available: newAvailableQuantity > 0, updatedAt: new Date().toISOString() };
       const totals = buildUpdatedInventory(data, physicalSlug, variantKey, updatedVariant);
       workingInventory.set(physicalSlug, { ...data, variants: totals.updatedVariants });
-      transaction.update(invRef, { stock: totals.totalPhysical, totalPhysicalStock: totals.totalPhysical, totalReservedStock: totals.totalReserved, totalAvailableStock: totals.totalAvailable, variants: totals.updatedVariants, updatedAt: FieldValue.serverTimestamp() });
+      transaction.update(invRef, { stock: totals.totalPhysical, totalPhysicalStock: totals.totalPhysical, totalReservedStock: totals.totalReserved, totalAvailableStock: totals.totalAvailable, available: totals.totalAvailable > 0, variants: totals.updatedVariants, updatedAt: FieldValue.serverTimestamp() });
 
       recordIdempotencyKey(transaction, db, effectiveIdempotencyKey, physicalSlug, variantKey, { orderId, type: 'release' });
       const movementRef = db.collection('stock_movements').doc();
@@ -625,7 +625,7 @@ export async function consumeStockReservationInTransaction(
       stock: totals.totalPhysical,
       totalPhysicalStock: totals.totalPhysical,
       totalReservedStock: totals.totalReserved,
-      totalAvailableStock: totals.totalAvailable,
+      totalAvailableStock: totals.totalAvailable, available: totals.totalAvailable > 0,
       variants: totals.updatedVariants,
       updatedAt: FieldValue.serverTimestamp()
     });
@@ -756,7 +756,7 @@ export async function processPhysicalReturn(
         newAvailableQuantity = newPhysicalQuantity - newReservedQuantity;
         const updatedVariant = { ...variantData, physicalQuantity: newPhysicalQuantity, reservedQuantity: newReservedQuantity, availableQuantity: newAvailableQuantity, stock: newPhysicalQuantity, available: newAvailableQuantity > 0, updatedAt: new Date().toISOString() };
         const totals = buildUpdatedInventory(data, physicalSlug, variantKey, updatedVariant);
-        transaction.update(invRef, { stock: totals.totalPhysical, totalPhysicalStock: totals.totalPhysical, totalReservedStock: totals.totalReserved, totalAvailableStock: totals.totalAvailable, variants: totals.updatedVariants, updatedAt: FieldValue.serverTimestamp() });
+        transaction.update(invRef, { stock: totals.totalPhysical, totalPhysicalStock: totals.totalPhysical, totalReservedStock: totals.totalReserved, totalAvailableStock: totals.totalAvailable, available: totals.totalAvailable > 0, variants: totals.updatedVariants, updatedAt: FieldValue.serverTimestamp() });
       }
 
       recordIdempotencyKey(transaction, db, effectiveIdempotencyKey, physicalSlug, variantKey, { orderId, type: 'return' });
@@ -850,7 +850,7 @@ export async function adjustStock(
       const newAvailableQuantity = newPhysicalQuantity - newReservedQuantity;
       const updatedVariant = { ...variantData, id: `${physicalSlug}_${variantKey}`, productId: physicalSlug, productSlug: physicalSlug, variantId: variantKey, sku: stats.sku, color: stats.color, size: stats.size, physicalQuantity: newPhysicalQuantity, reservedQuantity: newReservedQuantity, availableQuantity: newAvailableQuantity, stock: newPhysicalQuantity, available: newAvailableQuantity > 0, updatedAt: new Date().toISOString() };
       const totals = buildUpdatedInventory(data, physicalSlug, variantKey, updatedVariant);
-      transaction.update(invRef, { stock: totals.totalPhysical, totalPhysicalStock: totals.totalPhysical, totalReservedStock: totals.totalReserved, totalAvailableStock: totals.totalAvailable, variants: totals.updatedVariants, updatedAt: FieldValue.serverTimestamp() });
+      transaction.update(invRef, { stock: totals.totalPhysical, totalPhysicalStock: totals.totalPhysical, totalReservedStock: totals.totalReserved, totalAvailableStock: totals.totalAvailable, available: totals.totalAvailable > 0, variants: totals.updatedVariants, updatedAt: FieldValue.serverTimestamp() });
       const movementRef = db.collection('stock_movements').doc();
       transaction.set(movementRef, { id: movementRef.id, productSlug: physicalSlug, variantKey, sku: stats.sku, type: mode === 'subtract' ? (options.isReservationFulfillment ? 'sale' : 'subtract') : 'add', quantity, previousPhysicalQuantity: stats.physicalQuantity, newPhysicalQuantity, previousReservedQuantity: stats.reservedQuantity, newReservedQuantity, previousAvailableQuantity: stats.availableQuantity, newAvailableQuantity, referenceType: options.referenceId ? 'order' : 'manual', referenceId: options.referenceId, reason: options.reason || (mode === 'subtract' ? 'Baixa de estoque' : 'Acréscimo de estoque'), performedBy: options.operator || 'system', createdAt: new Date().toISOString(), idempotencyKey: effectiveIdempotencyKey || undefined, variantIdempotencyKey: effectiveIdempotencyKey ? itemIdempotencyKey(effectiveIdempotencyKey, physicalSlug, variantKey) : undefined });
     }

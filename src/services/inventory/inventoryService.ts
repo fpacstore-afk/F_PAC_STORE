@@ -37,6 +37,7 @@ export async function updateVariantStockInDb(
       productSlug,
       variantKey,
       type: 'adjust',
+      idempotencyKey: crypto.randomUUID(),
       quantity: Math.max(0, newStock),
       reason: reason || `Ajuste manual de estoque via painel por ${operator}`
     })
@@ -126,6 +127,7 @@ export async function recordStockMovementInDb(
       productSlug,
       variantKey,
       type,
+      idempotencyKey: crypto.randomUUID(),
       quantity: Math.abs(quantity),
       reason
     })

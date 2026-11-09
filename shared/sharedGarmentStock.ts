@@ -50,7 +50,10 @@ export function resolveManualGarmentBase(model: unknown, products: StockProduct[
 export function variantAvailable(data: any, key: string): number {
   const variant = data?.variants?.[key];
   if (!variant || data.active === false || data.available === false || variant.active === false || variant.available === false) return 0;
-  return Math.max(0, Number(variant.physicalQuantity ?? variant.stock ?? 0) - Number(variant.reservedQuantity ?? variant.reserved ?? 0));
+  const physical = Number(variant.physicalQuantity ?? variant.stock ?? 0);
+  const reserved = Number(variant.reservedQuantity ?? variant.reserved ?? 0);
+  if (!Number.isSafeInteger(physical) || !Number.isSafeInteger(reserved) || physical < 0 || reserved < 0) return 0;
+  return Math.max(0, physical - reserved);
 }
 
 export function isGarmentVariantAllowed(product: StockProduct, key: string): boolean {
@@ -84,37 +87,53 @@ export function garmentAvailability(product: StockProduct, base: StockProduct, o
   return { available: availableQuantity > 0, availableQuantity, variants };
 }
 
+/** Resolve exactly the same physical sources for the UI and transactional orders. */
+function garmentStockSources(item: any, products: StockProduct[], inventories: Map<string, any>, used: Map<string, number>) {
+  const product = products.find(p => [p.id, p.slug].filter(Boolean).some(id => [item.productId, item.slug, item.baseProductSlug].includes(id)));
+  const base = resolveItemGarmentBase(item, product, products);
+  if ((requiresGarmentClassification(product) || item.garmentModelId) && !base) throw new Error('Escolha um modelo com estoque conferido. As peças misturadas aguardam separação por fornecedor.');
+  const readySlug = String(product ? (product.parentSlug || stockSlug(product)) : (item.parentSlug || item.slug || item.productId || item.id || ''));
+  const variantKey = String(item.variantKey || `${item.color}_${item.size}`);
+  if (product && !isGarmentVariantAllowed(product, variantKey)) throw new Error(`Variação indisponível: ${item.color} ${item.size}.`);
+  const remaining = (slug: string) => Math.max(0, variantAvailable(inventories.get(slug), variantKey) - (used.get(`${slug}::${variantKey}`) || 0));
+  const readyInventory = inventories.get(readySlug);
+  const readyVerified = product?.productFinish !== 'printed' || readyInventory?.variants?.[variantKey]?.physicalCountVerified === true;
+  const readyQuantity = product?.productFinish === 'plain' || !readyVerified || requiresGarmentClassification(product) || Boolean(base?.garmentModelId && !product?.garmentModelId) ? 0 : remaining(readySlug);
+  const baseSlug = base && stockSlug(base);
+  const plainQuantity = baseSlug && isGarmentVariantAllowed(base!, variantKey) ? remaining(baseSlug) : 0;
+  return { product, base, readySlug, baseSlug, variantKey, readyQuantity, plainQuantity, availableQuantity: readyQuantity + plainQuantity };
+}
+
+/** Draft lines share the pool too, but this preview never changes a real balance. */
+export function garmentOrderBalance(item: any, products: StockProduct[], inventories: Map<string, any>, draftItems: any[] = []) {
+  const used = new Map<string, number>();
+  for (const line of allocateGarments(draftItems, products, inventories)) for (const allocation of line.inventoryAllocations) {
+    const key = `${allocation.productSlug}::${allocation.variantKey}`;
+    used.set(key, (used.get(key) || 0) + allocation.quantity);
+  }
+  const balance = garmentStockSources(item, products, inventories, used);
+  return { availableQuantity: balance.availableQuantity, readyQuantity: balance.readyQuantity, plainQuantity: balance.plainQuantity, stockBaseSlug: balance.baseSlug, garmentModelName: balance.base?.garmentModelName || balance.product?.garmentModelName || '' };
+}
+
 /** Allocate all designs together; never validate each against the same untouched pool. */
 export function allocateGarments(items: any[], products: StockProduct[], inventories: Map<string, any>) {
   const used = new Map<string, number>();
-  const take = (slug: string, variant: string, requested: number) => {
-    const key = `${slug}::${variant}`;
-    const quantity = Math.min(requested, Math.max(0, variantAvailable(inventories.get(slug), variant) - (used.get(key) || 0)));
-    used.set(key, (used.get(key) || 0) + quantity);
-    return quantity;
-  };
   return items.map(item => {
-    const product = products.find(p => [p.id, p.slug].filter(Boolean).some(id => [item.productId, item.slug, item.baseProductSlug].includes(id)));
-    const customModel = item.customProduct && item.customDetails?.model;
-    const base = resolveItemGarmentBase(item, product, products);
-    if ((requiresGarmentClassification(product) || item.garmentModelId) && !base) throw new Error('Escolha um modelo com estoque conferido. As peças misturadas aguardam separação por fornecedor.');
-    const readySlug = String(product ? (product.parentSlug || stockSlug(product)) : (item.parentSlug || item.slug || item.productId || item.id || ''));
-    const variantKey = String(item.variantKey || `${item.color}_${item.size}`);
+    const { product, base, readySlug, baseSlug, variantKey, readyQuantity, plainQuantity } = garmentStockSources(item, products, inventories, used);
     const requested = Math.max(1, Math.floor(Number(item.quantity) || 1));
-    if (product && !isGarmentVariantAllowed(product, variantKey)) throw new Error(`Variação indisponível: ${item.color} ${item.size}.`);
-    const allocations: InventoryAllocation[] = [];
-    const isPlain = product?.productFinish === 'plain';
-    const readyInventory = inventories.get(readySlug);
-    const readyVerified = product?.productFinish !== 'printed' || readyInventory?.variants?.[variantKey]?.physicalCountVerified === true;
-    const ready = isPlain || !readyVerified || requiresGarmentClassification(product) || Boolean(base?.garmentModelId && !product?.garmentModelId) ? 0 : take(readySlug, variantKey, requested);
-    if (ready) allocations.push({ productSlug: readySlug, variantKey, quantity: ready, source: 'ready' });
-    const baseSlug = base && stockSlug(base);
-    const plain = baseSlug && isGarmentVariantAllowed(base!, variantKey) ? take(baseSlug, variantKey, requested - ready) : 0;
-    if (plain) allocations.push({ productSlug: baseSlug!, variantKey, quantity: plain, source: 'plain' });
+    const ready = Math.min(requested, readyQuantity);
+    const plain = Math.min(requested - ready, plainQuantity);
     if (ready + plain < requested) {
       const error: any = new Error(`Estoque disponível insuficiente para "${item.name || readySlug}" (${item.color} - ${item.size}). Disponível: ${ready + plain}, Solicitado: ${requested}`);
       error.name = 'OutOfStockError'; error.details = { item: item.name || readySlug, requested, available: ready + plain };
       throw error;
+    }
+    const allocations: InventoryAllocation[] = [];
+    for (const [slug, quantity, source] of [[readySlug, ready, 'ready'], [baseSlug, plain, 'plain']] as const) {
+      if (!slug || !quantity) continue;
+      allocations.push({ productSlug: slug, variantKey, quantity, source });
+      const key = `${slug}::${variantKey}`;
+      used.set(key, (used.get(key) || 0) + quantity);
     }
     // Ignore caller-supplied allocations; these come exclusively from authoritative balances.
     const modelSource = base?.garmentModelId ? base : product;

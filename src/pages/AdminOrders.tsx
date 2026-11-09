@@ -5,6 +5,7 @@ import { receiptPeriodRange } from '../../shared/financialReceipts';
 import { financialDateKey, orderSaleDateKey, validFinancialDay } from '../../shared/cashFlow';
 import { isAdminIdentity } from '../../shared/adminIdentity';
 import { compatibleGarmentSource } from '../../shared/sharedGarmentStock';
+import { assertManualOrderStock, manualVariantBalance } from '../../shared/manualOrderStock';
 import { garmentFamily, garmentTitle } from '../../shared/garmentModels';
 import { collection, deleteDoc, doc, getDoc, onSnapshot, orderBy, query, serverTimestamp, setDoc, updateDoc, writeBatch } from 'firebase/firestore';
 import { AnimatePresence, motion } from 'framer-motion';
@@ -473,7 +474,6 @@ function AdminOrdersInner({ defaultTab }: { defaultTab: ManagementTab }) {
   const [manualOrderDeliveryDate, setManualOrderDeliveryDate] = useState('');
   const [manualOrderDiscount, setManualOrderDiscount] = useState<number | ''>('');
   const [manualOrderShipping, setManualOrderShipping] = useState<number | ''>('');
-  const [ignoreStock, setIgnoreStock] = useState(true);
   const [savingManualOrder, setSavingManualOrder] = useState(false);
   const [stockControl, setStockControl] = useState<'move' | 'no_move'>('move');
   
@@ -554,21 +554,14 @@ function AdminOrdersInner({ defaultTab }: { defaultTab: ManagementTab }) {
     }
   }, [user, activeTab, orderSubView]);
 
-  // Adjustments to itemQty based on selected product available stock
-  const getSelectedVariantStock = () => {
-    if (!selectedProduct) return 0;
-    const invItem = inventory[selectedProduct.parentSlug] || inventory[selectedProduct.slug] || inventory[selectedProduct.id];
-    if (!invItem) return 0;
-    
-    const productHasColors = !!(selectedProduct.colors && selectedProduct.colors.length > 0);
-    const variantKey = productHasColors ? `${selectedColor}_${selectedSize}` : selectedSize;
-    
-    const variant = invItem.variants?.[variantKey] as any;
-    const qty = variant?.availableQuantity ?? variant?.availableStock ?? variant?.stock ?? invItem.availableQuantity ?? (invItem as any).availableStock ?? invItem.stock ?? 0;
-    return Number(qty) || 0;
+  const { inventory, loading: inventoryLoading, error: inventoryError } = useInventory({ administrative: true, enabled: activeTab === 'orders' });
+  const movesManualStock = manualOrderKind === 'sale' && historicalSale ? garmentHistory !== 'moved' : stockControl === 'move';
+  const getManualVariantStock = (product: any, color: string, size: string) => {
+    if (!product || inventoryLoading || inventoryError) return 0;
+    try { return manualVariantBalance(product, color, size, currentProducts, inventory, tempItems).availableQuantity; }
+    catch { return 0; }
   };
-
-  const { inventory } = useInventory({ administrative: true, enabled: activeTab === 'orders' });
+  const getSelectedVariantStock = () => getManualVariantStock(selectedProduct, selectedColor || 'PADRÃO', selectedSize);
 
   const [hasBypass, setHasBypass] = useState(() => import.meta.env.DEV && localStorage.getItem('admin_bypass') === 'true');
   
@@ -1780,6 +1773,15 @@ function AdminOrdersInner({ defaultTab }: { defaultTab: ManagementTab }) {
       return;
     }
 
+    if (movesManualStock) {
+      if (inventoryLoading || inventoryError) {
+        toast.error(inventoryError || 'Aguarde a confirmação do estoque antes de salvar.');
+        return;
+      }
+      try { assertManualOrderStock(tempItems, currentProducts, inventory); }
+      catch (error: any) { toast.error(error.message || 'Revise o modelo, a cor e o tamanho dos itens.'); return; }
+    }
+
     setSavingManualOrder(true);
     try {
       const orderId = manualOrderId.current ??= `${manualOrderKind === 'gift' ? 'MANUAL-BRINDE' : 'MANUAL'}-${Date.now()}-${crypto.randomUUID().slice(0, 8)}`;
@@ -2087,7 +2089,6 @@ Total: R$ ${totalSum.toFixed(2)}`;
       setManualInstallmentCount(1);
       setManualFirstDueDate(new Date().toISOString().split('T')[0]);
       setStockControl('move');
-      setIgnoreStock(true);
       setIsManualModalOpen(false);
 
     } catch (err: any) {
@@ -4295,10 +4296,12 @@ Total: R$ ${totalSum.toFixed(2)}`;
                         setSelectedProduct(found);
                         setItemPrice(getEffectivePrice(found));
                         const firstCol = found.colors?.[0];
-                        const initialColor = firstCol && typeof firstCol === 'object' ? firstCol.name || '' : firstCol || '';
+                        const firstColor = firstCol && typeof firstCol === 'object' ? firstCol.name || '' : firstCol || '';
+                        const availableChoice = (found.colors?.length ? found.colors : ['PADRÃO']).flatMap((color: any) => (found.sizes || []).map((size: string) => ({ color: typeof color === 'string' ? color : color.name, size }))).find((choice: any) => getManualVariantStock(found, choice.color, choice.size) > 0);
+                        const initialColor = availableChoice?.color || firstColor;
                         setSelectedColor(initialColor);
                         updateSelectedManualStamps(manualProductMode === 'ready' ? resolveProductStampRecipe(found, initialColor) : []);
-                        setSelectedSize(found.sizes?.[0] || '');
+                        setSelectedSize(availableChoice?.size || found.sizes?.[0] || '');
                       }} />
 
                       {selectedProduct && (
@@ -4319,7 +4322,7 @@ Total: R$ ${totalSum.toFixed(2)}`;
                                   {selectedProduct.colors.map((c: any) => {
                                     const cName = c && typeof c === 'object' ? (c.name || '') : c;
                                     return (
-                                      <option key={cName} value={cName}>{cName}</option>
+                                      <option key={cName} value={cName}>{cName} · {getManualVariantStock(selectedProduct, cName, selectedSize)} disponíveis em {selectedSize}</option>
                                     );
                                   })}
                                 </select>
@@ -4334,7 +4337,7 @@ Total: R$ ${totalSum.toFixed(2)}`;
                                 className="py-2 px-3 bg-white border border-black/5 text-[11px] font-bold uppercase cursor-pointer"
                               >
                                 {selectedProduct.sizes?.map((s: string) => (
-                                  <option key={s} value={s}>{s}</option>
+                                  <option key={s} value={s}>{s} · {getManualVariantStock(selectedProduct, selectedColor, s)} disponíveis</option>
                                 ))}
                               </select>
                             </div>
@@ -4375,6 +4378,9 @@ Total: R$ ${totalSum.toFixed(2)}`;
                               type="button"
                               onClick={() => {
                                 if (!selectedProduct) return;
+                                if (!Number.isSafeInteger(itemQty) || itemQty < 1 || itemQty > 100000) {
+                                  toast.error('Informe uma quantidade inteira entre 1 e 100.000 peças.'); return;
+                                }
                                 const productHasColors = !!(selectedProduct.colors && selectedProduct.colors.length > 0);
                                 if (productHasColors && !selectedColor) {
                                   toast.error("Por favor, selecione uma cor.");
@@ -4385,8 +4391,8 @@ Total: R$ ${totalSum.toFixed(2)}`;
                                   return;
                                 }
                                 const stockVal = getSelectedVariantStock();
-                                if (!ignoreStock && stockVal < itemQty) {
-                                  toast.error(`Estoque insuficiente! Disponível: ${stockVal} un.`);
+                                if (movesManualStock && (inventoryLoading || inventoryError || stockVal < itemQty)) {
+                                  toast.error(inventoryError || (inventoryLoading ? 'Aguarde a confirmação do estoque.' : `Este modelo tem ${stockVal} un. disponíveis em ${selectedColor} / ${selectedSize}, considerando os itens deste pedido.`));
                                   return;
                                 }
 
@@ -4447,7 +4453,8 @@ Total: R$ ${totalSum.toFixed(2)}`;
                             "text-[9px] font-black p-2 border tracking-widest uppercase text-center",
                             getSelectedVariantStock() > 0 ? "bg-green-50 text-green-700 border-green-100" : "bg-red-50 text-red-600 border-red-100"
                           )}>
-                            Quantidade em estoque: {getSelectedVariantStock()} un.
+                            {inventoryLoading ? 'Confirmando estoque…' : inventoryError || `${getSelectedVariantStock()} un. disponíveis neste modelo, cor e tamanho, após os itens já adicionados.`}
+                            {selectedProduct.garmentModelName && <span className="mt-1 block normal-case tracking-normal">Modelo: {selectedProduct.garmentModelName}. Modelos diferentes têm estoques separados.</span>}
                           </div>
                         </div>
                       )}
@@ -4560,17 +4567,7 @@ Total: R$ ${totalSum.toFixed(2)}`;
                     </select>
                   </div>
 
-                  <div className="flex flex-col gap-1.5 justify-end">
-                    <label className="flex items-center gap-2 cursor-pointer py-2 border-t border-black/5 self-stretch justify-center md:border-none">
-                      <input 
-                        type="checkbox" 
-                        checked={ignoreStock}
-                        onChange={e => setIgnoreStock(e.target.checked)}
-                        className="accent-[#eab308] scale-110"
-                      />
-                      <span className="text-[8px] font-black text-gray-400 uppercase tracking-widest select-none">{manualOrderKind === 'gift' ? 'Forçar baixa s/ estoque' : 'Forçar venda s/ estoque'}</span>
-                    </label>
-                  </div>
+                  <p className="self-end text-[10px] text-gray-500">Ao movimentar estoque, o saldo é conferido por modelo, cor e tamanho. Para registros antigos já baixados, use “Registrar venda antiga”.</p>
                 </div>
 
                 {manualOrderKind === 'sale' && <div className="border border-black/10 bg-white p-4 space-y-3">

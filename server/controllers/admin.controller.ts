@@ -213,11 +213,15 @@ export async function createManualOrderController(req: Request, res: Response) {
   try {
     let order = req.body?.order;
     const orderId = String(order?.id || '').trim();
-    if (!orderId.startsWith('MANUAL-') || !Array.isArray(order?.items) || order.items.length === 0) {
+    if (!orderId.startsWith('MANUAL-') || orderId.includes('/') || orderId.length > 160 || !Array.isArray(order?.items) || order.items.length === 0) {
       return res.status(400).json({
         error: 'INVALID_MANUAL_ORDER',
         message: 'Pedido manual inválido: informe identificador MANUAL-* e ao menos um item.'
       });
+    }
+
+    if (order.items.some((item: any) => !Number.isSafeInteger(item?.quantity) || item.quantity < 1 || item.quantity > 100000)) {
+      return res.status(400).json({ error: 'INVALID_ITEM_QUANTITY', message: 'Cada produto deve ter uma quantidade inteira entre 1 e 100.000 peças.' });
     }
 
     const today = financialDateKey(new Date())!;
@@ -928,16 +932,30 @@ export async function recordStockMovement(req: Request, res: Response) {
     const { productSlug, variantKey, type, quantity, reason, idempotencyKey } = req.body;
     const user = (req as any).user;
 
-    if (!productSlug || !variantKey || !type || typeof quantity !== 'number' || quantity < 0) {
+    const additiveTypes = ['add', 'purchase_entry', 'manual_entry', 'adjustment_increase', 'return'];
+    const subtractiveTypes = ['subtract', 'sale', 'production_consumption', 'loss', 'damage', 'adjustment_decrease'];
+    if (typeof productSlug !== 'string' || !productSlug.trim() || productSlug.includes('/') || productSlug.length > 160 ||
+        typeof variantKey !== 'string' || !variantKey.trim() || variantKey.length > 160 || ['__proto__', 'constructor', 'prototype'].includes(variantKey) ||
+        ![...additiveTypes, ...subtractiveTypes, 'adjust'].includes(type) || !Number.isSafeInteger(quantity) || quantity < (type === 'adjust' ? 0 : 1) || quantity > 100000 ||
+        (idempotencyKey != null && (typeof idempotencyKey !== 'string' || !/^[A-Za-z0-9_-]{8,160}$/.test(idempotencyKey)))) {
       return res.status(400).json({ error: 'productSlug, variantKey, type e quantidade são obrigatórios e válidos.' });
     }
 
     const db = getDb();
     let resultMovement: any = null;
+    let replayed = false;
+    const signature = JSON.stringify([productSlug, variantKey, type, quantity, reason || '']);
 
     await db.runTransaction(async (transaction) => {
       const invRef = db.collection('inventory').doc(productSlug);
-      const invSnap = await transaction.get(invRef);
+      const receiptRef = idempotencyKey ? db.collection('stock_movement_idempotency').doc(idempotencyKey) : null;
+      const [invSnap, receipt] = await Promise.all([transaction.get(invRef), receiptRef ? transaction.get(receiptRef) : Promise.resolve(null)]);
+      if (receipt?.exists) {
+        if (receipt.data()?.signature !== signature) throw Object.assign(new Error('Esta operação já foi usada para outra movimentação.'), { status: 409 });
+        resultMovement = receipt.data()?.movement;
+        replayed = true;
+        return;
+      }
 
       const invData = invSnap.exists ? invSnap.data()! : {};
       const variants = invData.variants || {};
@@ -947,8 +965,8 @@ export async function recordStockMovement(req: Request, res: Response) {
       let newPhysicalQuantity = stats.physicalQuantity;
       let newReservedQuantity = stats.reservedQuantity;
 
-      const isAdditive = ['add', 'purchase_entry', 'manual_entry', 'adjustment_increase', 'return'].includes(type);
-      const isSubtractions = ['subtract', 'sale', 'production_consumption', 'loss', 'damage', 'adjustment_decrease'].includes(type);
+      const isAdditive = additiveTypes.includes(type);
+      const isSubtractions = subtractiveTypes.includes(type);
 
       if (isAdditive) {
         newPhysicalQuantity = stats.physicalQuantity + quantity;
@@ -982,7 +1000,7 @@ export async function recordStockMovement(req: Request, res: Response) {
         color: stats.color,
         size: stats.size,
         physicalQuantity: newPhysicalQuantity,
-        physicalCountVerified: currentVariant.physicalCountVerified === true || type === 'adjust' || !invSnap.exists,
+        physicalCountVerified: currentVariant.physicalCountVerified === true || type === 'adjust' || (isAdditive && stats.physicalQuantity === 0 && stats.reservedQuantity === 0),
         reservedQuantity: newReservedQuantity,
         availableQuantity: newAvailableQuantity,
         stock: newPhysicalQuantity,
@@ -1008,6 +1026,7 @@ export async function recordStockMovement(req: Request, res: Response) {
         totalPhysicalStock: totalPhysical,
         totalReservedStock: totalReserved,
         totalAvailableStock: totalAvailable,
+        available: invData.active !== false && totalAvailable > 0,
         variants,
         updatedAt: FieldValue.serverTimestamp(),
         lastUpdated: new Date().toISOString()
@@ -1035,13 +1054,14 @@ export async function recordStockMovement(req: Request, res: Response) {
         performedBy: user?.email || user?.uid || 'Admin',
         timestamp: new Date().toISOString(),
         createdAt: new Date().toISOString(),
-        idempotencyKey
+        ...(idempotencyKey ? { idempotencyKey } : {})
       };
 
       transaction.set(movementRef, resultMovement);
+      if (receiptRef) transaction.set(receiptRef, { signature, movement: resultMovement, createdAt: new Date().toISOString() });
     });
 
-    await recordAuditLog({
+    if (!replayed) await recordAuditLog({
       userId: user?.uid,
       userEmail: user?.email,
       action: 'STOCK_MOVEMENT',
@@ -1051,13 +1071,14 @@ export async function recordStockMovement(req: Request, res: Response) {
       ip: req.ip
     });
 
-    logger.info(`📦 [STOCK-MOVEMENT] ${productSlug} (${variantKey}): ${resultMovement.previousPhysicalQuantity} -> ${resultMovement.newPhysicalQuantity} (${type}) by ${user?.email}`);
+    if (!replayed) logger.info(`📦 [STOCK-MOVEMENT] ${productSlug} (${variantKey}): ${resultMovement.previousPhysicalQuantity} -> ${resultMovement.newPhysicalQuantity} (${type}) by ${user?.email}`);
 
-    res.json({ success: true, movement: resultMovement });
+    res.json({ success: true, replayed, movement: resultMovement });
   } catch (error: any) {
     if (error instanceof OutOfStockError) {
       return res.status(400).json({ error: 'INSUFFICIENT_STOCK', message: error.message, details: error.details });
     }
+    if (error.status === 409) return res.status(409).json({ error: 'IDEMPOTENCY_CONFLICT', message: error.message });
     logger.error(`❌ [STOCK-MOVEMENT-ERR] ${error.message}`, error);
     res.status(500).json({ error: error.message || 'Erro ao registrar movimentação de estoque.' });
   }
@@ -1171,7 +1192,7 @@ export async function recordBulkStockMovement(req: Request, res: Response) {
           color: stats.color,
           size: stats.size,
           physicalQuantity: newPhysicalQuantity,
-          physicalCountVerified: receiving ? currentVariant.physicalCountVerified === true : true,
+          physicalCountVerified: !receiving || currentVariant.physicalCountVerified === true || (stats.physicalQuantity === 0 && stats.reservedQuantity === 0),
           reservedQuantity: newReservedQuantity,
           availableQuantity: newAvailableQuantity,
           stock: newPhysicalQuantity,
@@ -1222,6 +1243,7 @@ export async function recordBulkStockMovement(req: Request, res: Response) {
         totalPhysicalStock: totalPhysical,
         totalReservedStock: totalReserved,
         totalAvailableStock: Math.max(0, totalPhysical - totalReserved),
+        available: invData.active !== false && totalPhysical > totalReserved,
         variants,
         updatedAt: FieldValue.serverTimestamp(),
         lastUpdated: now

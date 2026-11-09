@@ -92,7 +92,7 @@ export async function transformPosGarments(body: any, operator: PosOperator) {
       });
       tx.update(ref, {
         variants: totals.updatedVariants, stock: totals.totalPhysical, totalPhysicalStock: totals.totalPhysical,
-        totalReservedStock: totals.totalReserved, totalAvailableStock: totals.totalAvailable, updatedAt: FieldValue.serverTimestamp()
+        totalReservedStock: totals.totalReserved, totalAvailableStock: totals.totalAvailable, available: totals.totalAvailable > 0, updatedAt: FieldValue.serverTimestamp()
       });
       const movement = db.collection('stock_movements').doc();
       tx.set(movement, {

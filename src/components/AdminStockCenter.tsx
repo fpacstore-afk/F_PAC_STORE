@@ -75,6 +75,22 @@ export function AdminStockCenter() {
     return subscribePublicCatalog(catalog => setSaleCatalog(catalog), () => setSaleCatalog(null));
   }, [isAdmin]);
 
+  const [availabilityAudit, setAvailabilityAudit] = useState<any>(null);
+  const [checkingAvailability, setCheckingAvailability] = useState(false);
+  const checkAvailability = async (repair = false) => {
+    setCheckingAvailability(true);
+    try {
+      const response = await authenticatedFetch(`/api/admin/stock/availability-${repair ? 'repair' : 'audit'}`, repair ? {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ hash: availabilityAudit.hash })
+      } : {});
+      const result = await parseApiJson<any>(response);
+      if (!response.ok) throw new Error(result.message || 'Não foi possível conferir a disponibilidade.');
+      setAvailabilityAudit(repair ? { ...result, issues: [] } : result);
+      if (repair) toast.success(`Disponibilidade corrigida em ${result.repaired.length} estoque(s). Quantidades e reservas preservadas.`);
+    } catch (error: any) { toast.error(error.message); }
+    finally { setCheckingAvailability(false); }
+  };
+
   // Sub-tab: 'stock' (Unified Gestão de Estoque)
   const [activeSubTab, setActiveSubTab] = useState<'stock' | 'catalog'>('stock');
   const [selectedFamily, setSelectedFamily] = useState<StockFamilyId | null>(null);
@@ -850,6 +866,13 @@ export function AdminStockCenter() {
         className="hidden"
       />
 
+      <section aria-label="Conferência de disponibilidade" className="mb-4 rounded-lg border border-black/10 bg-white p-4 text-sm">
+        <div className="flex flex-wrap items-center gap-3"><button type="button" disabled={checkingAvailability} onClick={() => checkAvailability()} className="min-h-11 rounded border border-black/20 px-3 font-bold disabled:opacity-50">{checkingAvailability ? 'Conferindo…' : 'Conferir disponibilidade'}</button>
+        <span className="text-xs text-gray-600">Confere bloqueios desatualizados em todos os estoques, sem alterar peças ou reservas.</span></div>
+        {availabilityAudit && <div role="status" className="mt-3 space-y-2"><p>{availabilityAudit.checked} estoques conferidos. {availabilityAudit.issues.length} bloqueio(s) desatualizado(s).{availabilityAudit.repaired && ` ${availabilityAudit.repaired.length} corrigido(s).`}</p>
+          {availabilityAudit.issues.length > 0 && <><ul className="max-h-40 list-disc overflow-y-auto pl-5 text-xs">{availabilityAudit.issues.map((issue: any) => <li key={issue.productSlug}>{rawProducts.find(product => [product.id, product.slug].includes(issue.productSlug))?.name || issue.productSlug}: {issue.availableQuantity} un. livres</li>)}</ul><button type="button" disabled={checkingAvailability} onClick={() => checkAvailability(true)} className="min-h-11 rounded bg-black px-3 font-bold text-white disabled:opacity-50">Corrigir disponibilidade calculada</button></>}
+        </div>}
+      </section>
       <StockFamilyOverview items={unifiedStockItems} selected={selectedFamily} loading={invLoading || loadingProducts || productLoadError || Boolean(inventoryError)} onSelect={family => { setSelectedFamily(family); setCategoryFilter('all'); setStockGroupFilter('all'); setLineFilter('all'); setStockStatusFilter('all'); setSearchQuery(''); }} />
       {stockForReview.length > 0 && <details className="mx-auto max-w-7xl rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm"><summary className="cursor-pointer font-bold">{stockForReview.length} registros de saldo preservados para conferência</summary><p className="my-3 text-xs">Estes registros antigos não criam outros tipos de produto. Os saldos permanecem no banco e não foram transferidos, zerados ou somados automaticamente aos sete tipos.</p><div className="overflow-x-auto"><table className="w-full text-left text-xs"><thead><tr><th className="p-2">Referência</th><th className="p-2">Saldo registrado</th><th className="p-2">Reservado</th><th className="p-2">Conferência</th></tr></thead><tbody>{stockForReview.map(row => <tr key={row.slug}><td className="p-2">{row.name}<span className="block font-mono text-[10px]">{row.slug}</span></td><td className="p-2">{row.physical}</td><td className="p-2">{row.reserved}</td><td className="p-2">{row.reason}</td></tr>)}</tbody></table></div></details>}
       <details className="mx-auto max-w-7xl rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm"><summary className="cursor-pointer font-bold">Conferência e separação de saldos por gola e fornecedor</summary><div className="mt-3"><GarmentModelStockPanel /></div></details>

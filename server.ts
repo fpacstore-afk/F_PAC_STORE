@@ -1,3 +1,4 @@
+import { getStockAvailabilityAudit, repairStockAvailability } from './server/controllers/stockAvailability.controller.js';
 import { createProductReview } from './server/controllers/reviews.controller.js';
 import { createPosRouter } from './server/controllers/pos.controller.js';
 import { expirePosReservations } from './server/services/pos.service.js';
@@ -657,6 +658,8 @@ apiRouter.post("/admin/stock/bulk-adjust", adminApiLimiter, authenticateAdmin, r
 apiRouter.get('/admin/stock/inventory-overview', adminApiLimiter, authenticateAdmin, getInventoryOverview);
 apiRouter.post('/admin/stock/inventory-counts', adminApiLimiter, authenticateAdmin, saveInventoryCount);
 apiRouter.post("/admin/stock/movement", adminApiLimiter, authenticateAdmin, recordStockMovement);
+apiRouter.get("/admin/stock/availability-audit", adminApiLimiter, authenticateAdmin, getStockAvailabilityAudit);
+apiRouter.post("/admin/stock/availability-repair", adminApiLimiter, authenticateAdmin, repairStockAvailability);
 apiRouter.post('/admin/stamps/:stampId/stock', adminApiLimiter, authenticateAdmin, async (req, res) => {
   try {
     const stampId = String(req.params.stampId || '').trim();

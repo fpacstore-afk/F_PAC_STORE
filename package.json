@@ -106,7 +106,9 @@
     "test:webhook-formats": "NODE_ENV=test node --import tsx scripts/test_webhook_notification_formats.ts",
     "test:storefront-price-presentation": "node --import tsx scripts/test_storefront_price_presentation.ts",
     "test:catalog-integer-prices": "NODE_ENV=test node --import tsx scripts/test_catalog_integer_prices.ts",
-    "test:auth-security-configuration": "node --import tsx scripts/test_auth_security_configuration.ts"
+    "test:auth-security-configuration": "node --import tsx scripts/test_auth_security_configuration.ts",
+    "test:order-stock-audit": "NODE_ENV=test node --import tsx scripts/test_order_stock_audit.ts",
+    "test:stock-availability-repair": "NODE_ENV=test node --import tsx scripts/test_stock_availability_repair.ts"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
