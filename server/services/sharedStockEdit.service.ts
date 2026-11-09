@@ -22,7 +22,7 @@ export async function reconcileSharedStockEdit(tx: FirebaseFirestore.Transaction
     const stats = getVariantStats(variant);
     if (!variant || stats.reservedQuantity < item.quantity) throw new Error('A reserva anterior não confere com o saldo da camisa lisa.');
     originals.set(key, stats);
-    data.set(item.parentSlug, { ...inv, variants: { ...inv.variants, [item.variantKey]: { ...variant, reservedQuantity: stats.reservedQuantity - item.quantity, available: true } } });
+    data.set(item.parentSlug, { ...inv, available: true, variants: { ...inv.variants, [item.variantKey]: { ...variant, reservedQuantity: stats.reservedQuantity - item.quantity, available: true } } });
   }
   const resolved = allocateGarments(nextItems, catalog, data);
   const newItems = aggregateInventoryItems(resolved);
@@ -52,7 +52,7 @@ export async function reconcileSharedStockEdit(tx: FirebaseFirestore.Transaction
     data.set(item.parentSlug, { ...inv, variants });
     const physicalTotal = Object.values(variants).reduce<number>((sum, v: any) => sum + Number(v.physicalQuantity ?? v.stock ?? 0), 0);
     const reservedTotal = Object.values(variants).reduce<number>((sum, v: any) => sum + Number(v.reservedQuantity ?? 0), 0);
-    tx.update(db.collection('inventory').doc(item.parentSlug), { variants, totalPhysicalStock: physicalTotal, stock: physicalTotal, totalReservedStock: reservedTotal, totalAvailableStock: physicalTotal - reservedTotal, updatedAt: FieldValue.serverTimestamp() });
+    tx.update(db.collection('inventory').doc(item.parentSlug), { variants, totalPhysicalStock: physicalTotal, stock: physicalTotal, totalReservedStock: reservedTotal, totalAvailableStock: physicalTotal - reservedTotal, available: physicalTotal > reservedTotal, updatedAt: FieldValue.serverTimestamp() });
     const reservation = reservations.get(key);
     tx.set(reservation.ref, { ...reservation.data, orderId, productSlug: item.parentSlug, variantKey: item.variantKey, quantity: newItem?.quantity || oldItem?.quantity || 0, status: newItem ? 'active' : 'released', updatedAt: now }, { merge: true });
     tx.set(db.collection('stock_movements').doc(`${orderId}_edit_${revision}_${item.parentSlug}_${item.variantKey}`), { orderId, productSlug: item.parentSlug, variantKey: item.variantKey, quantity: Math.abs(Number(newItem?.quantity || 0) - Number(oldItem?.quantity || 0)), type: 'reservation_change', previousPhysicalQuantity: stats.physicalQuantity, newPhysicalQuantity: stats.physicalQuantity, previousReservedQuantity: previous.reservedQuantity, newReservedQuantity: reserved, previousAvailableQuantity: previous.availableQuantity, newAvailableQuantity: available, createdAt: now, reason: `Edição ${revision} do pedido manual` });

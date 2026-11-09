@@ -1,5 +1,5 @@
 import { applyGarmentProfile, garmentFamily, garmentProfiles, requiresGarmentClassification } from '../../shared/garmentModels';
-import { compatibleGarmentSource, resolveGarmentBase, stockSlug, garmentAvailability, countedReadyInventory } from '../../shared/sharedGarmentStock.js';
+import { compatibleGarmentSource, resolveGarmentBase, stockSlug, garmentAvailability, countedReadyInventory, isGarmentVariantAllowed } from '../../shared/sharedGarmentStock.js';
 import { getDb } from '../firebase.js';
 import { getVariantStats } from './store.service.js';
 import { isProductPublished, normalizeProductStatus } from '../../shared/productPublication.js';
@@ -117,6 +117,7 @@ export async function loadPublicCatalog(database = getDb()) {
       const options = products.find(p => p!.id === product.id)?.garmentOptions || [];
       const variants: Record<string, any> = {};
       for (const option of options) for (const [key, value] of Object.entries(availability[option.slug || option.id]?.variants || {})) {
+        if (!isGarmentVariantAllowed(product, key) || !isGarmentVariantAllowed(option, key)) continue;
         const quantity = Number((value as any).availableQuantity || 0) + Number(variants[key]?.availableQuantity || 0);
         variants[key] = { available: quantity > 0, availableQuantity: quantity };
       }

@@ -36,7 +36,7 @@ export async function transferGarmentsToProduction(transaction: FirebaseFirestor
     working.set(r.item.parentSlug, { ...data, variants });
     const physical = Object.values(variants).reduce<number>((sum, v: any) => sum + Number(v.physicalQuantity ?? v.stock ?? 0), 0);
     const reserved = Object.values(variants).reduce<number>((sum, v: any) => sum + Number(v.reservedQuantity ?? 0), 0);
-    transaction.update(r.invRef, { variants, totalPhysicalStock: physical, stock: physical, totalReservedStock: reserved, totalAvailableStock: physical - reserved, updatedAt: FieldValue.serverTimestamp() });
+    transaction.update(r.invRef, { variants, totalPhysicalStock: physical, stock: physical, totalReservedStock: reserved, totalAvailableStock: physical - reserved, available: physical > reserved, updatedAt: FieldValue.serverTimestamp() });
     transaction.update(r.resRef, { status: 'consumed', source: 'production', consumedAt: now, updatedAt: now });
     transaction.set(db.collection('stock_movements').doc(`${orderId}_production_${r.item.parentSlug}_${r.item.variantKey}`), { orderId, productSlug: r.item.parentSlug, variantKey: r.item.variantKey, quantity, type: 'production_consumption', previousPhysicalQuantity: stats.physicalQuantity, newPhysicalQuantity: stats.physicalQuantity - quantity, previousReservedQuantity: stats.reservedQuantity, newReservedQuantity: stats.reservedQuantity - quantity, previousAvailableQuantity: stats.availableQuantity, newAvailableQuantity: stats.availableQuantity, createdAt: now, reason: `Camisa lisa enviada à estamparia do pedido #${orderId}` });
   }
