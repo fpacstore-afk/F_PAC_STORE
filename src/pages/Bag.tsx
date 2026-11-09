@@ -465,7 +465,7 @@ export default function Bag() {
                       <div>
                         <div className="flex justify-between items-start mb-0.5">
                           <h3 className="font-black text-base uppercase tracking-tight">{item.name}</h3>
-                          <button onClick={() => removeItem(index)} className="text-red-500 hover:bg-red-50 p-1.5 transition-colors">
+                          <button aria-label={`Remover ${item.name} da sacola`} onClick={() => removeItem(index)} className="text-red-500 hover:bg-red-50 p-1.5 transition-colors">
                             <Trash2 size={16} />
                           </button>
                         </div>
@@ -500,17 +500,18 @@ export default function Bag() {
                       <div className="flex justify-between items-end">
                         <div className="flex items-center border border-black/10 min-h-[44px]">
                           <button 
+                            aria-label={`Diminuir quantidade de ${item.name}`}
                             onClick={() => updateQuantity(index, item.quantity - 1)}
                             className="p-4 hover:bg-black/5 transition-colors cursor-pointer min-w-[44px] min-h-[44px] flex items-center justify-center"
                           >
                             <Minus size={14} />
                           </button>
                           <span className="w-10 text-center font-bold">{item.quantity}</span>
-                           <button 
+                           <button
+                            aria-label={`Aumentar quantidade de ${item.name}`}
                             onClick={() => {
-                              const variantKey = `${item.color}_${item.size}`;
-                              const availableStock = getStock(item.baseProductSlug || item.parentSlug || item.slug || item.id, variantKey);
-                              if (item.quantity + 1 > availableStock) {
+                              const proposed = items.map((line, lineIndex) => lineIndex === index ? { ...line, quantity: line.quantity + 1 } : line);
+                              if (loadingInventory || inventoryError || cartAvailabilityIssues(proposed, getStock, catalogProducts).length) {
                                 toast.error('Quantidade máxima disponível para esta cor e tamanho atingida.');
                                 return;
                               }

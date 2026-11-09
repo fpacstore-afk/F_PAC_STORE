@@ -2,7 +2,11 @@
 export function cartAvailabilityIssues(items: any[], getStock: (id: string, variant: string) => number, products: any[] = []) {
   const grouped = new Map<string, { id: string; variant: string; name: string; quantity: number }>();
   for (const item of items) {
-    const id = String((item.garmentModelId && item.stockBaseSlug) || item.baseProductSlug || item.parentSlug || item.slug || item.productId || item.id || '');
+    const product = products.find(p => [p.id, p.slug].filter(Boolean).some(id => [item.productId, item.slug].includes(id)));
+    // A model-specific catalog product may also have counted ready pieces.
+    // A generic design with a selected model must use only that model's base.
+    const fixedModel = product?.garmentModelId && product.garmentModelId === item.garmentModelId && product.stockBaseSlug === item.stockBaseSlug;
+    const id = String((fixedModel && (product.slug || product.id)) || (item.garmentModelId && item.stockBaseSlug) || item.baseProductSlug || item.parentSlug || item.slug || item.productId || item.id || '');
     const variant = String(item.variantKey || `${item.color}_${item.size}`);
     const key = `${id}::${variant}`;
     const previous = grouped.get(key);

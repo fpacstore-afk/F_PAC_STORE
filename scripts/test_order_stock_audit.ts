@@ -1,3 +1,4 @@
+import { cartAvailabilityIssues } from '../shared/cartAvailability';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { requireIsolatedTestDb } from './requireIsolatedTestDb';
@@ -112,6 +113,22 @@ try {
     const disabled = products.map(p => p.id === 'high' ? { ...p, variants: [{ colorName: 'Off White', size: 'M', active: false }] } : p);
     assert.equal(manualVariantBalance(chosen(), 'Off White', 'M', disabled, await inventories()).availableQuantity, 0);
     await releaseStockReservation('HOLD-AUDIT', []);
+  });
+  await check('storefront increments share exact model balances across different designs and direct bases', () => {
+    const stock = (id: string) => id === 'high' ? 3 : id === 'classic' ? 5 : 100;
+    const selected = manualOrderStockItems([draft(2)]);
+    assert.equal(cartAvailabilityIssues([...selected, ...manualOrderStockItems([draft(1,'ZIM-009','logo')])], stock, products).length, 0);
+    assert.equal(cartAvailabilityIssues([...selected, ...manualOrderStockItems([draft(2,'ZIM-009','logo')])], stock, products).length, 1);
+    assert.equal(cartAvailabilityIssues([...selected, ...manualOrderStockItems([draft(5,'TIG-006','logo')])], stock, products).length, 0);
+    assert.equal(cartAvailabilityIssues([...selected, { productId:'high', slug:'high', color:'Off White', size:'M', quantity:2 }], stock, products).length, 1);
+  });
+  await check('fixed-model ready pieces and shared blanks remain separately available in the storefront', () => {
+    const fixed = { ...design, garmentModelId:'ZIM-009', stockBaseSlug:'high' };
+    const other = { ...fixed, id:'logo', slug:'logo' };
+    const stock = (id: string) => id === 'fenix' ? 4 : 1;
+    const item = (productId: string, quantity: number) => ({ productId, slug:productId, garmentModelId:'ZIM-009', stockBaseSlug:'high', color:'Off White',size:'M',quantity });
+    assert.equal(cartAvailabilityIssues([item('fenix',3),item('logo',1)],stock,[fixed,other]).length,0,'three ready pieces do not consume the blank pool');
+    assert.equal(cartAvailabilityIssues([item('fenix',4),item('logo',1)],stock,[fixed,other]).length,1,'both designs cannot consume the same last blank');
   });
   await check('malformed stored quantities cannot authorize a sale', () => {
     for (const data of [{ physicalQuantity: Infinity }, { physicalQuantity: NaN }, { physicalQuantity: 1.5 }, { physicalQuantity: 2, reservedQuantity: -1 }]) {
