@@ -1,13 +1,12 @@
+import { categoryCatalogView, type CategoryCatalogLine } from '../lib/categoryCatalog';
 import { StorefrontPrice } from '../components/StorefrontPrice';
 import { CatalogUnavailable } from '../components/CatalogUnavailable';
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link, Navigate, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { Helmet } from 'react-helmet-async';
-import { collection, onSnapshot } from 'firebase/firestore';
 import { ArrowLeft, ArrowRight } from 'lucide-react';
-import { db } from '../lib/firebase';
 import { products as staticProducts } from '../data/products';
-import { productMatchesStorefrontCategory, buildSellableCatalog, productMatchesCommercialLine, type CommercialLine } from '../lib/catalogProducts';
+import { buildSellableCatalog, getProductCommercialLines, productMatchesCommercialLine } from '../lib/catalogProducts';
 import { getProductUrl, getDisplayPrices } from '../lib/utils';
 import { formatStorefrontCurrency } from '../lib/storefrontPrice';
 import { subscribePublicProductSnapshot } from '../services/publicProducts';
@@ -24,10 +23,6 @@ const PRIME_PRODUCT_BY_CATEGORY: Record<string, string> = {
   bones: 'cap',
 };
 
-
-function normalize(value: unknown) {
-  return String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
-}
 
 export default function ProductCategoryPage() {
   const { category = '' } = useParams();
@@ -50,16 +45,10 @@ export default function ProductCategoryPage() {
     return () => unsub();
   }, []);
 
-  const categoryProducts = useMemo(() => products.filter((product) => productMatchesStorefrontCategory(product, category)), [products, category]);
-  const requestedLine = normalize(searchParams.get('line'));
-  const lineCounts = useMemo(() => ({
-    force: categoryProducts.filter(product => productMatchesCommercialLine(product, 'force')).length,
-    mark: categoryProducts.filter(product => productMatchesCommercialLine(product, 'mark')).length,
-    prime: categoryProducts.filter(product => productMatchesCommercialLine(product, 'prime')).length,
-  }), [categoryProducts]);
-  const selectedLine: Exclude<CommercialLine, 'todos'> = requestedLine === 'force' || requestedLine === 'mark' || requestedLine === 'prime'
-    ? requestedLine : lineCounts.mark > 0 ? 'mark' : 'force';
-  const filtered = useMemo(() => categoryProducts.filter(product => productMatchesCommercialLine(product, selectedLine)), [categoryProducts, selectedLine]);
+  const { categoryProducts, selectedLine, lineCounts, visibleLines, filteredProducts: filtered } = useMemo(
+    () => categoryCatalogView(products, category, searchParams.get('line'), Boolean(PRIME_PRODUCT_BY_CATEGORY[category])),
+    [products, category, searchParams],
+  );
   const linePrices = useMemo(() => {
     const minPrice = (line: 'mark' | 'force') => {
       const prices = categoryProducts.filter(product => productMatchesCommercialLine(product, line))
@@ -69,18 +58,20 @@ export default function ProductCategoryPage() {
     };
     return { mark: minPrice('mark'), force: minPrice('force') };
   }, [categoryProducts]);
-  const selectLine = (line: 'force' | 'mark' | 'prime') => {
+  const selectLine = (line: CategoryCatalogLine) => {
     if (line === 'prime') {
       const product = PRIME_PRODUCT_BY_CATEGORY[category];
       navigate(product ? `/prime?product=${encodeURIComponent(product)}` : '/prime');
       return;
     }
     const params = new URLSearchParams(searchParams);
-    params.set('line', line);
+    if (line === 'all') params.delete('line');
+    else params.set('line', line);
     setSearchParams(params, { replace: true });
   };
 
   if (!STOCK_FAMILIES.some(family => family.id === category)) return <Navigate to="/produtos" replace />;
+  if (selectedLine === 'prime') return <Navigate to={`/prime?product=${encodeURIComponent(PRIME_PRODUCT_BY_CATEGORY[category])}`} replace />;
 
   return (
     <div data-density-page="category" className="min-h-screen bg-[#f7f7f5] pb-20 md:pb-28">
@@ -104,10 +95,10 @@ export default function ProductCategoryPage() {
       </section>
 
       <section className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-3 md:py-8">
-        <div className="mb-3 grid grid-cols-3 gap-2 rounded-2xl border border-black/10 bg-white p-2 shadow-sm">
-          {(['prime', 'mark', 'force'] as const).filter(line => line !== 'prime' || PRIME_PRODUCT_BY_CATEGORY[category]).map(line => (
-            <button key={line} type="button" onClick={() => selectLine(line)} className={`min-h-12 rounded-xl px-2 text-[9px] md:text-xs font-black uppercase tracking-[0.12em] transition-colors ${selectedLine === line ? 'bg-black text-[#eab308]' : 'bg-[#f5f5f2] text-black'}`}>
-              <span className="block">{line}</span><span className={`mt-0.5 block text-[7px] font-bold ${selectedLine === line ? 'text-white/50' : 'text-black/35'}`}>{line === 'prime' ? 'Preço no configurador' : catalogError ? 'Indisponível' : linePrices[line] !== null ? `A partir de ${formatStorefrontCurrency(linePrices[line]!)}` : `${lineCounts[line]} ${lineCounts[line] === 1 ? 'produto' : 'produtos'}`}</span>
+        <div role="group" aria-label="Filtrar produtos por linha" className="mb-3 flex flex-wrap gap-2 rounded-2xl border border-black/10 bg-white p-2 shadow-sm">
+          {visibleLines.map(line => (
+            <button key={line} type="button" onClick={() => selectLine(line)} aria-pressed={line === selectedLine} className={`min-h-12 min-w-[90px] flex-1 rounded-xl px-2 text-[9px] md:text-xs font-black uppercase tracking-[0.12em] transition-colors ${selectedLine === line ? 'bg-black text-[#eab308]' : 'bg-[#f5f5f2] text-black'}`}>
+              <span className="block">{line === 'all' ? 'Todos' : line}</span><span className={`mt-0.5 block text-[7px] font-bold ${selectedLine === line ? 'text-white/50' : 'text-black/35'}`}>{catalogError ? 'Indisponível' : line === 'all' ? `${lineCounts.all} ${lineCounts.all === 1 ? 'produto' : 'produtos'}` : line === 'prime' ? 'Preço no configurador' : linePrices[line] !== null ? `A partir de ${formatStorefrontCurrency(linePrices[line]!)}` : `${lineCounts[line]} ${lineCounts[line] === 1 ? 'produto' : 'produtos'}`}</span>
             </button>
           ))}
         </div>
@@ -152,7 +143,7 @@ export default function ProductCategoryPage() {
                     </span>
                   </div>
                   <div className="p-3 md:p-4">
-                    <p className="text-[7px] font-black uppercase tracking-[0.16em] text-[#9a7100]">{selectedLine}</p>
+                    <p className="text-[7px] font-black uppercase tracking-[0.16em] text-[#9a7100]">{selectedLine === 'all' ? getProductCommercialLines(product).filter(line => line !== 'todos').join(' · ') || 'F PAC STORE' : selectedLine}</p>
                     <h2 className="mt-1 text-xs md:text-lg font-black uppercase text-black leading-tight line-clamp-2">{product.name}</h2>
                     <div className="mt-3 flex items-end justify-between gap-3">
                       <div>
@@ -169,9 +160,10 @@ export default function ProductCategoryPage() {
           </div>
         ) : (
           <div className="max-w-2xl mx-auto bg-white border border-black/10 rounded-2xl p-8 md:p-12 text-center shadow-sm">
-            <p className="text-[#b88700] text-[10px] font-black uppercase tracking-[0.25em]">Linha {selectedLine}</p>
-            <h2 className="mt-2 text-xl md:text-2xl font-black uppercase italic text-black">Nenhum produto publicado</h2>
-            <p className="mt-3 text-gray-500 text-sm leading-relaxed">Quando um produto desta categoria for cadastrado na coleção {selectedLine.toUpperCase()}, ele aparecerá aqui automaticamente.</p>
+            <p className="text-[#b88700] text-[10px] font-black uppercase tracking-[0.25em]">{selectedLine === 'all' ? meta.title : `Linha ${selectedLine}`}</p>
+            <h2 className="mt-2 text-xl md:text-2xl font-black uppercase italic text-black">{categoryProducts.length > 0 ? 'Nenhum produto nesta linha' : 'Nenhum produto publicado nesta categoria'}</h2>
+            <p className="mt-3 text-gray-500 text-sm leading-relaxed">{categoryProducts.length > 0 ? 'Há outros produtos publicados nesta categoria. Veja todas as opções disponíveis.' : 'As novidades desta categoria aparecerão aqui quando forem publicadas.'}</p>
+            {selectedLine !== 'all' && <button type="button" onClick={() => selectLine('all')} className="mt-4 min-h-11 rounded-lg bg-black px-4 py-2 text-xs font-bold text-white">Ver todos os produtos desta categoria</button>}
           </div>
         )}
       </section>

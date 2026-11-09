@@ -108,7 +108,8 @@
     "test:catalog-integer-prices": "NODE_ENV=test node --import tsx scripts/test_catalog_integer_prices.ts",
     "test:auth-security-configuration": "node --import tsx scripts/test_auth_security_configuration.ts",
     "test:order-stock-audit": "NODE_ENV=test node --import tsx scripts/test_order_stock_audit.ts",
-    "test:stock-availability-repair": "NODE_ENV=test node --import tsx scripts/test_stock_availability_repair.ts"
+    "test:stock-availability-repair": "NODE_ENV=test node --import tsx scripts/test_stock_availability_repair.ts",
+    "test:category-catalog-discovery": "NODE_ENV=test node --import tsx scripts/test_category_catalog_discovery.ts"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
