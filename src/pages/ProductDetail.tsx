@@ -2236,24 +2236,13 @@ export default function ProductDetail() {
                 </div>
 
                 {/* Structured Wear Tips Banner */}
-                <div className="mt-3 text-[10px] text-gray-500 bg-zinc-900/[0.02] border border-black/5 p-3.5 rounded-xl flex items-center justify-between gap-4 font-sans uppercase">
+                <div className="mt-3 text-[10px] text-gray-500 bg-zinc-900/[0.02] border border-black/5 p-3.5 rounded-xl font-sans uppercase">
                   <div>
                     <span className="font-extrabold text-black tracking-wide">
                       RECOMENDAÇÃO DE AJUSTE:{" "}
                     </span>
                     <span>Confira as medidas cadastradas para escolher o tamanho adequado ao seu corpo.</span>
                   </div>
-                  <button
-                    id="btn-scroll-sizechart"
-                    hidden={getProductVisualKind(product) === 'cap'}
-                    onClick={() => {
-                      const el = document.getElementById("guia-de-medidas");
-                      if (el) el.scrollIntoView({ behavior: "smooth" });
-                    }}
-                    className="text-[#eab308] hover:underline font-black uppercase tracking-wider text-[8.5px] cursor-pointer shrink-0 text-right"
-                  >
-                    Ver Tabela
-                  </button>
                 </div>
               </div>
 
