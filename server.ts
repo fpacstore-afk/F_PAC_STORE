@@ -273,9 +273,15 @@ app.get('/api/garment-models', catalogReadLimiter, cors({ origin: 'https://fpac-
     res.json({ revision: GARMENT_MODEL_REVISION, profiles });
   } catch { res.status(503).json({ error: 'GARMENT_MODELS_UNAVAILABLE' }); }
 });
-app.use(cors({
+// O Estúdio de Mockups consulta somente o catálogo público e a disponibilidade
+// já sanitizada. Não conceder a esse domínio CORS nas rotas administrativas.
+const mockupStudioOrigin = 'https://fpac-estudio-mockups.fpacstore.chatgpt.site';
+app.use(cors((req, optionsCallback) => optionsCallback(null, {
   origin: (origin, callback) => {
-    if (isAllowedOrigin(origin)) {
+    const isMockupCatalogRead = origin === mockupStudioOrigin &&
+      (req.method === 'GET' || req.method === 'OPTIONS') &&
+      (req.path === '/api/products' || req.path === '/api/products/');
+    if (isAllowedOrigin(origin) || isMockupCatalogRead) {
       callback(null, true);
     } else {
       callback(Object.assign(new Error('Origem não permitida.'), { status: 403 }));
@@ -284,7 +290,7 @@ app.use(cors({
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'idempotency-key', 'x-admin-api-key', 'x-sync-secret', 'x-signature', 'x-request-id', 'x-file-name', 'x-media-kind', 'x-tracking-token']
-}));
+})));
 
 // A cheap entry limiter runs before parsing untrusted bodies.
 app.use('/api', entryLimiter);
