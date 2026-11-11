@@ -10,7 +10,8 @@ import { useParams, Link, useNavigate, useSearchParams } from "react-router-dom"
 import { getProductBySlug, products as staticProducts } from "../data/products";
 import { STAMP_CATEGORIES, normalizeStampCategory } from "../constants/stampCategories";
 import { useCart } from "../hooks/useCart";
-import { cn, getProductUrl, getDisplayPrices } from "../lib/utils";
+import { cn, getProductUrl, getDisplayPrices, getEffectivePrice } from "../lib/utils";
+import { useCampaign1111Active } from '../hooks/useCampaign1111Active';
 import { safeStorage } from "../lib/storage";
 import {
   Clock,
@@ -128,6 +129,7 @@ const PRIME_LOCATIONS = ["Peito Central", "Peito Esquerdo", "Peito Direito", "Co
 
 
 export default function ProductDetail() {
+  const campaign1111Active = useCampaign1111Active();
   const { slug } = useParams();
   const initialProduct = resolveCatalogProduct(slug || "", staticProducts, []);
   const [catalogProduct, setProduct] = useState<Product | null>(
@@ -852,8 +854,9 @@ export default function ProductDetail() {
     }
   };
 
-  const { originalPrice, promoPrice, hasDiscount, effectivePrice, discountPercent } = getDisplayPrices(product);
-  const currentPrice = effectivePrice;
+  const { originalPrice, promoPrice, hasDiscount, effectivePrice, discountPercent } = getDisplayPrices(product, campaign1111Active);
+  // Store the base price so the timed discount can expire in an existing bag.
+  const currentPrice = getEffectivePrice(product);
 
   if (loading) {
     return (
@@ -2073,7 +2076,7 @@ export default function ProductDetail() {
                 <div className="bg-white rounded-[1.5rem] border border-neutral-100 p-5 shadow-[0_4px_20px_rgba(0,0,0,0.01)] flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                   <div className="space-y-0.5">
                     <span className="text-[8px] text-neutral-400 font-extrabold uppercase tracking-widest block font-mono">
-                      CURADORIA F PAC
+                      {effectivePrice < currentPrice ? 'OFERTA 11.11' : 'CURADORIA F PAC'}
                     </span>
                     <div className="flex items-baseline gap-2 flex-wrap">
                       <StorefrontPrice price={effectivePrice} originalPrice={hasDiscount ? originalPrice : undefined} size="detail" />

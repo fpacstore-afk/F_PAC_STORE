@@ -14,6 +14,8 @@ import { useCart } from '../hooks/useCart';
 import { getDailyPromoCode } from '../lib/promo';
 import { getActivePromotion } from '../services/promotions/getActivePromotion';
 import { WeeklyPromotion } from '../types/promotions';
+import { CAMPAIGN_1111_URL } from '../../shared/campaign1111';
+import { useCampaign1111Active } from '../hooks/useCampaign1111Active';
 
 import { db } from '../lib/firebase';
 import { collection, onSnapshot } from 'firebase/firestore';
@@ -218,12 +220,17 @@ export function Navbar() {
   };
 
   const isCampaignActive = activePromo && activePromo.active;
+  const campaign1111Active = useCampaign1111Active();
 
   return (
     <>
       <div data-site-header className="fixed top-0 left-0 right-0 z-50">
         {/* Top Promo Bar - Continuous Ticker */}
-        <div 
+        {campaign1111Active ? (
+          <Link to={CAMPAIGN_1111_URL} className={cn('flex items-center justify-center gap-2 bg-[#eab308] px-3 text-center text-[10px] font-black uppercase tracking-wide text-black md:text-xs', isScrolled ? 'h-8 md:h-10' : 'h-10 md:h-12')}>
+            11.11 F PAC STORE <span className="underline underline-offset-2">Ver ofertas de hoje</span>
+          </Link>
+        ) : <div
           onClick={handlePromoClick}
           className={cn(
             "w-full bg-[#eab308] text-black transition-all duration-500 ease-in-out flex items-center select-none active:scale-[0.98] z-[51] relative overflow-hidden group/ticker",
@@ -292,7 +299,7 @@ export function Navbar() {
               </div>
             </div>
           )}
-        </div>
+        </div>}
 
         <nav
           className={cn(

@@ -27,7 +27,7 @@ export function ManualProductPicker({ products, selected, onSelect, formatPrice,
 }
 
 function ProductPrice({ product, formatPrice }: { product: any; formatPrice: (value: number) => string }) {
-  const prices = getDisplayPrices(product);
+  const prices = getDisplayPrices(product, false);
   return <span className="block text-xs text-black">{prices.hasDiscount && <><del className="mr-2 text-gray-500">{formatPrice(prices.originalPrice)}</del><span className="mr-2 font-bold text-green-700">Promoção</span></>}<strong>{formatPrice(prices.effectivePrice)}</strong></span>;
 }
 

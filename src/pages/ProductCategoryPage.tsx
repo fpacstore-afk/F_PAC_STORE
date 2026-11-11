@@ -8,6 +8,7 @@ import { ArrowLeft, ArrowRight } from 'lucide-react';
 import { products as staticProducts } from '../data/products';
 import { buildSellableCatalog, getProductCommercialLines, productMatchesCommercialLine } from '../lib/catalogProducts';
 import { getProductUrl, getDisplayPrices } from '../lib/utils';
+import { useCampaign1111Active } from '../hooks/useCampaign1111Active';
 import { formatStorefrontCurrency } from '../lib/storefrontPrice';
 import { subscribePublicProductSnapshot } from '../services/publicProducts';
 import { STOCK_FAMILIES } from '../../shared/stockFamilies';
@@ -25,6 +26,7 @@ const PRIME_PRODUCT_BY_CATEGORY: Record<string, string> = {
 
 
 export default function ProductCategoryPage() {
+  const campaign1111Active = useCampaign1111Active();
   const { category = '' } = useParams();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -52,12 +54,12 @@ export default function ProductCategoryPage() {
   const linePrices = useMemo(() => {
     const minPrice = (line: 'mark' | 'force') => {
       const prices = categoryProducts.filter(product => productMatchesCommercialLine(product, line))
-        .map(product => getDisplayPrices(product).effectivePrice)
+        .map(product => getDisplayPrices(product, campaign1111Active).effectivePrice)
         .filter(price => Number.isFinite(price) && price > 0);
       return prices.length ? Math.min(...prices) : null;
     };
     return { mark: minPrice('mark'), force: minPrice('force') };
-  }, [categoryProducts]);
+  }, [categoryProducts, campaign1111Active]);
   const selectLine = (line: CategoryCatalogLine) => {
     if (line === 'prime') {
       const product = PRIME_PRODUCT_BY_CATEGORY[category];

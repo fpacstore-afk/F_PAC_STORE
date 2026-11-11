@@ -9,7 +9,10 @@ import { ArrowLeft, ArrowRight, ChevronDown, Loader2, PackageSearch, Search, Sli
 import { db } from '../lib/firebase';
 import { products as staticProducts } from '../data/products';
 import { buildSellableCatalog, productMatchesCommercialLine } from '../lib/catalogProducts';
-import { getDisplayPrices, getEffectivePrice, getProductUrl } from '../lib/utils';
+import { getDisplayPrices, getProductUrl } from '../lib/utils';
+import { Campaign1111 } from '../components/Campaign1111';
+import { useCampaign1111Active } from '../hooks/useCampaign1111Active';
+import { isCampaign1111Product } from '../../shared/campaign1111';
 import { useInventory } from '../hooks/useInventory';
 import { getActivePromotion } from '../services/promotions/getActivePromotion';
 import { PromotionBadge } from '../components/promotions/PromotionBadge';
@@ -54,6 +57,9 @@ export default function CatalogStorefront() {
   const [showFilters, setShowFilters] = useState(false);
 
   const isCampaignOnly = searchParams.get('promo') === 'active';
+  const campaign1111Active = useCampaign1111Active();
+  const campaign1111Requested = searchParams.get('campaign') === '1111';
+  const campaign1111Only = campaign1111Requested && campaign1111Active;
 
   const colorOptions = useMemo(() => {
     const values = products.flatMap(product => [
@@ -108,6 +114,7 @@ export default function CatalogStorefront() {
 
     const filtered = products.filter(product => {
       if (!Array.isArray(product.images) || product.images.length === 0) return false;
+      if (campaign1111Only && !isCampaign1111Product(product.id)) return false;
 
       if (term && !matchesStorefrontSearch(product, search)) return false;
 
@@ -131,7 +138,7 @@ export default function CatalogStorefront() {
         if (!values.some(value => normalize(value) === normalize(sizeFilter))) return false;
       }
 
-      const effectivePrice = getEffectivePrice(product);
+      const effectivePrice = getDisplayPrices(product, campaign1111Active).effectivePrice;
       if (minPrice !== '' && effectivePrice < Number(minPrice)) return false;
       if (maxPrice !== '' && effectivePrice > Number(maxPrice)) return false;
 
@@ -149,15 +156,15 @@ export default function CatalogStorefront() {
     });
 
     return [...filtered].sort((a, b) => {
-      if (sortBy === 'price-asc') return getEffectivePrice(a) - getEffectivePrice(b);
-      if (sortBy === 'price-desc') return getEffectivePrice(b) - getEffectivePrice(a);
+      if (sortBy === 'price-asc') return getDisplayPrices(a, campaign1111Active).effectivePrice - getDisplayPrices(b, campaign1111Active).effectivePrice;
+      if (sortBy === 'price-desc') return getDisplayPrices(b, campaign1111Active).effectivePrice - getDisplayPrices(a, campaign1111Active).effectivePrice;
       if (sortBy === 'newest') {
         return catalogCreatedTime(b.createdAt) - catalogCreatedTime(a.createdAt);
       }
       if (Boolean(a.isBestseller) !== Boolean(b.isBestseller)) return a.isBestseller ? -1 : 1;
       return catalogCreatedTime(b.createdAt) - catalogCreatedTime(a.createdAt);
     });
-  }, [products, search, collectionFilter, colorFilter, sizeFilter, minPrice, maxPrice, hideOutOfStock, sortBy, brandConfig, isCampaignOnly, activePromo, isAvailable, getStock]);
+  }, [products, search, collectionFilter, colorFilter, sizeFilter, minPrice, maxPrice, hideOutOfStock, sortBy, brandConfig, isCampaignOnly, activePromo, isAvailable, getStock, campaign1111Active, campaign1111Only]);
 
   const clearFilters = () => {
     const params = new URLSearchParams(searchParams);
@@ -187,12 +194,12 @@ export default function CatalogStorefront() {
   return (
     <div data-density-page="catalog" className="min-h-screen bg-[#f7f7f5] pb-24">
       <Helmet>
-        <title>Catálogo Completo | F PAC STORE</title>
+        <title>{campaign1111Only ? 'Ofertas 11.11 | F PAC STORE' : 'Catálogo Completo | F PAC STORE'}</title>
         <meta name="description" content="Explore o catálogo completo F PAC STORE com busca, filtros e preços atualizados pelas fontes atuais da loja." />
         <link rel="canonical" href="https://www.fpacstore.com.br/catalog/all" />
       </Helmet>
 
-      <section className="bg-black text-white px-4 sm:px-8 py-5 md:py-10">
+      {campaign1111Only ? <Campaign1111 full /> : <section className="bg-black text-white px-4 sm:px-8 py-5 md:py-10">
         <div className="max-w-7xl mx-auto">
           <Link to="/produtos" className="inline-flex min-h-8 items-center gap-2 text-[8px] md:text-[10px] font-black uppercase tracking-[0.18em] text-white/55 hover:text-[#eab308] transition-colors">
             <ArrowLeft size={15} /> Navegar por categorias
@@ -203,10 +210,16 @@ export default function CatalogStorefront() {
             <p className="mt-2 max-w-2xl text-xs md:text-sm text-white/60">{copy.description}</p>
           </div>
         </div>
-      </section>
+      </section>}
 
       <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-3 md:py-5 relative z-10">
         <section className="bg-white border border-black/10 rounded-2xl shadow-sm p-2.5 md:p-5">
+          {campaign1111Requested && (
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2 px-2 py-1 text-sm">
+              <p className="font-semibold">{campaign1111Only ? 'Camisetas participantes' : 'A campanha 11.11 encerrou.'}</p>
+              <Link to="/catalog/all" className="inline-flex min-h-10 items-center font-bold underline underline-offset-4">Ver catálogo completo</Link>
+            </div>
+          )}
           {isCampaignOnly && activePromo?.active && (
             <div className="mb-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 rounded-xl bg-[#eab308]/10 border border-[#eab308]/30 p-4">
               <div><p className="text-[9px] font-black uppercase tracking-[0.2em] text-[#8a6600]">Campanha ativa</p><p className="mt-1 font-black text-black">{activePromo.title}</p>{activePromo.description && <p className="mt-1 text-xs text-black/55">{activePromo.description}</p>}</div>
