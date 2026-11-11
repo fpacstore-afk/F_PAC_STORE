@@ -30,6 +30,8 @@ import { getPublicApiUrl } from '../lib/api';
 import { productMatchesCommercialLine, buildSellableCatalog } from '../lib/catalogProducts';
 import { getDisplayPrices, getProductUrl } from '../lib/utils';
 import { StorefrontPrice } from '../components/StorefrontPrice';
+import { Campaign1111 } from '../components/Campaign1111';
+import { useCampaign1111Active } from '../hooks/useCampaign1111Active';
 
 const INSTAGRAM_URL = 'https://www.instagram.com/f_pac_store';
 
@@ -43,6 +45,7 @@ type InstagramFeedItem = {
 };
 
 export default function HomeV2() {
+  const campaign1111Active = useCampaign1111Active();
   const homeRef = useRef<HTMLDivElement>(null);
   useHomeMotion(homeRef);
   const [hero, setHero] = useState<MediaSlotConfig | null>(null);
@@ -204,6 +207,7 @@ export default function HomeV2() {
         <meta name="twitter:image" content="https://fpacstore.com.br/estampas/logo-fpac.png" />
       </Helmet>
 
+      {campaign1111Active && <Campaign1111 />}
       <HomeHeroCarousel slides={heroSlides} />
  
       <HomeCollectionStrip products={carouselProducts} />

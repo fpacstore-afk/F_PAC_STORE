@@ -8,6 +8,7 @@ import { shippingParcel } from '../shared/shippingParcel';
 import { getDailyPromoCode } from '../src/lib/promo';
 import { getFlashSaleInfo } from '../src/lib/flashSale';
 import type { WeeklyPromotion } from '../src/types/promotions';
+import { CAMPAIGN_1111_START, CAMPAIGN_1111_END, campaign1111UnitPrice } from '../shared/campaign1111';
 
 const db = requireIsolatedTestDb();
 const now = new Date('2026-10-16T01:00:00Z').getTime();
@@ -88,6 +89,48 @@ await check('promotion membership uses canonical product identity and category',
   await campaignRef.set(promotion);
   const result=await calculateOrderPricing({items:[{...item,id:'other-product'}],customerInfo:{cep:'89234100'}},{...delivery,now});
   assert.equal(result.pricing.promotionalDiscount,0);
+  await campaignRef.delete();
+});
+await check('11.11 checkout honors the advertised prices and pairs only participating shirts', async () => {
+  const campaignTime = CAMPAIGN_1111_START + 12 * 60 * 60 * 1000;
+  const traditional = { ...item, id: '7Aykx8nxgXXTm8h9YSxW', slug: 'traditional-mark', price: 79 };
+  const oversized = { ...item, id: '95iMSkEJstNemV7GAY9x', slug: 'oversized-force', price: 79 };
+  const oversizedLarge = { ...item, id: 'C4utBrpvXm9Tg5921MMY', slug: 'oversized-mark', price: 89 };
+  const standard = campaign({ discount_value: 0 });
+  await campaignRef.set(standard);
+  for (const shirt of [traditional, oversized, oversizedLarge]) {
+    await db.collection('products').doc(shirt.id).set({ ...shirt, price: shirt.price + 10, promotionalPrice: shirt.price, status: 'active' });
+  }
+  const cases = [
+    { items: [traditional], expected: 69.90 },
+    { items: [oversized], expected: 69.90 },
+    { items: [oversizedLarge], expected: 79.90 },
+    { items: [{ ...traditional, quantity: 2 }], expected: 129.90 },
+    { items: [{ ...oversized, quantity: 2 }], expected: 129.90 },
+    { items: [traditional, oversizedLarge], expected: 139.90 },
+    { items: [{ ...oversized, quantity: 3 }], expected: 199.80 },
+    { items: [oversized, item], expected: 149.80 },
+  ];
+  for (const entry of cases) {
+    for (const method of ['visa', 'pix']) {
+      const front = calculateStorefrontTotals({ items: entry.items, promotion: standard, shipping: 0, city: 'Joinville', pixEnabled: method === 'pix', now: campaignTime });
+      const back = await calculateOrderPricing({
+        items: entry.items.map(line => ({ ...line, price: 0.01, productId: traditional.id })),
+        customerInfo: {}, paymentMethodId: method,
+      }, { priceOnly: true, now: campaignTime });
+      const expectedCents = Math.round(entry.expected * 100);
+      const pixCents = method === 'pix' ? Math.round(expectedCents * 0.05) : 0;
+      assert.equal(front.total, (expectedCents - pixCents) / 100);
+      assert.equal(back.pricing.total, front.total);
+      assert.equal(back.pricing.weeklyPromotionDiscount, front.promotionDiscount);
+    }
+  }
+  assert.equal(campaign1111UnitPrice(oversized.id, 49, campaignTime), 49);
+  for (const outside of [CAMPAIGN_1111_START - 1, CAMPAIGN_1111_END]) {
+    const back = await calculateOrderPricing({ items: [traditional], customerInfo: {} }, { priceOnly: true, now: outside });
+    assert.equal(back.pricing.total, 79);
+    assert.equal(back.pricing.weeklyPromotionDiscount, 0);
+  }
   await campaignRef.delete();
 });
 await check('expired and future campaigns are excluded and priority matches the storefront', () => {

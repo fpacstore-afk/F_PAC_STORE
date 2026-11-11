@@ -1,5 +1,6 @@
 import { clsx, type ClassValue } from "clsx"
 import { twMerge } from "tailwind-merge"
+import { campaign1111UnitPrice } from '../../shared/campaign1111';
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
@@ -183,16 +184,17 @@ export function getEffectivePrice(product: { price?: number; promotionalPrice?: 
 /**
  * Helper to extract full display price information (effective price, original price, discount badge and percent)
  */
-export function getDisplayPrices(product: { price?: number; promotionalPrice?: number | null } | null | undefined) {
+export function getDisplayPrices(
+  product: { id?: string; price?: number; promotionalPrice?: number | null } | null | undefined,
+  includeCampaign = true,
+) {
   const originalPrice = Number(product?.price) || 0;
-  const promoPrice = (product?.promotionalPrice !== undefined && product?.promotionalPrice !== null && Number(product.promotionalPrice) > 0)
-    ? Number(product.promotionalPrice)
-    : null;
-  
-  const hasDiscount = promoPrice !== null && promoPrice < originalPrice;
-  const effectivePrice = hasDiscount ? promoPrice : originalPrice;
+  const regularPrice = getEffectivePrice(product);
+  const effectivePrice = includeCampaign ? campaign1111UnitPrice(product?.id, regularPrice) : regularPrice;
+  const hasDiscount = effectivePrice < originalPrice;
+  const promoPrice = hasDiscount ? effectivePrice : null;
   const discountPercent = hasDiscount && originalPrice > 0 
-    ? Math.round(((originalPrice - promoPrice) / originalPrice) * 100) 
+    ? Math.round(((originalPrice - effectivePrice) / originalPrice) * 100)
     : 0;
 
   return {

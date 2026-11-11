@@ -5,6 +5,7 @@ import { calculateCartMoney, fromCents, toCents } from '../src/lib/money';
 import { getDailyPromoCode } from '../src/lib/promo';
 import { getFlashSaleInfo } from '../src/lib/flashSale';
 import { qualifiesForFreeShipping } from './shippingThreshold';
+import { campaign1111CartOffer } from './campaign1111';
 
 /** One monetary policy for the storefront and the authoritative checkout. */
 export function calculateStorefrontTotals(input: {
@@ -41,12 +42,18 @@ export function calculateStorefrontTotals(input: {
       : promotion.pix_discount ?? (promotion.discount_value === null ? 0 : promotion.discount_value ?? 10);
   } else if (promotion?.pix_discount !== undefined) pixDiscountRate = promotion.pix_discount === null ? 0 : promotion.pix_discount;
   const flash = getFlashSaleInfo(now);
+  const flashSaleDiscount = flash.isActive && input.items.length > 0 && !promotion ? flash.discountValue : 0;
+  const campaign = campaign1111CartOffer(input.items, now);
+  const useCampaign = toCents(campaign.discount) > toCents(applied.promotionDiscount) + toCents(flashSaleDiscount);
   const money = calculateCartMoney({
-    items: input.items, promotionDiscount: applied.promotionDiscount,
-    flashSaleDiscount: flash.isActive && input.items.length > 0 && !promotion ? flash.discountValue : 0,
+    items: input.items, promotionDiscount: useCampaign ? campaign.discount : applied.promotionDiscount,
+    flashSaleDiscount: useCampaign ? 0 : flashSaleDiscount,
     couponRate, pixRate: pixDiscountRate, pixEnabled: input.pixEnabled, shipping,
   });
-  return { ...money, pixDiscountRate, shippingDiscount, weeklyPromotionLabel: applied.discountLabel };
+  const weeklyPromotionLabel = useCampaign
+    ? (campaign.hasCombo ? 'Ofertas e combos 11.11' : 'Oferta 11.11')
+    : applied.discountLabel;
+  return { ...money, pixDiscountRate, shippingDiscount, weeklyPromotionLabel };
 }
 
 export function selectActivePromotion(promotions: WeeklyPromotion[], now = Date.now()): WeeklyPromotion | null {
