@@ -9,6 +9,7 @@ import { SECURITY_HEADERS } from './shared/securityHeaders.js';
 import { denyPrivateFiles } from './server/middleware/privateFiles.js';
 import { correctRecordedPaymentController } from './server/controllers/paymentCorrection.controller.js';
 import { sharedRequestLimit, safeApiError } from './server/middleware/requestSecurity.js';
+import { listStockComponents, saveStockComponent, prepareStockProductCost } from './server/controllers/stockComponents.controller.js';
 import { getInventoryOverview, saveInventoryCount } from './server/controllers/inventoryCount.controller.js';
 import { getEmailDeliveryHistory } from './server/services/emailDelivery.service.js';
 import { saveCompanyMovementFromSheet } from './server/services/companyMovementSheet.service';
@@ -655,6 +656,8 @@ apiRouter.post("/admin/orders/:orderId/gateway-fee", adminApiLimiter, authentica
 apiRouter.post("/admin/orders/:orderId/shipping-status", adminApiLimiter, authenticateAdmin, updateOrderShippingStatus);
 apiRouter.put("/admin/orders/:orderId/shipping-status", adminApiLimiter, authenticateAdmin, updateOrderShippingStatus);
 apiRouter.post("/admin/stock/bulk-adjust", adminApiLimiter, authenticateAdmin, recordBulkStockMovement);
+apiRouter.get('/admin/stock/components', adminApiLimiter, authenticateAdmin, listStockComponents);
+apiRouter.put('/admin/stock/components/:componentId', adminApiLimiter, authenticateAdmin, saveStockComponent);
 apiRouter.get('/admin/stock/inventory-overview', adminApiLimiter, authenticateAdmin, getInventoryOverview);
 apiRouter.post('/admin/stock/inventory-counts', adminApiLimiter, authenticateAdmin, saveInventoryCount);
 apiRouter.post("/admin/stock/movement", adminApiLimiter, authenticateAdmin, recordStockMovement);
@@ -1613,6 +1616,7 @@ apiRouter.put("/admin/product-costs/:productId", adminApiLimiter, authenticateAd
         : null,
       updatedAt: FieldValue.serverTimestamp()
     };
+    const stockRecipe = req.body?.costCalculation?.method === 'stock_components_v1';
     await dbInstance.runTransaction(async (tx: any) => {
       const ref = dbInstance.collection('product_costs').doc(productId);
       const [productDoc, config, existing] = await Promise.all([
@@ -1620,6 +1624,15 @@ apiRouter.put("/admin/product-costs/:productId", adminApiLimiter, authenticateAd
         tx.get(dbInstance.collection('pricing_workbench').doc('catalog')), tx.get(ref)
       ]);
       if (!productDoc.exists) throw new Error('Produto não encontrado para o custo.');
+      if (stockRecipe) {
+        try {
+          payload.costCalculation = await prepareStockProductCost(dbInstance, tx, productId, numericCost, req.body.costCalculation);
+        } catch (error) {
+          throw Object.assign(new Error((error as Error).message), { stockRecipeConflict: true });
+        }
+        tx.set(ref, payload, { merge: true });
+        return;
+      }
       const existingCost = Number(existing.data()?.costPrice ?? existing.data()?.cost);
       const keepRecorded = existingCost > 0 && numericCost === existingCost
         && (!existing.data()?.costCalculation?.productRecipeKey || existing.data().costCalculation.productRecipeKey === productCostRecipeKey(productDoc.data()));
@@ -1634,6 +1647,7 @@ apiRouter.put("/admin/product-costs/:productId", adminApiLimiter, authenticateAd
     });
     return res.json({ success: true });
   } catch (error: any) {
+    if (error?.stockRecipeConflict) return res.status(409).json({ error: error.message });
     logger.error(`❌ [PRODUCT-COSTS-SAVE] ${error.message}`);
     return res.status(500).json({ error: "Não foi possível salvar o custo do produto." });
   }

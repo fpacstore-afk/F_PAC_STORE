@@ -38,6 +38,7 @@ import { AccountsPayableManager } from './admin/financial/AccountsPayableManager
 import { SuppliersManager } from './admin/financial/SuppliersManager';
 import { CashForecastView } from './admin/financial/CashForecastView';
 import { OrderFinancialDrawer } from './admin/financial/OrderFinancialDrawer';
+import { FinancialPlan } from './admin/financial/FinancialPlan';
 import { FinancialGoalSummary, FinancialGoalsView } from './admin/financial/FinancialGoalsView';
 import toast from 'react-hot-toast';
 import { getApiUrl, authenticatedFetch } from '../lib/api';
@@ -129,7 +130,8 @@ export type FinancialSubTab =
   | 'orders'
   | 'receipts'
   | 'closeout'
-  | 'mei';
+  | 'mei'
+  | 'plan';
 
 export interface AdminFinancialProps {
   initialSubTab?: FinancialSubTab;
@@ -1194,6 +1196,7 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
           { id: 'cashflow', label: '4. Entradas e saídas', icon: <Clock size={14} /> },
           { id: 'receivables', label: '5. Contas a Receber', icon: <CreditCard size={14} /> },
           { id: 'payables', label: '6. Contas a Pagar', icon: <Building2 size={14} /> },
+          { id: 'plan', label: 'Planejamento', icon: <Target size={14} /> },
           { id: 'goals', label: '7. Metas', icon: <Target size={14} /> },
           { id: 'suppliers', label: '8. Fornecedores', icon: <Truck size={14} /> },
           { id: 'ledger', label: '9. Histórico', icon: <FileText size={14} /> },
@@ -1218,6 +1221,7 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
         ))}
       </div>
 
+      {activeSubTab === 'plan' && isAdmin && <FinancialPlan />}
       {activeSubTab === 'closeout' && <MonthlyCloseout />}
       {activeSubTab === 'receipts' && <FinancialReceiptsView key={periodFilter} orders={orders} range={analysisRange} onOpenOrder={setSelectedOrderForDrawer} />}
       {activeSubTab === 'register' && <CompanyCashRegister revisionKey={cashRegisterRevision}
@@ -1422,16 +1426,16 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
             </div>
           </div>
 
-          {/* Canonical DRE Statement (Demonstrativo do Resultado do Exercício) */}
+          {/* Canonical DRE Statement (Recebimentos e custos dos pedidos) */}
           <div className="bg-white border p-6 md:p-8 space-y-6">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-black/10 pb-4">
               <div>
                 <div className="flex items-center gap-2">
                   <span className="bg-black text-[#eab308] px-2 py-0.5 text-[8px] font-black uppercase tracking-widest font-mono">
-                    DRE OFICIAL
+                    RESULTADO GERENCIAL
                   </span>
                   <span className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">
-                    Demonstrativo do Resultado do Exercício
+                    Recebimentos e custos dos pedidos
                   </span>
                 </div>
                 <h3 className="text-xl font-black uppercase italic tracking-tight mt-1 text-black">
@@ -1454,6 +1458,11 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
                 </span>
               </div>
             </div>
+
+            <p className="px-4 pt-3 text-xs text-gray-600">A análise combina valores recebidos e custos dos pedidos selecionados pela data da venda. O caixa considera as datas de pagamento.</p>
+            {(dreStats.ordersWithEstimatedFees > 0 || dreStats.ordersWithoutShippingCost > 0) && <p className="px-4 pt-2 text-xs text-amber-900">
+              {dreStats.ordersWithEstimatedFees} pedido(s) com taxa estimada · {dreStats.ordersWithoutShippingCost} com frete cobrado e custo sem confirmação.
+            </p>}
 
             {/* DRE Waterfall Visual Cards */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -1621,6 +1630,13 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
                     <div className="font-mono font-medium text-gray-800">-{formatMoney(dreStats.variableExpenses)}</div>
                   </div>
                 )}
+
+                {dreStats.otherExpenses !== 0 && <div className="flex justify-between gap-3 bg-white px-4 py-2 pl-10 text-gray-700">
+                  <span>(-) Outras despesas operacionais</span><span className="font-mono">-{formatMoney(dreStats.otherExpenses)}</span>
+                </div>}
+                {dreStats.inventoryPurchases > 0 && <p className="px-4 py-2 text-xs text-gray-600">
+                  Compras para estoque: {formatMoney(dreStats.inventoryPurchases)} de saída de caixa. O valor dos produtos vendidos aparece no custo de mercadorias.
+                </p>}
 
                 {/* 5. Lucro Operacional Líquido */}
                 <div className={cn(

@@ -2,12 +2,16 @@ import React, { useMemo, useRef, useState } from 'react';
 import { auditExpenseSources } from '../../../../shared/expenseAudit';
 import { financialDateKey } from '../../../../shared/cashFlow';
 import { parseCurrencyInput } from '../../../../shared/currencyInput';
-import { QUICK_EXPENSE_CATEGORIES } from '../../../../shared/cashFlowOptions';
+import { INVENTORY_PURCHASE, QUICK_EXPENSE_CATEGORIES } from '../../../../shared/cashFlowOptions';
 import { authenticatedFetch } from '../../../lib/api';
 import { useFinancialPrivacy } from '../../../context/FinancialPrivacyContext';
 import toast from 'react-hot-toast';
 
 const CATEGORIES: readonly string[] = QUICK_EXPENSE_CATEGORIES;
+const categoryLabel = (value: string) => ({
+  [INVENTORY_PURCHASE]: 'Compra para estoque',
+  DESPESA_FIXA: 'Despesa fixa',
+}[value] || value);
 const SOURCE_PATH: Record<string, string> = {
   financial_cashflow: 'cashflow',
   financial_investments: 'investments',
@@ -192,7 +196,7 @@ export function ExpenseCenter({ cashflow, investments, traffic }: {
       <form onSubmit={createExpense} className="h-fit space-y-4 rounded-xl border border-black/10 bg-white p-5 shadow-sm">
         <label className="block text-xs font-bold">Categoria
           <select className={`${inputClass} mt-1`} value={form.category} onChange={event => changeForm({ category: event.target.value })}>
-            {CATEGORIES.map(value => <option key={value} value={value}>{value}</option>)}
+            {CATEGORIES.map(value => <option key={value} value={value}>{categoryLabel(value)}</option>)}
           </select>
         </label>
         <div className="grid grid-cols-2 gap-3">
@@ -232,7 +236,7 @@ export function ExpenseCenter({ cashflow, investments, traffic }: {
           <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
             <input aria-label="Filtrar por descrição" className={inputClass} placeholder="Buscar descrição" value={query} onChange={event => setQuery(event.target.value)} />
             <select aria-label="Filtrar categoria" className={inputClass} value={category} onChange={event => setCategory(event.target.value)}>
-              <option value="">Todas as categorias</option>{categories.map(value => <option key={value} value={value}>{value}</option>)}
+              <option value="">Todas as categorias</option>{categories.map(value => <option key={value} value={value}>{categoryLabel(value)}</option>)}
             </select>
             <input aria-label="Data inicial" type="date" className={inputClass} value={start} onChange={event => setStart(event.target.value)} />
             <input aria-label="Data final" type="date" className={inputClass} value={end} onChange={event => setEnd(event.target.value)} />
@@ -280,7 +284,7 @@ export function ExpenseCenter({ cashflow, investments, traffic }: {
         {editing.recordSource === 'financial_cashflow' ? <label className="block text-xs font-bold">Categoria
           <select className={`${inputClass} mt-1`} value={editForm.category} onChange={event => setEditForm(previous => ({ ...previous, category: event.target.value }))}>
             {!CATEGORIES.includes(editForm.category) && <option value={editForm.category}>{editForm.category}</option>}
-            {CATEGORIES.map(value => <option key={value} value={value}>{value}</option>)}
+            {CATEGORIES.map(value => <option key={value} value={value}>{categoryLabel(value)}</option>)}
           </select>
         </label> : <p className="text-xs font-bold">Categoria: {editForm.category}</p>}
         <label className="block text-xs font-bold">Descrição<input required className={`${inputClass} mt-1`} value={editForm.description} onChange={event => setEditForm(previous => ({ ...previous, description: event.target.value }))} /></label>

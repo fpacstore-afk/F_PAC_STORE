@@ -3,6 +3,7 @@ import { useLocation } from 'react-router-dom';
 
 const titles: Record<string, string> = {
   '/': 'Streetwear com identidade',
+  '/sobre': 'Sobre a F PAC',
   '/privacidade': 'Política de privacidade',
   '/termos': 'Condições de compra e uso',
   '/prime': 'Crie sua peça Prime',

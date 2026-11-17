@@ -3643,8 +3643,8 @@ Total: R$ ${totalSum.toFixed(2)}`;
         </React.Suspense>
       ) : (
         <React.Suspense fallback={<div className="p-12 text-center text-sm font-bold uppercase tracking-widest text-black/50 animate-pulse">Carregando Financeiro...</div>}>
-          <AdminFinancial initialSubTab={(['register', 'cashflow', 'payables', 'orders', 'receipts', 'closeout'].includes(searchParams.get('finance') || '')
-            ? searchParams.get('finance') : 'dashboard') as 'register' | 'cashflow' | 'payables' | 'orders' | 'receipts' | 'closeout' | 'dashboard'} />
+          <AdminFinancial initialSubTab={(['register', 'cashflow', 'payables', 'orders', 'receipts', 'closeout', 'plan'].includes(searchParams.get('finance') || '')
+            ? searchParams.get('finance') : 'dashboard') as 'register' | 'cashflow' | 'payables' | 'orders' | 'receipts' | 'closeout' | 'plan' | 'dashboard'} />
         </React.Suspense>
       )}
       </div>

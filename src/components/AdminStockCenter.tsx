@@ -1,4 +1,5 @@
 import { isAdminIdentity } from '../../shared/adminIdentity';
+import { StockValuation, type ValuedProduct } from './admin/StockValuation';
 import { GarmentModelStockPanel } from './admin/GarmentModelStockPanel';
 import { StockFamilyOverview } from './admin/StockFamilyOverview';
 import { stockFamily, stockCollarLabel, isOperationalStockProduct, summarizeStockFamilies, type StockFamilyId } from '../../shared/stockFamilies';
@@ -91,8 +92,7 @@ export function AdminStockCenter() {
     finally { setCheckingAvailability(false); }
   };
 
-  // Sub-tab: 'stock' (Unified Gestão de Estoque)
-  const [activeSubTab, setActiveSubTab] = useState<'stock' | 'catalog'>('stock');
+  const [activeSubTab, setActiveSubTab] = useState<'stock' | 'valuation'>('stock');
   const [selectedFamily, setSelectedFamily] = useState<StockFamilyId | null>(null);
 
   // Integrated Product Management Drawer (6-tab full drawer)
@@ -137,7 +137,7 @@ export function AdminStockCenter() {
       setStockDesigns(snapshot.docs.map(item => ({ ...item.data(), id: item.id })));
     }, () => toast.error('Não foi possível carregar os nomes das estampas. As referências continuam disponíveis.'));
   }, [isAdmin]);
-  const { costsByProductId, refresh: refreshProductCosts } = usePrivateProductCosts();
+  const { costsByProductId, loading: costsLoading, error: costsError, refresh: refreshProductCosts } = usePrivateProductCosts();
   const [completingCosts, setCompletingCosts] = useState(false);
   const [costCompletion, setCostCompletion] = useState<{ updated: number; preserved: number; unresolved: { id: string; name: string; reason: string }[] } | null>(null);
   const handleCompleteCosts = async () => {
@@ -387,6 +387,48 @@ export function AdminStockCenter() {
     if (!value.physicalQuantity && !value.reservedQuantity) return [];
     return [{ slug, name:product?.name || slug, physical:value.physicalQuantity, reserved:value.reservedQuantity, reason:product ? 'Cadastro arquivado ou fora dos sete tipos' : 'Sem cadastro de produto vinculado' }];
   }), [inventory,products]);
+
+  const valuation = useMemo(() => {
+    const used = new Set<string>();
+    const review = new Set(stockForReview.map(row => row.slug));
+    const rows: ValuedProduct[] = [];
+    for (const product of unifiedStockItems) {
+      const key = [product.slug, product.id].find(id => id && inventory[id]);
+      if (key && used.has(key)) {
+        review.add(key);
+        continue;
+      }
+      if (key) used.add(key);
+      const stored = key ? inventory[key] : undefined;
+      const rawVariants = Object.values(stored?.variants || {});
+      const counted = product.stockGroup === 'printed' ? countedReadyInventory(stored) : stored;
+      const variants = Object.values(counted?.variants || {}) as { physicalQuantity: number }[];
+      const quantity = variants.length
+        ? variants.reduce((total, variant) => total + Math.max(0, variant.physicalQuantity), 0)
+        : product.stockGroup === 'printed' ? 0 : Math.max(0, stored?.physicalQuantity || 0);
+      if ((!stored && product.totalStock > 0)
+        || (product.stockGroup === 'printed' && (stored?.physicalQuantity || 0) > quantity)) review.add(key || product.id);
+      if (rawVariants.some(variant => !Number.isSafeInteger(variant.physicalQuantity) || variant.physicalQuantity < 0)) {
+        review.add(key || product.id);
+      }
+
+      const privateCost = costsByProductId[product.id];
+      const cost = Number(privateCost?.costPrice ?? privateCost?.cost ?? product.costPrice ?? product.cost);
+      const unitCostCents = Number.isFinite(cost) && cost > 0 ? Math.round(cost * 100) : null;
+      const partial = !privateCost || ['partial', 'estimated'].includes(String(privateCost.costCalculation?.coverage));
+      rows.push({
+        id: product.id, slug: product.slug, name: product.name || product.slug,
+        reference: product.sku || product.slug, category: product.displayCategory,
+        type: 'product', unit: 'un.', quantity, unitCostCents,
+        costStatus: unitCostCents === null ? 'missing' : partial ? 'partial' : 'recorded',
+        price: Number(product.price) || 0, recipe: privateCost?.costCalculation,
+      });
+    }
+    for (const [id, entry] of Object.entries(inventory)) {
+      if (!used.has(id) && (entry.physicalQuantity > 0 || entry.reservedQuantity > 0)) review.add(id);
+    }
+    return { rows, reviewCount: review.size };
+  }, [unifiedStockItems, inventory, costsByProductId, stockForReview]);
 
   // Keep registered products and their color/size variants as separate counts.
   const stats = useMemo(() => {
@@ -759,8 +801,33 @@ export function AdminStockCenter() {
     );
   }
 
+  const navigation = <nav aria-label="Visualizações do estoque" className="flex flex-wrap gap-2">
+    {([['stock', 'Gestão de estoque'], ['valuation', 'Valor em estoque']] as const).map(([tab, label]) =>
+      <button type="button" key={tab} aria-pressed={activeSubTab === tab} onClick={() => setActiveSubTab(tab)}
+        className={cn('min-h-11 rounded border border-black px-4 text-sm font-bold', activeSubTab === tab ? 'bg-black text-white' : 'bg-white text-black')}>
+        {label}
+      </button>)}
+  </nav>;
+  const productDrawer = <ProductManagementDrawer
+    isOpen={isProductDrawerOpen}
+    onClose={() => setIsProductDrawerOpen(false)}
+    product={selectedProductForDrawer}
+    onSaveSuccess={() => {}}
+    initialProductFinish={newProductFinish}
+    initialStockFamily={selectedFamily}
+  />;
+  if (activeSubTab === 'valuation') return <div className="space-y-4">
+    {navigation}
+    <StockValuation products={valuation.rows} reviewCount={valuation.reviewCount}
+      loading={invLoading || loadingProducts || costsLoading}
+      sourceError={[inventoryError, productLoadError ? 'Falha ao carregar o cadastro de produtos.' : '', costsError].filter(Boolean).join(' ')}
+      onOpenProduct={handleOpenEditProduct} />
+    {productDrawer}
+  </div>;
+
   return (
     <div className="space-y-4">
+      {navigation}
       {/* 1. HERO HEADER - ESTAMPAS STANDARD PATTERN */}
       <div className="bg-black text-white px-4 md:px-8 py-4 md:py-6 border-b-2 border-[#eab308] relative overflow-hidden">
         <div className="absolute right-0 bottom-0 opacity-10 translate-x-12 translate-y-12 pointer-events-none">
@@ -1922,15 +1989,7 @@ export function AdminStockCenter() {
         )}
       </AnimatePresence>
 
-      {/* Integrated 6-Tab Product Management Drawer */}
-      <ProductManagementDrawer
-        isOpen={isProductDrawerOpen}
-        onClose={() => setIsProductDrawerOpen(false)}
-        product={selectedProductForDrawer}
-        onSaveSuccess={() => {}}
-        initialProductFinish={newProductFinish}
-        initialStockFamily={selectedFamily}
-      />
+      {productDrawer}
 
       {/* Reset Catalog Confirmation Modal */}
       <AnimatePresence>
