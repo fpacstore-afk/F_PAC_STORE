@@ -18,7 +18,8 @@ import { cn } from '../lib/utils';
 import { formatBRL } from '../lib/money';
 import { getDailyPromoCode } from '../lib/promo';
 import toast from 'react-hot-toast';
-import { getActivePromotion } from '../services/promotions/getActivePromotion';
+import { getActivePromotion, loadPromotions } from '../services/promotions/getActivePromotion';
+import { campaignCouponOffer, normalizeCampaignCoupon, selectActivePromotion } from '../../shared/storefrontTotals';
 import { WeeklyPromotion } from '../types/promotions';
 import { getPublicApiUrl } from '../lib/api';
 import { cartAvailabilityIssues } from '../../shared/cartAvailability';
@@ -335,27 +336,32 @@ export default function Bag() {
   };
 
   const handleApplyCoupon = async () => {
-    const code = String(couponInput || '').toUpperCase().trim().replace(/\s/g, '');
-    const dailyCode = getDailyPromoCode();
-    
-    const activeCode = activePromo?.discount_type === 'cupom' ? String(activePromo.coupon_code || '').toUpperCase().replace(/\\s/g, '') : '';
-    if ((activeCode && code === activeCode) || (!activePromo && code === dailyCode)) {
-      setCoupon(code);
-      toast.success("Cupom diário aplicado!");
-    } else if (code.startsWith('FPAC')) {
-      toast.error("Este cupom não é mais válido hoje.");
-    } else {
-      try {
+    const code = normalizeCampaignCoupon(couponInput);
+    if (!code) return;
+    try {
+      const promotions = await loadPromotions();
+      const now = Date.now();
+      if (campaignCouponOffer(promotions, code, items, now)) {
+        setCoupon(code);
+        toast.success('Cupom da campanha aplicado!');
+      } else if (!selectActivePromotion(promotions, now) && code === getDailyPromoCode(new Date(now))) {
+        setCoupon(code);
+        toast.success('Cupom diário aplicado!');
+      } else {
         const response = await fetch(getPublicApiUrl('/api/post-purchase/coupon/validate'), {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ code, phone: customerInfo.phone, email: customerInfo.email }),
         });
         const data = await response.json();
-        if (!response.ok || !data.valid) throw new Error(data.error || 'Cupom inválido.');
+        if (!response.ok || !data.valid) {
+          const campaign = promotions.some(promo => promo.discount_type === 'cupom'
+            && normalizeCampaignCoupon(promo.coupon_code) === code);
+          throw new Error(campaign ? 'Este cupom não se aplica aos itens, ao valor ou à data da compra.' : data.error || 'Cupom inválido.');
+        }
         setCoupon(code, Number(data.discountPercent));
         toast.success(`Bônus de +${data.discountPercent}% aplicado. Cupons ativos podem ser somados.`);
-      } catch (error: any) { toast.error(error.message || 'Cupom inválido.'); }
-    }
+      }
+    } catch (error: any) { toast.error(error.message || 'Não foi possível validar o cupom.'); }
   };
 
   const isFormValid = useMemo(() => {
@@ -893,15 +899,15 @@ export default function Bag() {
                     <span className="text-[#eab308] font-black">- {formatBRL(flashSaleDiscount)}</span>
                   </div>
                 )}
-                {couponDiscount > 0 && (
+                {coupon && (
                   <div className="flex justify-between text-sm items-center">
                     <div className="flex items-center gap-2">
                       <span className="text-[#eab308] font-bold">Cupom: {coupon}</span>
-                      <button onClick={() => setCoupon(null)} className="text-white/30 hover:text-white">
+                      <button onClick={() => setCoupon(null)} aria-label="Remover cupom" className="text-white/30 hover:text-white">
                         <Trash2 size={12} />
                       </button>
                     </div>
-                    <span className="text-[#eab308] font-black">- {formatBRL(couponDiscount)}</span>
+                    <span className="text-[#eab308] font-black">{couponDiscount > 0 ? `- ${formatBRL(couponDiscount)}` : 'Não aplicado'}</span>
                   </div>
                 )}
                 {pixDiscount > 0 && (
@@ -982,7 +988,7 @@ export default function Bag() {
 
               <div className="mt-8 space-y-4">
                 {/* Coupon Input */}
-                {activePromo && activePromo.active && activePromo.discount_type !== 'cupom' && (
+                {!coupon && activePromo && activePromo.active && activePromo.discount_type !== 'cupom' && (
                   <div className="p-3 bg-[#eab308]/10 border border-[#eab308]/20 flex items-center gap-2 text-[#eab308]">
                     <Tag size={14} className="shrink-0" />
                     <span className="text-[10px] font-bold uppercase tracking-wider">
@@ -994,6 +1000,7 @@ export default function Bag() {
                     <div className="flex gap-2">
                       <input 
                         type="text" 
+                        aria-label="Código do cupom"
                         value={couponInput}
                         onChange={e => setCouponInput(e.target.value)}
                         placeholder="CUPOM"
@@ -1003,7 +1010,7 @@ export default function Bag() {
                         onClick={handleApplyCoupon}
                         className="bg-white/10 px-6 py-2 text-[10px] font-black uppercase tracking-widest hover:bg-white/20"
                       >
-                        OK
+                        Aplicar cupom
                       </button>
                     </div>
                 )}

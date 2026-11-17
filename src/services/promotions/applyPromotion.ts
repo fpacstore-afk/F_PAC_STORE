@@ -10,6 +10,15 @@ interface AppliedPromotionResult {
   freeGiftEarned?: boolean;
 }
 
+export function matchesPromotionProduct(item: CartItem, promotion: WeeklyPromotion): boolean {
+  if (Array.isArray(promotion.product_ids) && promotion.product_ids.length) {
+    return promotion.product_ids.includes(item.productId || item.id);
+  }
+  const category = String(item.category || '').toLowerCase().trim();
+  return !Array.isArray(promotion.categories_participating) || !promotion.categories_participating.length
+    || promotion.categories_participating.some(value => value.toLowerCase().trim() === category);
+}
+
 export function applyPromotion(
   items: CartItem[],
   promotion: WeeklyPromotion | null,
@@ -38,23 +47,7 @@ export function applyPromotion(
   const discountType = (promotion.discount_type || 'percentage') as string;
   const discountVal = promotion.discount_value ?? 0;
 
-  // Identify matching products. If product_ids is empty or not specified, assume all products participate.
-  const hasSpecificProducts = Array.isArray(promotion.product_ids) && promotion.product_ids.length > 0;
-  const isPromoProduct = (item: CartItem) => {
-    // If specific products are selected
-    if (hasSpecificProducts) {
-      return promotion.product_ids.includes(item.productId || item.id);
-    }
-    // If specific categories are configured
-    if (Array.isArray(promotion.categories_participating) && promotion.categories_participating.length > 0) {
-      const match = promotion.categories_participating.some(cat => 
-        String((item as any).category || '').toLowerCase().trim() === cat.toLowerCase().trim()
-      );
-      if (match) return true;
-    }
-    // If no specific restrictions, default to all products participating
-    return !hasSpecificProducts && (!Array.isArray(promotion.categories_participating) || promotion.categories_participating.length === 0);
-  };
+  const isPromoProduct = (item: CartItem) => matchesPromotionProduct(item, promotion);
 
   const matchingItems = items.filter(isPromoProduct);
   const totalMatchingQty = matchingItems.reduce((acc, item) => acc + item.quantity, 0);

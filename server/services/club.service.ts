@@ -1,5 +1,6 @@
 import { DEFAULT_TIERS, getTierByAmount, sanitizePublicName } from '../../src/constants/loyaltyConfig.js';
 import { aggregateCustomerPurchases, comparePurchaseTotals } from '../../shared/customerPurchases.js';
+import { createCachedRequest } from '../../shared/cachedRequest.js';
 import { getDb } from '../firebase.js';
 
 export interface PublicClubRankingEntry {
@@ -20,8 +21,6 @@ export interface PublicClubRankingPayload {
 
 const CACHE_TTL_MS = 60 * 1000;
 const MAX_PUBLIC_RANKING_SIZE = 10;
-let cachedPayload: PublicClubRankingPayload | null = null;
-let cacheExpiresAt = 0;
 
 export function buildPublicClubRanking(orders: any[], limit = MAX_PUBLIC_RANKING_SIZE): PublicClubRankingEntry[] {
   const safeLimit = Math.max(1, Math.min(MAX_PUBLIC_RANKING_SIZE, Math.floor(limit) || MAX_PUBLIC_RANKING_SIZE));
@@ -39,25 +38,21 @@ export function buildPublicClubRanking(orders: any[], limit = MAX_PUBLIC_RANKING
     });
 }
 
-export async function getPublicClubRanking(limit = MAX_PUBLIC_RANKING_SIZE): Promise<PublicClubRankingPayload> {
-  const now = Date.now();
-  if (cachedPayload && now < cacheExpiresAt) {
-    const ranking = cachedPayload.ranking.slice(0, limit);
-    return { ...cachedPayload, ranking, topBuyer: ranking[0] || null };
-  }
-
+const loadPublicClubRanking = createCachedRequest(async (): Promise<PublicClubRankingPayload> => {
   const database = getDb();
   const snapshot = await database.collection('orders').get();
   const orders = snapshot.docs.map((item: any) => ({ id: item.id, ...item.data() }));
   const ranking = buildPublicClubRanking(orders, MAX_PUBLIC_RANKING_SIZE);
 
-  cachedPayload = {
+  return {
     ranking,
     topBuyer: ranking[0] || null,
     updatedAt: new Date().toISOString(),
   };
-  cacheExpiresAt = now + CACHE_TTL_MS;
+}, { ttlMs: CACHE_TTL_MS });
 
-  const slicedRanking = ranking.slice(0, limit);
-  return { ...cachedPayload, ranking: slicedRanking, topBuyer: slicedRanking[0] || null };
+export async function getPublicClubRanking(limit = MAX_PUBLIC_RANKING_SIZE): Promise<PublicClubRankingPayload> {
+  const payload = await loadPublicClubRanking();
+  const ranking = payload.ranking.slice(0, limit);
+  return { ...payload, ranking, topBuyer: ranking[0] || null };
 }

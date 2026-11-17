@@ -102,7 +102,10 @@ export default function ClubeFPAC() {
     };
 
     void loadRanking(true);
-    const refreshInterval = window.setInterval(() => void loadRanking(), 60_000);
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === 'visible') void loadRanking();
+    };
+    const refreshInterval = window.setInterval(refreshWhenVisible, 60_000);
     return () => {
       controller.abort();
       window.clearInterval(refreshInterval);
@@ -129,7 +132,7 @@ export default function ClubeFPAC() {
               <span className="text-[#eab308]">Ocupe seu lugar.</span>
             </h1>
             <p className="mt-4 max-w-2xl text-xs leading-relaxed text-white/55 sm:text-sm">
-              Suas compras válidas definem sua posição no Hall de Compras e liberam novos benefícios dentro do Clube F PAC.
+              Compras pagas no site e com a F PAC entram no ranking quando estão vinculadas ao seu cadastro. Isso inclui camisetas personalizadas e uniformes.
             </p>
           </div>
 
@@ -193,7 +196,7 @@ export default function ClubeFPAC() {
             </div>
 
             <p className="relative z-10 mt-6 border-t border-white/10 pt-4 text-[10px] leading-relaxed text-white/45">
-              Este destaque independe do nível Bronze, Prata, Ouro ou Diamante: ele pertence a quem lidera o total líquido de compras pagas acumuladas.
+              O primeiro lugar é de quem tem o maior valor acumulado de compras pagas, descontados os estornos.
             </p>
           </section>
 

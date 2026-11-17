@@ -1,5 +1,6 @@
-import { normalizeCustomerPhone } from '../../shared/customerPurchases';
-import React, { useState, useEffect } from 'react';
+import { loyaltyPaidValue, normalizeCustomerPhone, readCustomerAliases, readCustomerName, uniqueOrders } from '../../shared/customerPurchases';
+import React, { useMemo, useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { 
   Trophy, Award, Crown, Shield, Star, Zap, ShoppingBag, 
   Search, Filter, Send, MessageSquare, Mail, Gift, Tag, 
@@ -52,7 +53,9 @@ export default function AdminLoyaltyManager({ orders }: AdminLoyaltyManagerProps
   };
 
   // Process customer loyalty list
-  const customers = processCustomerLoyaltyList(orders, tierConfigs);
+  const customers = useMemo(() => processCustomerLoyaltyList(orders, tierConfigs), [orders, tierConfigs]);
+  const unlinkedPurchases = useMemo(() => uniqueOrders(orders).filter(order =>
+    loyaltyPaidValue(order) > 0 && readCustomerAliases(order).length === 0), [orders]);
 
   // Filtered & Sorted customers
   const filteredCustomers = customers.filter(c => {
@@ -109,9 +112,7 @@ export default function AdminLoyaltyManager({ orders }: AdminLoyaltyManagerProps
   const diamanteCount = customers.filter(c => c.tier.id === 'diamante').length;
   // `customers` preserves the source order. The table is sorted independently,
   // so the highlight must derive its own ranking instead of trusting index 0.
-  const topBuyer = customers.length > 0
-    ? [...customers].sort((a, b) => b.totalSpent - a.totalSpent)[0]
-    : null;
+  const topBuyer = customers.find(customer => customer.rankPositions.spent === 1);
   const avgTicketGeneral = totalClients > 0 ? (customers.reduce((acc, c) => acc + c.totalSpent, 0) / customers.reduce((acc, c) => acc + c.orderCount, 0) || 0) : 0;
   const inactiveCount = customers.filter(c => c.isInactive).length;
   const prestesASubirCount = customers.filter(c => c.isPrestesASubir).length;
@@ -193,7 +194,20 @@ export default function AdminLoyaltyManager({ orders }: AdminLoyaltyManagerProps
         </div>
       </div>
 
-      <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-950">Compras agrupadas por telefone, e-mail, conta ou CPF em comum, incluindo telefones antigos sem o nono dígito. Nomes iguais sozinhos não juntam clientes. Brindes, cancelamentos e valores estornados não geram valor, pedidos ou unidades no ranking.</p>
+      <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-950">O ranking soma os pagamentos confirmados de pedidos do site, PDV e lançamentos manuais, incluindo personalizados e orçamentos convertidos. As compras são agrupadas por telefone, e-mail, conta, CPF ou CNPJ. Estornos reduzem o valor recebido. Brindes e pedidos cancelados ficam fora da contagem.</p>
+      {unlinkedPurchases.length > 0 && (
+        <details className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-950">
+          <summary className="cursor-pointer font-bold">{unlinkedPurchases.length} pedido(s) pago(s) aguardando identificação para o ranking</summary>
+          <p className="mt-2">Abra o pedido e confira os dados do cliente para vinculá-lo às demais compras.</p>
+          <ul className="mt-2 space-y-1">
+            {unlinkedPurchases.map(order => (
+              <li key={order.id}>
+                <Link className="underline" to={`/gestao?tab=orders&orderId=${encodeURIComponent(order.id)}`}>{order.id} · {readCustomerName(order)}</Link>
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
       {/* SUBTAB 1: DASHBOARD OVERVIEW */}
       {activeSubTab === 'dashboard' && (
         <div className="space-y-6">

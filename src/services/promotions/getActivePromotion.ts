@@ -6,7 +6,7 @@ import { selectActivePromotion } from '../../../shared/storefrontTotals';
 
 // Cache candidates, including empty results, and share pending reads.
 // Date boundaries are evaluated per call, even during the 30-second cache.
-const loadPromotions = createCachedRequest(async (): Promise<WeeklyPromotion[]> => {
+export const loadPromotions = createCachedRequest(async (): Promise<WeeklyPromotion[]> => {
   try {
     const snapshot = await getDocs(query(collection(db, 'weekly_promotions'), where('active', '==', true)));
     return snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as WeeklyPromotion));

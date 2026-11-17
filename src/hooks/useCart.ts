@@ -2,8 +2,7 @@ import { useSyncExternalStore } from 'react';
 import { CartItem, CartStore } from '../types/cart';
 import { getFlashSaleInfo } from '../lib/flashSale';
 import { getDailyPromoCode } from '../lib/promo';
-import { getActivePromotion } from '../services/promotions/getActivePromotion';
-import { applyPromotion } from '../services/promotions/applyPromotion';
+import { loadPromotions } from '../services/promotions/getActivePromotion';
 import { WeeklyPromotion } from '../types/promotions';
 import { safeStorage } from '../lib/storage';
 import { getPublicApiUrl } from '../lib/api';
@@ -199,7 +198,7 @@ const emit = () => {
   triggerAutosaveLead();
 };
 
-let activePromotion: WeeklyPromotion | null = null;
+let activePromotions: WeeklyPromotion[] = [];
 let isFetchingPromo = false;
 let promoLastFetchedTime = 0;
 
@@ -207,8 +206,8 @@ const fetchPromoIfNeed = () => {
   const now = Date.now();
   if (!isFetchingPromo && (now - promoLastFetchedTime > 15000)) {
     isFetchingPromo = true;
-    getActivePromotion().then(promo => {
-      activePromotion = promo;
+    loadPromotions().then(promotions => {
+      activePromotions = promotions;
       promoLastFetchedTime = Date.now();
       isFetchingPromo = false;
       calculateTotals();
@@ -224,7 +223,7 @@ const calculateTotals = (refreshPromotion = true) => {
   if (refreshPromotion) fetchPromoIfNeed();
 
   const money = calculateStorefrontTotals({
-    items: store.items, promotion: activePromotion, shipping: store.quotedShipping ?? store.shipping,
+    items: store.items, promotions: activePromotions, shipping: store.quotedShipping ?? store.shipping,
     coupon: store.coupon, customerCouponRate: store.customerCouponRate, pixEnabled: store.paymentMethod === 'PIX', city: store.customerInfo.city || 'Joinville',
   });
   const activePixRate = money.pixDiscountRate;
