@@ -10,6 +10,7 @@ import {
   query, where, orderBy, onSnapshot 
 } from 'firebase/firestore';
 import { WeeklyPromotion } from '../types/promotions';
+import { normalizeCampaignCoupon } from '../../shared/storefrontTotals';
 import { products as staticProducts } from '../data/products';
 import toast from 'react-hot-toast';
 
@@ -196,6 +197,12 @@ export const AdminPromotions: React.FC = () => {
       toast.error('O título da campanha promocional é obrigatório.');
       return;
     }
+    const campaignCode = normalizeCampaignCoupon(couponCode);
+    if (discountType === 'cupom' && (!campaignCode || discountValue === ''
+        || !Number.isFinite(discountValue) || discountValue <= 0 || discountValue > 100)) {
+      toast.error('Informe o código e um percentual de desconto maior que 0 e de até 100%.');
+      return;
+    }
 
     const docId = editId || `campaign_${Date.now()}`;
     const payload: WeeklyPromotion = {
@@ -222,7 +229,7 @@ export const AdminPromotions: React.FC = () => {
       categories_participating: categoriesParticipating,
       minimum_cart_value: minimumCartValue > 0 ? Number(minimumCartValue) : undefined,
       
-      coupon_code: discountType === 'cupom' ? couponCode.toUpperCase().trim() : undefined,
+      coupon_code: discountType === 'cupom' ? campaignCode : undefined,
       progressive_rules: discountType === 'progressive' ? progressiveRulesInput.map(rule => ({ ...rule, discount_percent: rule.discount_percent === '' ? null : Number(rule.discount_percent) })) : undefined,
       combo_qty: discountType === 'combo' ? Number(comboQty) : undefined,
       combo_discount_percent: discountType === 'combo' ? (comboDiscountPercent === '' ? null : Number(comboDiscountPercent)) : undefined,
@@ -652,7 +659,7 @@ export const AdminPromotions: React.FC = () => {
                   <option value="cashback">Campanha de Cashback</option>
                   <option value="brinde">Cupom com Brinde Automático</option>
                   <option value="pix_discount">Desconto Exclusivo pagamento Pix</option>
-                  <option value="cupom">Cupom de Desconto Específico</option>
+                  <option value="cupom">Cupom exclusivo da campanha</option>
                   <option value="category">Desconto Segmentado por Categoria</option>
                   <option value="min_value">Valor Mínimo do Carrinho</option>
                 </select>
@@ -662,13 +669,16 @@ export const AdminPromotions: React.FC = () => {
               <div className="p-4 bg-gray-50 border-2 border-dashed border-black/10 space-y-4">
                 
                 {/* Standard value inputs */}
-                {(discountType === 'percentage' || discountType === 'fixed_amount' || discountType === 'category' || discountType === 'min_value') && (
+                {(discountType === 'percentage' || discountType === 'fixed_amount' || discountType === 'category' || discountType === 'min_value' || discountType === 'cupom') && (
                   <div>
-                    <label className="block text-[9px] font-black uppercase tracking-widest text-gray-500 mb-1">
+                    <label htmlFor="campaign-discount-value" className="block text-[9px] font-black uppercase tracking-widest text-gray-500 mb-1">
                       {discountType === 'fixed_amount' ? 'Valor do Desconto (R$)' : 'Porcentagem de Desconto (%)'}
                     </label>
                     <input 
-                      type="number" 
+                      id="campaign-discount-value"
+                      type="number"
+                      step="any"
+                      required={discountType === 'cupom'}
                       value={discountValue} 
                       onChange={(e) => setDiscountValue(e.target.value === '' ? '' : Number(e.target.value))}
                       className="w-full text-xs font-black border-2 border-black p-3 outline-none focus:border-[#eab308]"
@@ -679,14 +689,17 @@ export const AdminPromotions: React.FC = () => {
                 {/* Cupom code */}
                 {discountType === 'cupom' && (
                   <div>
-                    <label className="block text-[9px] font-black uppercase tracking-widest text-gray-400 mb-1">Código do Cupom Necessário</label>
+                    <label htmlFor="campaign-coupon-code" className="block text-[9px] font-black uppercase tracking-widest text-gray-400 mb-1">Código que o cliente digita na sacola</label>
                     <input 
+                      id="campaign-coupon-code"
+                      required
                       type="text" 
                       value={couponCode} 
                       onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
                       className="w-full text-xs font-mono font-black border-2 border-black p-3 outline-none focus:border-[#eab308]"
                       placeholder="Ex: STREET15"
                     />
+                    <p className="mt-2 text-xs text-gray-600">O código é da campanha. O desconto incide sobre os itens elegíveis e substitui outras ofertas da campanha. Frete e Pix seguem as condições da sacola.</p>
                   </div>
                 )}
 

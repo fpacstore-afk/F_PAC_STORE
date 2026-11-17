@@ -1,4 +1,5 @@
 import { getOrderNetReceived, getOrderPaymentStatus } from './orderFinancialCore';
+import { isValidCNPJ } from '../src/lib/validation';
 
 const text = (value: unknown) => String(value ?? '').trim();
 const normalized = (value: unknown) => text(value).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
@@ -25,22 +26,28 @@ export function normalizeCustomerPhone(value: unknown): string {
 
 export function readCustomerAliases(order: any): string[] {
   const customer = order?.customer || {}, info = order?.customerInfo || {}, aliases = new Set<string>();
+  const quoteContact = order?.sourceQuote
+    ? text(order.customerContact || order.sourceQuote.contact).replace(/^(?:e-?mail|whatsapp|telefone)\s*:\s*/i, '')
+    : '';
   const ids = [order?.userId, order?.customerId, customer.id, customer.uid, customer.userId, info.userId, info.uid];
   for (const value of ids) {
     const id = text(value);
     if (id && !['manual', 'guest', 'anonymous', 'null', 'undefined', 'none', 'n/a'].includes(id.toLowerCase())) aliases.add(`user:${id}`);
   }
-  for (const value of [order?.customerEmail, customer.email, info.email, order?.email]) {
+  for (const value of [order?.customerEmail, customer.email, info.email, order?.email, quoteContact]) {
     const email = text(value).toLowerCase();
     if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) aliases.add(`email:${email}`);
   }
-  for (const value of [order?.customerPhone, order?.customerPhone2, customer.phone, customer.phone2, customer.whatsapp, info.phone, info.phone2, info.whatsapp, order?.phone, order?.phone2]) {
+  const quotePhone = /^[+()\d\s.-]{8,30}$/.test(quoteContact) ? quoteContact : '';
+  for (const value of [order?.customerPhone, order?.customerPhone2, customer.phone, customer.phone2, customer.whatsapp, info.phone, info.phone2, info.whatsapp, order?.phone, order?.phone2, quotePhone]) {
     const phone = normalizeCustomerPhone(value);
     if (phone) aliases.add(`phone:${phone}`);
   }
-  for (const value of [order?.customerCpf, customer.cpf, info.cpf, order?.cpf, customer.document]) {
-    const cpf = text(value).replace(/\D/g, '');
-    if (cpf.length === 11 && !/^(\d)\1+$/.test(cpf)) aliases.add(`cpf:${cpf}`);
+  for (const value of [order?.customerCpf, customer.cpf, info.cpf, order?.cpf, customer.document,
+    order?.customerCnpj, order?.cnpj, customer.cnpj, info.cnpj]) {
+    const document = text(value).replace(/\D/g, '');
+    if (document.length === 11 && !/^(\d)\1+$/.test(document)) aliases.add(`cpf:${document}`);
+    if (isValidCNPJ(document)) aliases.add(`cnpj:${document}`);
   }
   return [...aliases];
 }
@@ -75,7 +82,7 @@ export function uniqueOrders(orders: any[]): any[] {
 export function loyaltyPaidValue(order: any): number {
   if (isGiftOrder(order)) return 0;
   if ([order?.status, order?.paymentStatus, order?.payment?.status].some(value => excludedStatuses.has(normalized(value)))) return 0;
-  if (getOrderPaymentStatus(order) === 'not_applicable') return 0;
+  if (['not_applicable', 'cancelled', 'rejected', 'refunded'].includes(getOrderPaymentStatus(order))) return 0;
   const paid = getOrderNetReceived(order);
   return Number.isFinite(paid) && paid > 0 ? Math.round(paid * 100) / 100 : 0;
 }

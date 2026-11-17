@@ -61,6 +61,18 @@ assert.equal(buildCustomerIdentities([
   { id: 'd', customerInfo: { cpf: '12345678901', phone2: '47987654321' } },
 ]).length, 1, 'UID, email, CPF and secondary phone aliases bridge transitively');
 assert.equal(aggregateCustomerPurchases([{ id: 'paid', total: 3, paidAmount: 3 }]).length, 1);
+const customSale = { id: 'MANUAL-QUOTE-paid', customerName: 'Alex Dombrose',
+  sourceQuote: { contact: 'WhatsApp: (47) 98765-4321' },
+  items: [{ customProduct: true, quantity: 3 }], payment: { status: 'partially_paid', paidAmount: 145 }, total: 300 };
+const customerWithCustom = processCustomerLoyaltyList([...purchases, customSale, {
+  ...customSale, id: 'MANUAL-QUOTE-unavailable', sourceQuote: { contact: 'sem contato' }
+}]).find(customer => customer.rankPositions.spent === 1)!;
+assert.equal(customerWithCustom.totalSpent, 395.30);
+assert.equal(customerWithCustom.orderCount, 3);
+assert.equal(customerWithCustom.itemsBoughtCount, 6);
+assert.ok(readCustomerAliases({ customerCpf: '11.222.333/0001-81' }).includes('cnpj:11222333000181'));
+assert.deepEqual(readCustomerAliases({ sourceQuote: { contact: 'WhatsApp: pedir para a equipe' } }), []);
+assert.equal(loyaltyPaidValue({ paymentStatus: 'reembolsado', paidAmount: 150 }), 0);
 for (const gift of [{ isGift: true }, { orderKind: 'gift' }, { orderKind: 'BRINDE' }, { paymentMethod: 'BRINDE' }, { payment: { method: 'brinde' } }, { id: 'MANUAL-BRINDE-legacy' }]) {
   assert.equal(isGiftOrder(gift), true);
   assert.equal(loyaltyPaidValue({ total: 9999, amountPaid: 9999, paymentStatus: 'approved', ...gift }), 0);

@@ -23,6 +23,7 @@ export function calculateCartMoney(input: {
   promotionDiscount: number;
   flashSaleDiscount: number;
   couponRate: number;
+  couponEligibleSubtotal?: number;
   pixRate: number;
   pixEnabled: boolean;
   shipping: number;
@@ -34,7 +35,10 @@ export function calculateCartMoney(input: {
   const promotionDiscountCents = toCents(input.promotionDiscount);
   const flashSaleDiscountCents = toCents(input.flashSaleDiscount);
   const subtotalAfterPromotionCents = Math.max(10, subtotalCents - promotionDiscountCents);
-  const couponBaseCents = Math.max(0, subtotalAfterPromotionCents - flashSaleDiscountCents);
+  const couponBaseCents = Math.max(0, Math.min(
+    subtotalAfterPromotionCents - flashSaleDiscountCents,
+    input.couponEligibleSubtotal === undefined ? Infinity : toCents(input.couponEligibleSubtotal),
+  ));
   const couponDiscountCents = Math.round(couponBaseCents * Math.max(0, input.couponRate) / 100);
   const subtotalAfterDiscountsCents = Math.max(
     10,

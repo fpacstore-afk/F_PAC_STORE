@@ -2,7 +2,7 @@ import { compatibleGarmentSource, isGarmentVariantAllowed } from '../../shared/s
 import { garmentFamily, garmentTitle } from '../../shared/garmentModels';
 import { isCatalogSleeveSize } from '../../shared/primeArtworkSizing.js';
 import { isPrimeStampCompatible } from '../../shared/primeStampCompatibility.js';
-import { calculateStorefrontTotals, selectActivePromotion } from '../../shared/storefrontTotals.js';
+import { calculateStorefrontTotals, normalizeCampaignCoupon } from '../../shared/storefrontTotals.js';
 import { shippingParcel } from '../../shared/shippingParcel.js';
 import type { CartItem } from '../../src/types/cart.js';
 import type { WeeklyPromotion } from '../../src/types/promotions.js';
@@ -393,10 +393,10 @@ export async function calculateOrderPricing(input: PricingInput, context: Partia
 
   const delivery = context.priceOnly ? { destination: { city: '', state: '', neighborhood: '' }, shipping: 0 } : await quoteCheckoutDelivery(input.customerInfo, verifiedItems, context);
   const campaigns = await db.collection('weekly_promotions').where('active', '==', true).get();
-  const promotion = selectActivePromotion(campaigns.docs.map(doc => ({ ...doc.data(), id: doc.id } as WeeklyPromotion)), context.now);
+  const promotions = campaigns.docs.map(doc => ({ ...doc.data(), id: doc.id } as WeeklyPromotion));
   const customerCoupon = input.couponCode ? await validateRepurchaseCoupon(input.couponCode, input.customerInfo.phone, input.customerInfo.email) : null;
   const money = calculateStorefrontTotals({
-    items: storefrontItems, promotion, shipping: delivery.shipping, coupon: input.couponCode,
+    items: storefrontItems, promotions, shipping: delivery.shipping, coupon: input.couponCode,
     customerCouponRate: customerCoupon?.discountPercent,
     pixEnabled: input.paymentMethodId === 'pix', city: delivery.destination.city, now: context.now,
   });
@@ -406,7 +406,7 @@ export async function calculateOrderPricing(input: PricingInput, context: Partia
       promotionalDiscount: roundMoney(money.promotionDiscount + money.flashSaleDiscount),
       weeklyPromotionDiscount: money.promotionDiscount, flashSaleDiscount: money.flashSaleDiscount,
       pixDiscount: money.pixDiscount, shipping: money.shipping, total: money.total, currency: 'BRL',
-      couponCode: input.couponCode ? String(input.couponCode).toUpperCase().replace(/\s/g, '') : undefined,
+      couponCode: normalizeCampaignCoupon(input.couponCode) || undefined,
     },
     verifiedItems,
   };

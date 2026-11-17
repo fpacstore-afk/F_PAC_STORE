@@ -90,7 +90,7 @@ export interface CustomerLoyaltyData { identityAliases?:string[]; nameVariants?:
 
 export function processCustomerLoyaltyList(allOrders:any[],customTiers:LoyaltyTierConfig[]=DEFAULT_TIERS,customAchievements:AchievementDef[]=DEFAULT_ACHIEVEMENTS,customMissions:MissionDef[]=DEFAULT_MISSIONS):CustomerLoyaltyData[]{
  const tiers=normalizeLoyaltyTiers(customTiers);
- const list:CustomerLoyaltyData[]=aggregateCustomerPurchases(allOrders).map((customer,index)=>{
+ const list:CustomerLoyaltyData[]=aggregateCustomerPurchases(allOrders).filter(customer=>customer.aliases.size>0).map((customer,index)=>{
    const {orders,firstPurchaseDate,lastPurchaseDate}=customer,totalSpent=customer.netPaid;
    const tier=getTierByAmount(totalSpent,tiers),ti=tiers.findIndex(t=>t.id===tier.id),nextTier=ti>=0&&ti<tiers.length-1?tiers[ti+1]:null;
    const amountNeededForNextTier=nextTier?Math.max(0,nextTier.minAmount-totalSpent):0;
