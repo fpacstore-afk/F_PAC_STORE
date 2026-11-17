@@ -83,6 +83,7 @@ const StampsGallery = lazyWithRetry(() => import('./pages/StampsGallery'));
 const ClubeFPAC = lazyWithRetry(() => import('./pages/ClubeFPAC'));
 const RecoverCart = lazyWithRetry(() => import('./pages/RecoverCart'));
 const RecoveryPreferences = lazyWithRetry(() => import('./pages/RecoveryPreferences'));
+const About = lazyWithRetry(() => import('./pages/About'));
 const Legal = lazyWithRetry(() => import('./pages/Legal'));
 const MockupApproval = lazyWithRetry(() => import('./pages/MockupApproval'));
 
@@ -137,6 +138,7 @@ function AppContent() {
           start below the menu instead of being hidden behind it on the home. */}
 
       <ErrorBoundary><Suspense fallback={<PageLoader />}><Routes>
+        <Route path="/sobre" element={<About />} />
         <Route path="/privacidade" element={<Legal kind="privacy" />} />
         <Route path="/termos" element={<Legal kind="terms" />} />
         <Route path="/privacy/recovery" element={<RecoveryPreferences />} />

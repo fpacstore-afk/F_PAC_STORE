@@ -163,6 +163,7 @@ export function Footer() {
           <div className="col-span-1 md:col-span-2">
             <h4 className="font-black mb-4 text-black uppercase tracking-[0.16em] text-[10px]">Ajuda</h4>
             <ul className="space-y-3 text-gray-600 text-sm">
+              <li><Link to="/sobre" className="hover:underline">Sobre a F PAC</Link></li>
               <li><Link to="/privacidade" className="hover:text-[#b88700] transition-colors">Política de privacidade</Link></li>
               <li><Link to="/termos" className="hover:text-[#b88700] transition-colors">Condições de compra e uso</Link></li>
               <li><Link to="/tracking" className="hover:text-[#b88700] transition-colors">Acompanhar pedido</Link></li>

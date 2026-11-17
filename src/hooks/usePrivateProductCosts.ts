@@ -28,6 +28,7 @@ export function mergeProductsWithPrivateCosts<T extends Record<string, any>>(
 export function usePrivateProductCosts() {
   const [costsByProductId, setCostsByProductId] = useState<PrivateProductCostsMap>({});
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     try {
@@ -37,8 +38,10 @@ export function usePrivateProductCosts() {
         if (cost.productId) next[cost.productId] = cost;
       });
       setCostsByProductId(next);
+      setError(null);
     } catch {
       setCostsByProductId({});
+      setError('Não foi possível carregar os custos dos produtos.');
     } finally {
       setLoading(false);
     }
@@ -50,5 +53,5 @@ export function usePrivateProductCosts() {
     return () => window.removeEventListener('fpac:product-costs-changed', refresh);
   }, [refresh]);
 
-  return useMemo(() => ({ costsByProductId, loading, refresh }), [costsByProductId, loading, refresh]);
+  return useMemo(() => ({ costsByProductId, loading, error, refresh }), [costsByProductId, loading, error, refresh]);
 }

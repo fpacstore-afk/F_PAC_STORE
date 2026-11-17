@@ -1,7 +1,11 @@
+export const INVENTORY_PURCHASE = 'COMPRA_ESTOQUE';
+
 // The same manual categories are offered in the form and accepted when saving.
 export const MANUAL_CASH_FLOW_CATEGORIES = [
   { value: 'Tráfego Pago', label: 'Tráfego Pago' },
   { value: 'Fornecedor', label: 'Fornecedor' },
+  { value: INVENTORY_PURCHASE, label: 'Compra para estoque' },
+  { value: 'DESPESA_FIXA', label: 'Despesa fixa' },
   { value: 'Envio/Frete', label: 'Envio / Frete' },
   { value: 'Combustível', label: 'Combustível' },
   { value: 'Refeição', label: 'Refeição' },
@@ -24,7 +28,7 @@ export const MANUAL_CASH_FLOW_CATEGORIES = [
 
 export const QUICK_EXPENSE_CATEGORIES = [
   'Combustível', 'DTF', 'Tráfego Pago', 'Embalagens', 'Materiais',
-  'Fornecedores', 'Manutenção', 'Outros'
+  'Fornecedores', 'Manutenção', INVENTORY_PURCHASE, 'DESPESA_FIXA', 'Outros'
 ] as const;
 
 export const CASH_FLOW_DESCRIPTION_OPTIONS = [

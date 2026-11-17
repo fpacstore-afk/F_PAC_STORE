@@ -98,27 +98,29 @@ export default function Bag() {
 
       let apiOptions: any[] = [];
       let shippingProviderUnavailable = false;
-      try {
-        const calculateItems = items.map(shippingParcel);
+      if (!localOption) {
+        try {
+          const calculateItems = items.map(shippingParcel);
 
-        const calcRes = await fetch(getPublicApiUrl('/api/shipping/calculate'), {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ to: numericPart, items: calculateItems }),
-          signal: AbortSignal.timeout(12_000),
-        });
-        if (requestId !== shippingRequestId.current) return;
-        if (calcRes.ok) {
-          const calcData = await calcRes.json();
-          if (Array.isArray(calcData)) {
-            apiOptions = calcData
-              .filter((option: any) => !option.error && Number.isFinite(parseFloat(option.price)))
-              .sort((a: any, b: any) => parseFloat(a.price) - parseFloat(b.price));
+          const calcRes = await fetch(getPublicApiUrl('/api/shipping/calculate'), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ to: numericPart, items: calculateItems }),
+            signal: AbortSignal.timeout(12_000),
+          });
+          if (requestId !== shippingRequestId.current) return;
+          if (calcRes.ok) {
+            const calcData = await calcRes.json();
+            if (Array.isArray(calcData)) {
+              apiOptions = calcData
+                .filter((option: any) => !option.error && Number.isFinite(parseFloat(option.price)))
+                .sort((a: any, b: any) => parseFloat(a.price) - parseFloat(b.price));
+            } else shippingProviderUnavailable = true;
           } else shippingProviderUnavailable = true;
-        } else shippingProviderUnavailable = true;
-      } catch (calcErr) {
-        shippingProviderUnavailable = true;
-        console.warn('Melhor Envio API calculation failed.', calcErr);
+        } catch (calcErr) {
+          shippingProviderUnavailable = true;
+          console.warn('Melhor Envio API calculation failed.', calcErr);
+        }
       }
 
       if (requestId !== shippingRequestId.current) return;
