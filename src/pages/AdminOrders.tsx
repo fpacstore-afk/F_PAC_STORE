@@ -1026,7 +1026,7 @@ function AdminOrdersInner({ defaultTab }: { defaultTab: ManagementTab }) {
         state: valState.toUpperCase()
       };
       
-      await updateDoc(orderRef, updatedData);
+      await updateDoc(orderRef, { ...updatedData, updatedAt: serverTimestamp() });
       
       // Update the template state locally so the interface updates
       const updatedOrder = {

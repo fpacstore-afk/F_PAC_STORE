@@ -38,8 +38,8 @@ export function ProductMockupSprite({
       <div
         className={cn('absolute inset-0 bg-no-repeat', imageClassName)}
         style={{
-          backgroundImage: kind === 'regata' ? 'url(/product-visuals/regata-atlas-v1.png)' : `url(/product-visuals/fpac-products-${view}-v1.webp)`,
-          backgroundSize: kind === 'regata' ? '200% 300%' : '300% 200%',
+          backgroundImage: kind === 'regata' ? 'url(/product-visuals/regata-front-back-v1.webp)' : `url(/product-visuals/fpac-products-${view}-v1.webp)`,
+          backgroundSize: kind === 'regata' ? '200% 100%' : '300% 200%',
           backgroundPosition: kind === 'regata' ? `${view === 'front' ? 0 : 100}% 0%` : getSpritePosition(kind),
           filter: recolor ? `url(#${filterId})` : undefined,
           // The source back sprite includes a small fragment of the next row.

@@ -5,6 +5,7 @@ import { projectPublicProduct, projectPublicAvailability, loadPublicCatalog, cre
 import { getPublicStampCatalog } from '../server/services/publicStampCatalog.service.ts';
 import { cartAvailabilityIssues } from '../shared/cartAvailability.ts';
 import { calculateOrderPricing as calculateRealOrderPricing } from '../server/services/pricing.service.ts';
+import { getCatalogImageName, isCatalogImageName } from '../shared/catalogImageSizes';
 
 const calculateOrderPricing = (input: Parameters<typeof calculateRealOrderPricing>[0]) =>
   calculateRealOrderPricing(input, { lookupPostcode: async cep => cep.startsWith('892')
@@ -14,6 +15,21 @@ const calculateOrderPricing = (input: Parameters<typeof calculateRealOrderPricin
 const db = requireIsolatedTestDb();
 let passed = 0;
 async function test(name: string, fn: () => unknown | Promise<unknown>) { await fn(); passed++; console.log(`PASS ${name}`); }
+await test('responsive catalog URLs recognize only the dedicated public catalog image folder', () => {
+  const name = '1790000000000-d1256bf1-818d-4d10-8a57-2d9ab95cb6a2-camiseta.png';
+  const stem = 'https://firebasestorage.googleapis.com/v0/b/fpac-store62.firebasestorage.app/o/';
+  const original = stem + encodeURIComponent('catalog-media/images/' + name) + '?alt=media&token=fixture';
+  assert.equal(getCatalogImageName(original), name);
+  for (const url of [
+    original.replace('https:', 'http:'),
+    original.replace('firebasestorage.googleapis.com/', 'not-firebasestorage.googleapis.com/'),
+    original.replace('fpac-store62.', 'another-bucket.'),
+    original.replace('catalog-media%2Fimages', 'customer-artworks'),
+    original.replace('catalog-media%2Fimages', 'catalog-media%2Fimages%2F..'),
+    original.replace('alt=media', 'alt=json'),
+  ]) assert.equal(getCatalogImageName(url), undefined);
+  assert.equal(isCatalogImageName(name + '/../../arquivo'), false);
+});
 await test('legacy stamps use the public projection and current records control visibility', async () => {
   await db.collection('estampas').doc('legacy-art').set({ name: 'Legacy art', image: '/legacy.png', slotIndex: 2, locationConfigs: { Frente: { sizes: ['8x6'], quantities: [8], cost: 35 } }, stockBalance: 8, cost: 35, masterFileUrl: '/private.psd' });
   await db.collection('estampas').doc('hidden-art').set({ image: '/legacy-hidden.png' });

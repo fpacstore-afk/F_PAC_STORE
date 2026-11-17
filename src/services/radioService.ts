@@ -1,6 +1,6 @@
 import { collection, query, orderBy, getDocs, doc, setDoc, updateDoc, deleteDoc, serverTimestamp, getDoc, increment } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL, listAll } from 'firebase/storage';
-import { db, storage, sanitizeFirestoreData } from '../lib/firebase';
+import { getStorage, ref, uploadBytes, getDownloadURL, listAll } from 'firebase/storage';
+import { app, db, sanitizeFirestoreData } from '../lib/firebase';
 import { Track } from '../types/music';
 
 const MUSIC_COLLECTION = 'music';
@@ -125,6 +125,7 @@ export async function deleteTrack(trackId: string): Promise<void> {
 }
 
 export async function uploadMedia(file: File, folder: 'audio' | 'covers'): Promise<string> {
+  const storage = getStorage(app);
   const sanitizedName = file.name.replace(/[^a-zA-Z0-9.\-_]/g, '_');
   const path = `Musicas do Site/${folder}/${Date.now()}_${sanitizedName}`;
   const storageRef = ref(storage, path);
@@ -135,6 +136,7 @@ export async function uploadMedia(file: File, folder: 'audio' | 'covers'): Promi
 }
 
 export async function syncTracksFromStorage(): Promise<{ added: number; existing: number; errors: number }> {
+  const storage = getStorage(app);
   let addedCount = 0;
   let existingCount = 0;
   let errorCount = 0;

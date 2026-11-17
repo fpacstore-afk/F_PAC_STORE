@@ -1,3 +1,4 @@
+import { StorefrontImage } from '../components/StorefrontImage';
 import { cartAvailabilityIssues } from '../../shared/cartAvailability';
 import { StorefrontPrice } from '../components/StorefrontPrice';
 import { formatStorefrontAmount } from '../lib/storefrontPrice';
@@ -1995,8 +1996,9 @@ export default function ProductDetail() {
                         )}
                       >
                         {img ? (
-                          <img
+                          <StorefrontImage
                             src={img}
+                            sizes="80px"
                             alt={`${product.headline || product.category || 'Produto'} thumb ${i}`}
                             loading="lazy"
                             decoding="async"
@@ -2015,24 +2017,22 @@ export default function ProductDetail() {
 
                 <div className="flex-1 aspect-[4/5] bg-white border border-neutral-100 shadow-[0_8px_30px_rgba(0,0,0,0.01)] rounded-[2.5rem] overflow-hidden relative group flex items-center justify-center">
                   <AnimatePresence mode="wait">
-                    {(viewingStampUrl || displayImages.length > 0) && <motion.img
+                    {(viewingStampUrl || displayImages.length > 0) && <motion.div
                       key={viewingStampUrl || displayImages[activeImage] || displayImages[0]}
                       initial={{ opacity: 0, scale: 1.01 }}
                       animate={{ opacity: 1, scale: 1 }}
                       exit={{ opacity: 0 }}
                       transition={{ duration: 0.35 }}
-                      src={viewingStampUrl || displayImages[activeImage] || displayImages[0]}
+                      className="h-full w-full"
+                    ><StorefrontImage src={viewingStampUrl || displayImages[activeImage] || displayImages[0]}
+                      sizes="(max-width: 767px) 95vw, (max-width: 1023px) 85vw, 550px"
                       alt={displayProductTitle}
                       loading="eager"
                       fetchPriority="high"
                       decoding="async"
                       className="w-full h-full object-contain p-2"
                       referrerPolicy="no-referrer"
-                      onError={(e) => {
-                        (e.currentTarget as HTMLImageElement).src =
-                          "/estampas/logo-fpac.png";
-                      }}
-                    />}
+                    /></motion.div>}
                   </AnimatePresence>
                   {!viewingStampUrl && displayImages.length === 0 && <div className="px-8 text-center text-sm text-neutral-500"><ImageIcon size={28} className="mx-auto mb-3" aria-hidden="true" />Foto desta cor ainda não disponível.</div>}
                   <ProductImageZoom

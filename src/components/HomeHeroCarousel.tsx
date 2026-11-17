@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowRight, ChevronLeft, ChevronRight, Pause, Play } from 'lucide-react';
 import { MediaSlot } from './MediaSlot';
+import { StorefrontImage } from './StorefrontImage';
 import type { MediaSlotConfig } from '../types/mediaSlot';
 import { isMediaVideo } from '../lib/utils';
 
@@ -32,7 +33,6 @@ export function HomeHeroCarousel({ slides }: HomeHeroCarouselProps) {
   );
   const shouldPause = paused || hovered || focused;
   const touchStartX = useRef<number | null>(null);
-  const frameRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     const viewport = window.matchMedia('(min-width: 768px)');
@@ -77,7 +77,6 @@ export function HomeHeroCarousel({ slides }: HomeHeroCarouselProps) {
     const mobileMedia = isVideoMedia(activeSlide.mobileMedia) ? activeSlide.mobileMedia : desktopMedia;
     return (
       <section
-        ref={frameRef}
         data-home-hero
         data-home-hero-video
         className="relative isolate min-h-[100svh] overflow-hidden bg-black pt-[var(--site-header-height)] text-white md:h-[100svh] md:min-h-[640px]"
@@ -96,10 +95,11 @@ export function HomeHeroCarousel({ slides }: HomeHeroCarouselProps) {
       >
         {desktopViewport ? (
           <>
-            <div data-motion-parallax className="fpac-hero-media pointer-events-none absolute inset-x-0 bottom-[-48px] top-[var(--site-header-height)]">
+            <div className="pointer-events-none absolute inset-x-0 bottom-[-48px] top-[var(--site-header-height)]">
               <MediaSlot
                 key={`desktop-${desktopMedia.url}`}
                 src={desktopMedia.url}
+                poster={desktopMedia.posterUrl}
                 type="video"
                 objectFit="cover"
                 alt={activeSlide.alt}
@@ -113,6 +113,7 @@ export function HomeHeroCarousel({ slides }: HomeHeroCarouselProps) {
           <MediaSlot
             key={`mobile-${mobileMedia.url}`}
             src={mobileMedia.url}
+            poster={mobileMedia.posterUrl}
             type="video"
             objectFit="contain"
             alt={activeSlide.alt}
@@ -145,7 +146,6 @@ export function HomeHeroCarousel({ slides }: HomeHeroCarouselProps) {
 
   return (
     <section
-      ref={frameRef}
       data-home-hero
       className="relative isolate h-[calc(88svh_+_var(--site-header-height))] min-h-[calc(580px_+_var(--site-header-height))] max-h-[calc(980px_+_var(--site-header-height))] overflow-hidden bg-black pt-[var(--site-header-height)] text-white md:h-[100svh] md:min-h-[calc(620px_+_var(--site-header-height))]"
       role="region"
@@ -163,6 +163,7 @@ export function HomeHeroCarousel({ slides }: HomeHeroCarouselProps) {
     >
       {slides.map((slide, index) => {
         const isActive = index === activeIndex;
+        const media = desktopViewport ? slide.media || slide.mobileMedia : slide.mobileMedia || slide.media;
         return (
           <div
             key={slide.id}
@@ -170,19 +171,12 @@ export function HomeHeroCarousel({ slides }: HomeHeroCarouselProps) {
             aria-hidden={!isActive}
           >
             <div
-              data-motion-parallax={isActive ? '' : undefined}
               className="fpac-hero-image absolute inset-[-42px]"
             >
-              {slide.media ? (
-                <>
-                  <MediaSlot key={`desktop-${slide.media.url}`} src={slide.media.url} poster={slide.media.posterUrl} fallbackSrc={slide.image} type={slide.media.type} objectFit={slide.media.objectFit} alt={slide.alt} priority={index === 0} className="absolute inset-0 hidden h-full w-full md:block" />
-                  {(() => {
-                    const mobileMedia = slide.mobileMedia || slide.media!;
-                    return <MediaSlot key={`mobile-${mobileMedia.url}`} src={mobileMedia.url} poster={mobileMedia.posterUrl} fallbackSrc={slide.image} type={mobileMedia.type} objectFit={mobileMedia.objectFit} alt={slide.alt} priority={index === 0} className="absolute inset-0 h-full w-full md:hidden" />;
-                  })()}
-                </>
+              {media ? (
+                <MediaSlot key={media.url} src={media.url} poster={media.posterUrl} fallbackSrc={slide.image} type={media.type} objectFit={media.objectFit} alt={slide.alt} priority={isActive} className="absolute inset-0 h-full w-full" />
               ) : slide.image ? (
-                <img src={slide.image} alt={slide.alt} loading={index === 0 ? 'eager' : 'lazy'} className="absolute inset-0 h-full w-full object-cover" onError={event => { event.currentTarget.src = '/product-visuals/fpac-products-front-v1.webp'; }} />
+                <StorefrontImage src={slide.image} sizes="100vw" alt={slide.alt} loading={index === 0 ? 'eager' : 'lazy'} className="absolute inset-0 h-full w-full object-cover" fallback="/product-visuals/fpac-products-front-v1.webp" />
               ) : null}
             </div>
           </div>

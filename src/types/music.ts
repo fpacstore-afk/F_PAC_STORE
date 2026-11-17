@@ -18,6 +18,7 @@ export interface Track {
 }
 
 export interface MusicPlayerContextType {
+  tracksLoading: boolean;
   tracks: Track[];
   currentTrack: Track | null;
   isPlaying: boolean;

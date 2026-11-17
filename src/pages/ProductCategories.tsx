@@ -1,3 +1,4 @@
+import { StorefrontImage } from '../components/StorefrontImage';
 import { CatalogUnavailable } from '../components/CatalogUnavailable';
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
@@ -87,7 +88,7 @@ export default function ProductCategories() {
                 {visualKind ? (
                   <ProductMockupSprite kind={visualKind} className="h-full w-full" imageClassName="transition-transform duration-500 group-hover:scale-[1.03]" imageStyle={visualKind === 'regata' ? { clipPath: 'inset(0 0 14% 0)' } : undefined} label={title} />
                 ) : (
-                  <img src={image || '/estampas/logo-fpac.png'} alt={title} className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.03]" />
+                  <StorefrontImage src={image} sizes="(max-width: 767px) 50vw, (max-width: 1279px) 33vw, 300px" alt={title} loading="lazy" decoding="async" className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.03]" />
                 )}
               </div>
               <div className="flex items-center justify-between gap-2 p-3 md:p-4 text-black">

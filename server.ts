@@ -40,6 +40,7 @@ import { processPayment, resumePayment } from "./server/controllers/checkout.con
 import { checkoutIdentity } from "./server/middleware/checkoutIdentity.js";
 import { verifyCheckout, paymentStatus } from "./server/controllers/paymentStatus.controller.js";
 import { getPublicCatalog } from "./server/services/publicCatalog.service.js";
+import { serveCatalogImage } from "./server/controllers/catalogImage.controller.js";
 import { getPublicStampCatalog } from "./server/services/publicStampCatalog.service.js";
 import { catalogReadLimiter, paymentStatusLimiter, leadCaptureLimiter } from "./server/middleware/rateLimiter.js";
 import { cancelOrderController } from "./server/controllers/order.controller.js";
@@ -66,6 +67,7 @@ import { createMockupAdminRouter, createMockupPublicRouter } from './server/cont
 import { readCatalogArtworkBounds } from './server/controllers/catalogArtworkBounds.controller.js';
 import { 
   publicApiLimiter, 
+  catalogImageLimiter,
   checkoutLimiter, 
   adminApiLimiter, 
   webhookLimiter 
@@ -397,6 +399,8 @@ apiRouter.get("/products", catalogReadLimiter, async (_req, res) => {
     });
   }
 });
+
+apiRouter.get("/catalog-images/:width/:name", catalogImageLimiter, serveCatalogImage);
 
 apiRouter.get("/instagram/feed", publicApiLimiter, async (req, res) => {
   try {

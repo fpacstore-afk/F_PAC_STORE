@@ -27,6 +27,7 @@ export default function RadioPage() {
     currentTime,
     duration,
     isLoading,
+    tracksLoading,
     filteredTracks,
     playTrack,
     togglePlay,
@@ -66,7 +67,9 @@ export default function RadioPage() {
         </p>
       </div>
 
-      {filteredTracks.length === 0 ? (
+      {tracksLoading && filteredTracks.length === 0 ? (
+        <p role="status" className="py-20 text-center text-sm font-bold text-black/60">Carregando faixas da rádio…</p>
+      ) : filteredTracks.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-20 text-center border border-dashed border-gray-300 p-8 rounded-none">
           <Radio size={40} className="text-gray-300 mb-4 animate-bounce" />
           <h3 className="text-sm font-black uppercase tracking-widest text-black mb-1">Rádio Fora do Ar</h3>

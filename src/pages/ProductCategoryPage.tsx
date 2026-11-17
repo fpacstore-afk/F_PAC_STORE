@@ -1,3 +1,4 @@
+import { PRODUCT_CARD_SIZES, StorefrontImage } from '../components/StorefrontImage';
 import { categoryCatalogView, type CategoryCatalogLine } from '../lib/categoryCatalog';
 import { StorefrontPrice } from '../components/StorefrontPrice';
 import { CatalogUnavailable } from '../components/CatalogUnavailable';
@@ -121,7 +122,7 @@ export default function ProductCategoryPage() {
         ) : filtered.length > 0 ? (
           <div data-density-grid="products" className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-2.5 md:gap-4">
             {filtered.map((product) => {
-              const image = product.images?.[0] || '/estampas/logo-fpac.png';
+              const image = product.images?.[0];
               const prices = getDisplayPrices(product);
               return (
                 <Link
@@ -130,15 +131,13 @@ export default function ProductCategoryPage() {
                   className="group bg-white border border-black/10 rounded-xl md:rounded-2xl overflow-hidden shadow-sm hover:shadow-xl hover:-translate-y-0.5 transition-all duration-300"
                 >
                   <div className="relative aspect-square md:aspect-[4/5] bg-black overflow-hidden">
-                    <img
+                    <StorefrontImage
                       src={image}
+                      sizes={PRODUCT_CARD_SIZES}
                       alt={product.name || 'Produto F PAC STORE'}
                       loading="lazy"
                       decoding="async"
                       className="w-full h-full object-cover group-hover:scale-[1.03] transition-transform duration-500"
-                      onError={(e) => {
-                        e.currentTarget.src = '/estampas/logo-fpac.png';
-                      }}
                     />
                     <span className="absolute left-3 top-3 bg-black/85 backdrop-blur-sm text-[#eab308] px-3 py-1.5 rounded-full text-[8px] font-black uppercase tracking-[0.18em]">
                       F PAC STORE

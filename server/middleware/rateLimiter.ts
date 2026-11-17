@@ -17,6 +17,10 @@ export const catalogReadLimiter = rateLimit({
   validate: { trustProxy: false },
   message: { error: 'Muitas consultas ao catálogo. Tente novamente em instantes.' },
 });
+export const catalogImageLimiter = rateLimit({
+  windowMs: 60_000, max: 120, standardHeaders: true, legacyHeaders: false,
+  validate: { trustProxy: false },
+});
 export const leadCaptureLimiter = rateLimit({
   windowMs: 15 * 60_000, max: 60, standardHeaders: true, legacyHeaders: false,
   validate: { trustProxy: false },
