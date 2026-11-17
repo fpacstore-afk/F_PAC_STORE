@@ -4,6 +4,9 @@ import { initializeTestEnvironment, assertFails, assertSucceeds } from '@firebas
 import { collection, doc, getDoc, getDocs, setDoc, updateDoc, runTransaction } from 'firebase/firestore';
 import { changeProductColorPresets, readProductColorPresets } from '../shared/productColorPresets';
 import { ref, uploadBytes, getMetadata, listAll } from 'firebase/storage';
+import { initializeApp, deleteApp } from 'firebase-admin/app';
+import { FieldValue, getFirestore } from 'firebase-admin/firestore';
+import { refreshPublicClubRanking } from '../server/services/club.service';
 
 // Never connect these tests to production. Explicit demo project plus emulator guard.
 assert.match(process.env.FIRESTORE_EMULATOR_HOST || '', /^(127\.0\.0\.1|localhost):\d+$/);
@@ -28,6 +31,29 @@ try {
   }
   await assertSucceeds(getDoc(doc(manager, 'orders/customer-fixture')));
   console.log('Internal order costs remain admin-only, including for the buyer.');
+  const rankingApp = initializeApp({ projectId: 'demo-fpac-ecommerce-audit' }, 'ranking-projection-test');
+  try {
+    const adminDb = getFirestore(rankingApp);
+    const paid = adminDb.collection('orders').doc('ranking-paid-fixture');
+    await paid.set({ customerName: 'Lua Braga', customerEmail: 'lua@example.invalid', amountPaid: 450, updatedAt: FieldValue.serverTimestamp() });
+    const initial = await refreshPublicClubRanking(adminDb);
+    assert.equal(initial.topBuyer?.publicName, 'Lua B.');
+    assert.deepEqual(await refreshPublicClubRanking(adminDb), initial, 'unchanged requests reuse the persisted ranking');
+    const saved = await adminDb.collection('club_ranking_snapshots').doc('current').get();
+    assert.doesNotMatch(JSON.stringify(saved.data()?.payload), /example\.invalid|450|paid-fixture/);
+    for (const reader of [guest, customer, manager]) {
+      const preview = doc(reader, 'club_ranking_snapshots/current');
+      await assertFails(getDoc(preview));
+      await assertFails(setDoc(preview, { forged: true }));
+    }
+    await paid.update({ customerName: 'Lua Esteves', updatedAt: new Date().toISOString() });
+    assert.equal((await refreshPublicClubRanking(adminDb)).topBuyer?.publicName, 'Lua E.', 'ISO contact edits refresh the ranking');
+    await paid.update({ paymentStatus: 'refunded', updatedAt: FieldValue.serverTimestamp() });
+    assert.equal((await refreshPublicClubRanking(adminDb)).topBuyer, null, 'timestamp refunds refresh the ranking');
+    await paid.delete();
+    assert.equal((await refreshPublicClubRanking(adminDb)).ranking.length, 0);
+    assert.equal((await saved.ref.get()).data()?.orderCount, 1, 'a deletion refreshes the saved order count');
+  } finally { await deleteApp(rankingApp); }
   await environment.withSecurityRulesDisabled(async context => {
     await setDoc(doc(context.firestore(), 'reviews/owned-review'), { userId: 'customer', productId: 'shirt', name: 'Cliente',
       rating: 5, comment: 'Ótima peça', verified: true, createdAt: '2026-11-03' });

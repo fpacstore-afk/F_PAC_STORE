@@ -1,7 +1,6 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
 import { getFirestore, initializeFirestore, persistentLocalCache, persistentMultipleTabManager } from 'firebase/firestore';
-import { getStorage } from 'firebase/storage';
 
 // Load from JSON (AI Studio platform standard)
 // @ts-ignore - this file might not exist in some environments
@@ -58,7 +57,6 @@ export const db = isConfigValid
   : getFirestore(app); 
 
 export const auth = getAuth(app);
-export const storage = getStorage(app);
 
 // Security: Firestore Error Handler
 export enum OperationType {

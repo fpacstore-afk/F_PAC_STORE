@@ -1,6 +1,7 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowUpRight } from 'lucide-react';
+import { StorefrontImage } from './StorefrontImage';
 
 const fallback = '/product-visuals/fpac-products-front-v1.webp';
 const details = [
@@ -10,9 +11,6 @@ const details = [
 ];
 
 export function HomeIdentityJourney({ image, detailImage }: { image?: string; detailImage?: string }) {
-  const handleError = (event: React.SyntheticEvent<HTMLImageElement>) => {
-    if (!event.currentTarget.src.endsWith(fallback)) event.currentTarget.src = fallback;
-  };
   return (
     <section className="fpac-detail-section" data-home-identity-journey aria-labelledby="identity-journey-title">
       <div className="fpac-detail-panel">
@@ -26,9 +24,9 @@ export function HomeIdentityJourney({ image, detailImage }: { image?: string; de
           <Link to="/catalog/all" className="fpac-detail-link">Explore as peças <ArrowUpRight size={16} /></Link>
         </div>
         <div className="fpac-detail-images" data-motion-reveal="image">
-          <div className="fpac-detail-main"><img data-motion-image-depth src={image || fallback} alt="Peça da coleção F PAC" loading="lazy" decoding="async" onError={handleError} /></div>
-          <figure><img src={image || fallback} alt="Aproximação da peça F PAC" loading="lazy" decoding="async" onError={handleError} /><figcaption>Detalhe da peça</figcaption></figure>
-          <figure><img src={detailImage || image || fallback} alt="Visual da coleção F PAC" loading="lazy" decoding="async" onError={handleError} /><figcaption>Estampa em foco</figcaption></figure>
+          <div className="fpac-detail-main"><StorefrontImage src={image} fallback={fallback} sizes="(max-width: 767px) 90vw, 550px" alt="Peça da coleção F PAC" loading="lazy" decoding="async" /></div>
+          <figure><StorefrontImage src={image} fallback={fallback} sizes="(max-width: 767px) 43vw, 270px" alt="Aproximação da peça F PAC" loading="lazy" decoding="async" /><figcaption>Detalhe da peça</figcaption></figure>
+          <figure><StorefrontImage src={detailImage || image} fallback={fallback} sizes="(max-width: 767px) 43vw, 270px" alt="Visual da coleção F PAC" loading="lazy" decoding="async" /><figcaption>Estampa em foco</figcaption></figure>
         </div>
       </div>
     </section>

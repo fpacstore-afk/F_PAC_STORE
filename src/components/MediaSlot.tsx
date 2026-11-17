@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { getImageFallbackUrls, isMediaVideo } from '../lib/utils';
 import { useReducedMotion } from 'framer-motion';
+import { StorefrontImage } from './StorefrontImage';
 
 export interface MediaSlotProps {
   src?: string | null;
@@ -11,6 +12,7 @@ export interface MediaSlotProps {
   alt?: string;
   className?: string;
   priority?: boolean;
+  sizes?: string;
 }
 
 export const MediaSlot: React.FC<MediaSlotProps> = ({
@@ -21,7 +23,8 @@ export const MediaSlot: React.FC<MediaSlotProps> = ({
   objectFit = 'cover',
   alt = 'F PAC STORE Media',
   className = 'w-full h-full',
-  priority = false
+  priority = false,
+  sizes = '100vw'
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -100,9 +103,11 @@ export const MediaSlot: React.FC<MediaSlotProps> = ({
           className={`w-full h-full ${fitClass} block ${reduceMotion || autoplayBlocked ? '' : 'pointer-events-none'} select-none`}
         />
       ) : !hasImageError && imageCandidates[imageAttempt] ? (
-        <img
+        <StorefrontImage
           key={`${imageCandidates[imageAttempt]}-${imageAttempt}`}
           src={imageCandidates[imageAttempt]}
+          fallback=""
+          sizes={sizes}
           referrerPolicy="no-referrer"
           alt={alt}
           loading={priority ? 'eager' : 'lazy'}

@@ -1,14 +1,14 @@
 import { HomeHeroCarousel, type HomeHeroSlide } from '../components/HomeHeroCarousel';
 import { HomeCategoryCarousel } from '../components/HomeCategoryCarousel';
 import { HomeIdentityJourney } from '../components/HomeIdentityJourney';
-import { useHomeMotion } from '../hooks/useHomeMotion';
+import { StorefrontImage } from '../components/StorefrontImage';
 import '../home-motion.css';
 import '../home-refresh.css';
 import { HomeCollectionStrip } from '../components/HomeCollectionStrip';
 import { resolveBrandMedia } from '../lib/brandMedia';
 import type { MediaSlotConfig } from '../types/mediaSlot';
 import { subscribePublicProductSnapshot } from '../services/publicProducts';
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   ArrowRight,
@@ -20,7 +20,7 @@ import {
   Truck,
 } from 'lucide-react';
 import { Helmet } from 'react-helmet-async';
-import { collection, doc, onSnapshot } from 'firebase/firestore';
+import { doc, onSnapshot } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { products as staticProducts } from '../data/products';
 import { STAMP_CATEGORIES } from '../constants/stampCategories';
@@ -46,11 +46,8 @@ type InstagramFeedItem = {
 
 export default function HomeV2() {
   const campaign1111Active = useCampaign1111Active();
-  const homeRef = useRef<HTMLDivElement>(null);
-  useHomeMotion(homeRef);
   const [hero, setHero] = useState<MediaSlotConfig | null>(null);
   const [heroMobile, setHeroMobile] = useState<MediaSlotConfig | null>(null);
-  const [brandImage, setBrandImage] = useState<string>('');
   const [aboutImage, setAboutImage] = useState<string>('');
   const [catalogImages, setCatalogImages] = useState<string[]>([]);
   const [carouselProducts, setCarouselProducts] = useState<any[]>([]);
@@ -76,7 +73,6 @@ export default function HomeV2() {
       const data = snapshot.data();
       setHero(resolveBrandMedia(data, 'heroMedia', 'heroUrl'));
       setHeroMobile(resolveBrandMedia(data, 'heroMobileMedia', 'heroMobileUrl'));
-      setBrandImage(resolveBrandMedia(data, 'logoMedia', 'imageUrl')?.url || '/estampas/logo-fpac.png');
       setAboutImage(data.aboutUrl || data.aboutMedia?.url || '');
       setCatalogImages([
         data.catalogImage1 || data.catalogSlot1?.url || '',
@@ -147,15 +143,15 @@ export default function HomeV2() {
   );
   const renderProductCards = (items: any[]) => (
     <div className="grid grid-cols-2 gap-3 sm:grid-cols-2 md:grid-cols-4 md:gap-5">
-      {items.map((product: any, index: number) => {
+      {items.map((product: any) => {
         const price = getDisplayPrices(product);
         const isPrimeProduct = productMatchesCommercialLine(product, 'prime') || Boolean(product.is_prime);
         const target = isPrimeProduct ? `/prime?product=${encodeURIComponent(product.id || product.slug)}` : getProductUrl(product);
         const productTitle = getStorefrontProductTitle(product, publicStampNames);
         return (
-          <article key={product.id || product.slug} data-motion-reveal data-motion-delay={index * 70} className="fpac-home-product group overflow-hidden bg-white">
+          <article key={product.id || product.slug} data-motion-reveal className="fpac-home-product group overflow-hidden bg-white">
             <Link to={target} className="relative block aspect-[4/5] overflow-hidden rounded-lg bg-[#f3f2ee]">
-              <img src={product.images?.[0] || '/estampas/logo-fpac.png'} alt={productTitle} loading="lazy" decoding="async" className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" onError={event => { event.currentTarget.src = '/estampas/logo-fpac.png'; }} />
+              <StorefrontImage src={product.images?.[0]} sizes="(max-width: 767px) 50vw, 320px" alt={productTitle} loading="lazy" decoding="async" className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" />
               {product.isBestseller === true && <span className="absolute left-3 top-3 rounded-full bg-[#eab308] px-3 py-1.5 text-[8px] font-black uppercase tracking-wider text-black">Mais vendido</span>}
               {product.isNew === true && <span className="absolute right-3 top-3 rounded-full bg-white px-3 py-1.5 text-[8px] font-black uppercase tracking-wider text-black">Lançamento</span>}
             </Link>
@@ -187,8 +183,7 @@ export default function HomeV2() {
   );
 
   return (
-    <div ref={homeRef} className="fpac-motion-home w-full bg-white" data-home-version="canonical-v6" data-home-refresh="identity-2026-10">
-      <span className="fpac-home-progress" aria-hidden="true" />
+    <div className="fpac-motion-home w-full bg-white" data-home-version="canonical-v6" data-home-refresh="identity-2026-10">
       <Helmet>
         <title>F PAC STORE | Não é só roupa. É identidade!</title>
         <meta
@@ -227,31 +222,16 @@ export default function HomeV2() {
       <HomeIdentityJourney image={carouselProducts[0]?.images?.[0] || aboutImage} detailImage={carouselProducts.find(product => productMatchesCommercialLine(product, 'mark'))?.images?.[0]} />
 
       <section className="overflow-hidden border-b border-black/5 py-7 md:py-10" data-home-values>
-        <div className="fpac-benefits-viewport mx-auto max-w-7xl px-5" role="region" aria-roledescription="carrossel" aria-label="Benefícios F PAC STORE" tabIndex={0}>
-          <div className="fpac-benefits-marquee" aria-live="off">
-            <div className="fpac-benefits-group">
-            {values.map(({ icon: Icon, title, desc }) => (
-              <div key={title} className="flex w-[min(84vw,360px)] shrink-0 items-center gap-4 rounded-2xl border border-black/5 bg-[#fafafa] p-4 md:w-[min(38vw,420px)] md:p-5">
-                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-black text-[#eab308]"><Icon size={20} /></div>
-                <div className="min-w-0">
-                  <h3 className="text-sm font-black uppercase leading-tight text-black md:text-base">{title}</h3>
-                  <p className="mt-1 text-xs leading-relaxed text-gray-500">{desc}</p>
-                </div>
+        <div className="mx-auto grid max-w-7xl grid-cols-1 gap-3 px-5 min-[420px]:grid-cols-2 lg:grid-cols-4" role="region" aria-label="Benefícios F PAC STORE">
+          {values.map(({ icon: Icon, title, desc }) => (
+            <div key={title} className="flex min-w-0 items-center gap-3 rounded-2xl border border-black/5 bg-[#fafafa] p-3 md:p-4">
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-black text-[#eab308]"><Icon size={20} /></div>
+              <div className="min-w-0">
+                <h3 className="text-sm font-black uppercase leading-tight text-black md:text-base">{title}</h3>
+                <p className="mt-1 text-xs leading-relaxed text-gray-500">{desc}</p>
               </div>
-            ))}
-          </div>
-            <div className="fpac-benefits-group" aria-hidden="true">
-            {values.map(({ icon: Icon, title, desc }) => (
-              <div key={title} className="flex w-[min(84vw,360px)] shrink-0 items-center gap-4 rounded-2xl border border-black/5 bg-[#fafafa] p-4 md:w-[min(38vw,420px)] md:p-5">
-                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-black text-[#eab308]"><Icon size={20} /></div>
-                <div className="min-w-0">
-                  <h3 className="text-sm font-black uppercase leading-tight text-black md:text-base">{title}</h3>
-                  <p className="mt-1 text-xs leading-relaxed text-gray-500">{desc}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-          </div>
+            </div>
+          ))}
         </div>
       </section>
 
@@ -266,7 +246,7 @@ export default function HomeV2() {
         </section>
       )}
 
-      <section data-home-prime data-motion-scene className="fpac-section-transition bg-black py-10 text-white md:py-14">
+      <section data-home-prime className="fpac-section-transition bg-black py-10 text-white md:py-14">
         <div className="mx-auto flex max-w-7xl flex-col items-start justify-between gap-5 px-5 md:flex-row md:items-center">
           <div data-motion-reveal="title" className="max-w-2xl">
             <p className="text-[9px] font-black uppercase tracking-[0.24em] text-[#eab308]">Sua ideia vira peça</p>
@@ -307,7 +287,7 @@ export default function HomeV2() {
             <div className="grid md:grid-cols-2 gap-4">
               {catalogImages.map((src, index) => (
                 <Link key={index} to="/estampas" data-motion-reveal="image" aria-label="Abrir catálogo de estampas" className="group relative aspect-video bg-black overflow-hidden rounded-2xl border border-black/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#eab308]">
-                  <img src={src} alt="Catálogo F PAC STORE" loading="lazy" decoding="async" className="w-full h-full object-contain transition-transform duration-300 group-hover:scale-[1.02]" />
+                  <StorefrontImage src={src} sizes="(max-width: 767px) 100vw, 620px" alt="Catálogo F PAC STORE" loading="lazy" decoding="async" className="w-full h-full object-contain transition-transform duration-300 group-hover:scale-[1.02]" />
                   <span className="absolute right-3 bottom-3 inline-flex items-center gap-2 rounded-full bg-black/85 text-white px-4 py-2 text-[9px] font-black uppercase tracking-[0.16em] backdrop-blur-sm">Abrir catálogo <ArrowRight size={13} /></span>
                 </Link>
               ))}

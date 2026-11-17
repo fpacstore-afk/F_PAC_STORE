@@ -1,13 +1,17 @@
 import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
 import { Track, MusicPlayerContextType } from '../types/music';
 import { toast } from 'react-hot-toast';
+import { useLocation } from 'react-router-dom';
 
 const loadRadioService = () => import('../services/radioService');
 
 const MusicPlayerContext = createContext<MusicPlayerContextType | undefined>(undefined);
 
 export function MusicPlayerProvider({ children }: { children: React.ReactNode }) {
+  const { pathname } = useLocation();
+  const isRadioPage = /^\/radio\/?$/.test(pathname);
   const [tracks, setTracks] = useState<Track[]>([]);
+  const [tracksLoading, setTracksLoading] = useState(true);
   const [currentTrack, setCurrentTrack] = useState<Track | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [volume, setVolumeState] = useState(() => {
@@ -149,7 +153,8 @@ export function MusicPlayerProvider({ children }: { children: React.ReactNode })
     if (audioRef.current) audioRef.current.loop = isLooping;
   }, [isLooping]);
 
-  const refreshTracks = async () => {
+  const refreshTracks = useCallback(async () => {
+    setTracksLoading(true);
     try {
       const { fetchAllTracks } = await loadRadioService();
       const data = await fetchAllTracks(true);
@@ -172,15 +177,14 @@ export function MusicPlayerProvider({ children }: { children: React.ReactNode })
       setTracks([]);
       setCurrentTrack(null);
       currentTrackRef.current = null;
+    } finally {
+      setTracksLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
-    // Radio data and Storage support are optional on the storefront. Load them
-    // after the initial page can paint, while retaining the player everywhere.
-    const timer = window.setTimeout(() => { void refreshTracks(); }, 1_500);
-    return () => window.clearTimeout(timer);
-  }, []);
+    if (isRadioPage) void refreshTracks();
+  }, [isRadioPage, refreshTracks]);
 
   const playTrack = async (track: Track) => {
     if (!track?.audio || typeof track.audio !== 'string' || !track.audio.trim()) {
@@ -262,7 +266,7 @@ export function MusicPlayerProvider({ children }: { children: React.ReactNode })
 
   return (
     <MusicPlayerContext.Provider value={{
-      tracks, currentTrack, isPlaying, volume, isMuted, isLooping, isShuffling,
+      tracks, tracksLoading, currentTrack, isPlaying, volume, isMuted, isLooping, isShuffling,
       currentTime, duration, isLoading, playerOpen, activePlaylist, filteredTracks,
       failedTracks, playTrack, togglePlay, nextTrack: handleNextTrack,
       prevTrack: handlePrevTrack, setVolume, toggleMute, toggleLoop, toggleShuffle,

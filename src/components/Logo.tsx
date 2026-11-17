@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { db } from '../lib/firebase';
 import { doc, onSnapshot } from 'firebase/firestore';
+import { StorefrontImage } from './StorefrontImage';
 
 export const Logo: React.FC<{ className?: string }> = ({ className = "h-12 w-auto" }) => {
   const [dynamicLogo, setDynamicLogo] = useState<string | null>(null);
@@ -15,7 +16,7 @@ export const Logo: React.FC<{ className?: string }> = ({ className = "h-12 w-aut
   }, []);
 
   // Default path for the logo in the public folder as fallback
-  const defaultLogoPath = '/estampas/logo-fpac.png';
+  const defaultLogoPath = '/estampas/logo-fpac-192.webp';
   const logoSrc = dynamicLogo || defaultLogoPath;
 
   if (!logoSrc) return null;
@@ -23,20 +24,16 @@ export const Logo: React.FC<{ className?: string }> = ({ className = "h-12 w-aut
   return (
     <div className={`flex items-center ${className}`}>
       {/* Brand Logo Image */}
-      <img 
+      <StorefrontImage
         src={logoSrc} 
+        sizes="80px"
+        fallback={defaultLogoPath}
         alt="F PAC STORE Logo" 
         className="h-full w-auto object-contain"
         onError={(e) => {
-          // If image fails and it's not the default one, try the default one
-          if (dynamicLogo && e.currentTarget.src !== window.location.origin + defaultLogoPath) {
-             setDynamicLogo(null);
-          } else {
-            // If even default fails, show text-only logo
-            e.currentTarget.style.display = 'none';
-            const sibling = e.currentTarget.nextElementSibling as HTMLElement;
-            if (sibling) sibling.style.display = 'flex';
-          }
+          e.currentTarget.style.display = 'none';
+          const sibling = e.currentTarget.nextElementSibling as HTMLElement;
+          if (sibling) sibling.style.display = 'flex';
         }}
       />
       
