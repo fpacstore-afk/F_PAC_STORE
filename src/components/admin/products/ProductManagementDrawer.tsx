@@ -69,7 +69,7 @@ function createStockSaveIdempotencyKey() {
   const randomPart = uuid || `${Date.now()}${Math.random().toString(36).slice(2)}`;
   return `stock_${randomPart}`;
 }
-const BASE_MODELS = ['Oversized Premium 240GSM', 'Tradicional Suedine', 'Bermuda Linho Cargo', 'Regata', 'Cropped Oversized Feminino', 'Casaco de Moletom', 'Boné de Telinha Trucker', 'Tradicional Dry Fit'];
+const BASE_MODELS = ['Oversized Premium 240GSM', 'Tradicional Suedine', 'Bermuda Linho Cargo', 'Regata', 'Cropped Oversized Feminino', 'Casaco de Moletom', 'Boné de Telinha Trucker', 'Tradicional Dry Fit', 'Camiseta Básica Tradicional'];
 const PRODUCT_NAME_SUGGESTIONS = STOCK_FAMILIES.map(family => family.label);
 
 const DEFAULT_SIZES = ['P', 'M', 'G', 'GG', 'XG'];
