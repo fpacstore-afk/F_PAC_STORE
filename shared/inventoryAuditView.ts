@@ -34,6 +34,8 @@ export function inventoryColorLabel(value: string) {
   const key = normalized(value);
   if (['marinho', 'azul marinho', 'azulmarinho'].includes(key)) return 'Azul-marinho';
   if (key === 'off white' || key === 'offwhite') return 'Off-white';
+  if (key === 'verde' || key === 'verde militar') return 'Verde militar';
+  if (key === 'marrom' || key === 'marrom cafe') return 'Marrom café';
   if (key === 'preta') return 'Preto';
   if (key === 'branca') return 'Branco';
   const name = value.trim().replace(/\s+/g, ' ').toLocaleLowerCase('pt-BR');
