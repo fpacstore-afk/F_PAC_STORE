@@ -97,6 +97,20 @@ try {
     assert.equal((await checkStock(manualOrderStockItems([draft(2)]))).isAvailable, true);
     assert.equal((await invoke(recordStockMovement, { ...request, quantity: 9 })).statusCode, 409);
   });
+  await check('a retried count adjustment writes one movement and a stale count cannot overwrite later stock', async () => {
+    const ref = db.collection('inventory').doc('count-test');
+    await ref.set({ variants: { Marinho_G: variant(3, 1) } });
+    const request = { productSlug: ref.id, variantKey: 'Marinho_G', type: 'adjust', quantity: 4, expectedPhysicalQuantity: 3, idempotencyKey: randomUUID() };
+    const first = await invoke(recordStockMovement, request);
+    assert.equal(first.statusCode, 200);
+    const retry = await invoke(recordStockMovement, request);
+    assert.equal(retry.body.movement.id, first.body.movement.id);
+    assert.equal(retry.body.replayed, true);
+    assert.equal((await invoke(recordStockMovement, { ...request, quantity: 6, idempotencyKey: randomUUID() })).statusCode, 409);
+    const current = (await ref.get()).data()!;
+    assert.deepEqual([current.totalPhysicalStock, current.totalReservedStock, current.totalAvailableStock], [4, 1, 3]);
+    assert.equal((await db.collection('stock_movements').where('productSlug','==',ref.id).get()).docs.length, 1);
+  });
   await check('stock movements reject unknown operations, fractions, infinity and unsafe document identifiers', async () => {
     for (const patch of [{ type: 'unknown' }, { quantity: 1.5 }, { quantity: Infinity }, { quantity: -1 }, { quantity: 0 }, { productSlug: '../bad' }, { variantKey: '__proto__' }, { idempotencyKey: '../bad' }]) {
       const result = await invoke(recordStockMovement, { productSlug: 'high', variantKey: 'Off White_M', type: 'add', quantity: 1, ...patch });

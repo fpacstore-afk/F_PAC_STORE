@@ -25,7 +25,6 @@ import { stockMovementDisplay } from '../lib/stockMovementDisplay';
 import { getStockCategory, OVERSIZED_CATEGORY } from '../lib/stockCategory';
 import { buildStockVariantRows, summarizeStockVariants, withSaleAvailability, type SaleAvailability } from '../lib/stockVariantRows';
 import { StockVariantBreakdown, StockVariantStatusSummary } from './StockVariantBreakdown';
-import { subscribePublicCatalog } from '../services/publicProducts';
 import { 
   Plus, Minus, Search, Database, Clock, AlertTriangle, 
   CheckCircle2, Box, Sparkles, RefreshCw, Filter, Calendar, 
@@ -71,11 +70,6 @@ export function AdminStockCenter() {
   const isDevBypass = import.meta.env.DEV && localStorage.getItem('admin_bypass') === 'true';
   const isAdmin = isAdminIdentity(user) || isDevBypass;
   const [saleCatalog, setSaleCatalog] = useState<{ products: any[]; availability: Record<string, SaleAvailability> } | null>(null);
-  useEffect(() => {
-    if (!isAdmin) return;
-    return subscribePublicCatalog(catalog => setSaleCatalog(catalog), () => setSaleCatalog(null));
-  }, [isAdmin]);
-
   const [availabilityAudit, setAvailabilityAudit] = useState<any>(null);
   const [checkingAvailability, setCheckingAvailability] = useState(false);
   const checkAvailability = async (repair = false) => {
@@ -153,6 +147,20 @@ export function AdminStockCenter() {
     } catch (error) { toast.error(error instanceof Error ? error.message : 'Falha ao preencher custos.'); }
     finally { setCompletingCosts(false); }
   };
+  useEffect(() => {
+    if (!isAdmin || invLoading) return;
+    const abort = new AbortController();
+    const timer = window.setTimeout(async () => {
+      try {
+        const response = await authenticatedFetch('/api/admin/stock/sale-availability', { signal: abort.signal });
+        if (!response.ok) throw new Error();
+        const catalog = await parseApiJson<NonNullable<typeof saleCatalog>>(response);
+        if (!abort.signal.aborted) setSaleCatalog(catalog);
+      } catch { if (!abort.signal.aborted) setSaleCatalog(null); }
+    }, 150);
+    return () => { window.clearTimeout(timer); abort.abort(); };
+  }, [isAdmin, invLoading, inventory, rawProducts]);
+
   const products = useMemo(
     () => mergeProductsWithPrivateCosts(rawProducts, costsByProductId).filter((product: any) => !product.mergedIntoProductId),
     [rawProducts, costsByProductId]

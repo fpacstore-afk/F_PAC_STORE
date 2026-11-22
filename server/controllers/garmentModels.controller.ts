@@ -10,6 +10,7 @@ export function createGarmentModelsRouter(dbProvider = getDb) {
   router.get('/range-preview', handle(() => previewStockRange(dbProvider())));
   router.post('/range-apply', handle((req: any) => applyStockRange(dbProvider(), req.body, req.user?.uid || 'admin')));
   router.post('/initialize', handle((req: any) => initializeGarmentModels(dbProvider(), req.user?.uid || 'admin')));
+  router.post('/inventory-navy', handle((req: any) => initializeGarmentModels(dbProvider(), req.user?.uid || 'admin', 'navy')));
   router.post('/transfer', handle((req: any) => transferGarmentModel(dbProvider(), req.body, req.user?.uid || 'admin')));
   router.post('/unify', handle((req: any) => unifyGarmentModel(dbProvider(), req.body, req.user?.uid || 'admin')));
   return router;

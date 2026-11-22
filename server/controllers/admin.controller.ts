@@ -929,7 +929,7 @@ export async function updateOrderPaymentStatus(req: Request, res: Response) {
 
 export async function recordStockMovement(req: Request, res: Response) {
   try {
-    const { productSlug, variantKey, type, quantity, reason, idempotencyKey } = req.body;
+    const { productSlug, variantKey, type, quantity, reason, idempotencyKey, expectedPhysicalQuantity } = req.body;
     const user = (req as any).user;
 
     const additiveTypes = ['add', 'purchase_entry', 'manual_entry', 'adjustment_increase', 'return'];
@@ -937,6 +937,7 @@ export async function recordStockMovement(req: Request, res: Response) {
     if (typeof productSlug !== 'string' || !productSlug.trim() || productSlug.includes('/') || productSlug.length > 160 ||
         typeof variantKey !== 'string' || !variantKey.trim() || variantKey.length > 160 || ['__proto__', 'constructor', 'prototype'].includes(variantKey) ||
         ![...additiveTypes, ...subtractiveTypes, 'adjust'].includes(type) || !Number.isSafeInteger(quantity) || quantity < (type === 'adjust' ? 0 : 1) || quantity > 100000 ||
+        (expectedPhysicalQuantity !== undefined && (type !== 'adjust' || !Number.isSafeInteger(expectedPhysicalQuantity) || expectedPhysicalQuantity < 0)) ||
         (idempotencyKey != null && (typeof idempotencyKey !== 'string' || !/^[A-Za-z0-9_-]{8,160}$/.test(idempotencyKey)))) {
       return res.status(400).json({ error: 'productSlug, variantKey, type e quantidade são obrigatórios e válidos.' });
     }
@@ -944,7 +945,7 @@ export async function recordStockMovement(req: Request, res: Response) {
     const db = getDb();
     let resultMovement: any = null;
     let replayed = false;
-    const signature = JSON.stringify([productSlug, variantKey, type, quantity, reason || '']);
+    const signature = JSON.stringify([productSlug, variantKey, type, quantity, reason || '', ...(expectedPhysicalQuantity === undefined ? [] : [expectedPhysicalQuantity])]);
 
     await db.runTransaction(async (transaction) => {
       const invRef = db.collection('inventory').doc(productSlug);
@@ -962,6 +963,9 @@ export async function recordStockMovement(req: Request, res: Response) {
       const currentVariant = variants[variantKey] || {};
       const stats = getVariantStats(currentVariant, productSlug, variantKey);
 
+      if (expectedPhysicalQuantity !== undefined && (!variants[variantKey] || stats.physicalQuantity !== expectedPhysicalQuantity)) {
+        throw Object.assign(new Error('O saldo mudou desde a contagem. Confira a peça e informe a quantidade novamente.'), { status: 409, code: 'STALE_STOCK' });
+      }
       let newPhysicalQuantity = stats.physicalQuantity;
       let newReservedQuantity = stats.reservedQuantity;
 
@@ -1078,7 +1082,7 @@ export async function recordStockMovement(req: Request, res: Response) {
     if (error instanceof OutOfStockError) {
       return res.status(400).json({ error: 'INSUFFICIENT_STOCK', message: error.message, details: error.details });
     }
-    if (error.status === 409) return res.status(409).json({ error: 'IDEMPOTENCY_CONFLICT', message: error.message });
+    if (error.status === 409) return res.status(409).json({ error: error.code || 'IDEMPOTENCY_CONFLICT', message: error.message });
     logger.error(`❌ [STOCK-MOVEMENT-ERR] ${error.message}`, error);
     res.status(500).json({ error: error.message || 'Erro ao registrar movimentação de estoque.' });
   }

@@ -29,7 +29,17 @@ export type InventoryAuditFilters = {
 
 const collator = new Intl.Collator('pt-BR', { numeric: true, sensitivity: 'base' });
 const letterSizes = ['RN', 'PP', 'P', 'M', 'G', 'GG', 'XG', 'XGG', 'G1', 'G2', 'G3', 'G4', 'G5'];
-const normalized = (value: string) => value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+const normalized = (value: string) => value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[-‐‑–]+/g, ' ').replace(/\s+/g, ' ').trim();
+export function inventoryColorLabel(value: string) {
+  const key = normalized(value);
+  if (['marinho', 'azul marinho', 'azulmarinho'].includes(key)) return 'Azul-marinho';
+  if (key === 'off white' || key === 'offwhite') return 'Off-white';
+  if (key === 'preta') return 'Preto';
+  if (key === 'branca') return 'Branco';
+  const name = value.trim().replace(/\s+/g, ' ').toLocaleLowerCase('pt-BR');
+  return name ? name[0].toLocaleUpperCase('pt-BR') + name.slice(1) : 'Sem cor';
+}
+
 export const inventoryCountKey = (row: Pick<InventoryAuditRow, 'productSlug' | 'variantKey'>) => `${row.productSlug}:${row.variantKey}`;
 export const hasInventoryCount = (row: InventoryAuditRow, counts: Record<string, string>) => (counts[inventoryCountKey(row)] ?? '').trim() !== '';
 

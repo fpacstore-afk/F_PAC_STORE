@@ -39,7 +39,7 @@ import { MelhorEnvioService, melhorEnvio, sanitizeSecrets } from "./server/servi
 import { processPayment, resumePayment } from "./server/controllers/checkout.controller.js";
 import { checkoutIdentity } from "./server/middleware/checkoutIdentity.js";
 import { verifyCheckout, paymentStatus } from "./server/controllers/paymentStatus.controller.js";
-import { getPublicCatalog } from "./server/services/publicCatalog.service.js";
+import { getPublicCatalog, loadPublicCatalog } from "./server/services/publicCatalog.service.js";
 import { serveCatalogImage } from "./server/controllers/catalogImage.controller.js";
 import { getPublicStampCatalog } from "./server/services/publicStampCatalog.service.js";
 import { catalogReadLimiter, paymentStatusLimiter, leadCaptureLimiter } from "./server/middleware/rateLimiter.js";
@@ -662,6 +662,13 @@ apiRouter.put("/admin/orders/:orderId/shipping-status", adminApiLimiter, authent
 apiRouter.post("/admin/stock/bulk-adjust", adminApiLimiter, authenticateAdmin, recordBulkStockMovement);
 apiRouter.get('/admin/stock/components', adminApiLimiter, authenticateAdmin, listStockComponents);
 apiRouter.put('/admin/stock/components/:componentId', adminApiLimiter, authenticateAdmin, saveStockComponent);
+apiRouter.get('/admin/stock/sale-availability', adminApiLimiter, authenticateAdmin, async (_req, res) => {
+  res.setHeader('Cache-Control', 'private, no-store');
+  try {
+    const { products, availability } = await loadPublicCatalog();
+    res.json({ products: products.map(p => ({ id: p!.id, slug: p!.slug, fulfillment: p!.fulfillment })), availability });
+  } catch { res.status(503).json({ message: 'Disponibilidade de venda indisponível.' }); }
+});
 apiRouter.get('/admin/stock/inventory-overview', adminApiLimiter, authenticateAdmin, getInventoryOverview);
 apiRouter.post('/admin/stock/inventory-counts', adminApiLimiter, authenticateAdmin, saveInventoryCount);
 apiRouter.post("/admin/stock/movement", adminApiLimiter, authenticateAdmin, recordStockMovement);

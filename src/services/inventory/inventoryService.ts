@@ -24,7 +24,8 @@ export async function updateVariantStockInDb(
   variantKey: string,
   newStock: number,
   operator: string = 'Admin',
-  reason?: string
+  reason?: string,
+  confirmation?: { idempotencyKey: string; expectedPhysicalQuantity: number }
 ) {
   if (newStock < 0) {
     throw new Error('ESTOQUE_INSUFICIENTE: O estoque não pode ser negativo.');
@@ -37,7 +38,8 @@ export async function updateVariantStockInDb(
       productSlug,
       variantKey,
       type: 'adjust',
-      idempotencyKey: crypto.randomUUID(),
+      idempotencyKey: confirmation?.idempotencyKey ?? crypto.randomUUID(),
+      expectedPhysicalQuantity: confirmation?.expectedPhysicalQuantity,
       quantity: Math.max(0, newStock),
       reason: reason || `Ajuste manual de estoque via painel por ${operator}`
     })
@@ -45,7 +47,7 @@ export async function updateVariantStockInDb(
 
   if (!response.ok) {
     const errData = await response.json().catch(() => ({}));
-    throw new Error(errData.error || errData.message || 'Erro ao atualizar estoque.');
+    throw new Error(errData.message || errData.error || 'Erro ao atualizar estoque.');
   }
 
   return response.json();

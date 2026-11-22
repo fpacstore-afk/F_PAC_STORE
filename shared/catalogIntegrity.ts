@@ -10,10 +10,10 @@ export function catalogIntegrity(products: Row[], inventory: Row[]) {
       : quantity(item.totalPhysicalStock ?? item.physicalQuantity ?? item.stock);
   };
   const lowStockVariants = linked.reduce((count, item) => {
-    if (item.active === false || item.available === false) return count;
+    if (item.active === false) return count;
     const variants = Object.values(item.variants || {}) as Row[];
     return count + (variants.length ? variants : [item]).filter(variant => {
-      if (variant.active === false || variant.available === false) return false;
+      if (variant.active === false) return false;
       if (!['physicalQuantity', 'stock', 'quantity', 'availableQuantity'].some(key => variant[key] !== undefined)) return false;
       const physical = quantity(variant.physicalQuantity ?? variant.stock ?? variant.quantity);
       const available = Math.max(0, physical - quantity(variant.reservedQuantity ?? variant.reserved));

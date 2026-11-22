@@ -1,3 +1,4 @@
+import { inventoryColorLabel } from '../../shared/inventoryAuditView.js';
 import { isGarmentVariantAllowed } from '../../shared/sharedGarmentStock';
 import { DEFAULT_PRODUCT_COLOR_PRESETS } from '../../shared/productColorPresets';
 import { randomUUID } from 'node:crypto';
@@ -61,38 +62,45 @@ export async function unifyGarmentModel(db: any, input: any, actor: string) {
 }
 
 /** Create empty, distinct pools. Never copy the legacy pool into both suppliers. */
-export async function initializeGarmentModels(db: any, actor: string) {
+export async function initializeGarmentModels(db: any, actor: string, scope: 'all' | 'navy' = 'all') {
   return db.runTransaction(async (tx: any) => {
     const config = await tx.get(db.collection('pricing_workbench').doc('catalog'));
-    const profiles = garmentProfiles(config.data()?.catalog);
+    const profiles = garmentProfiles(config.data()?.catalog).filter(profile => scope === 'all' || profile.garmentModelId === 'ZIM-009');
     if (!profiles.length) throw new Error('Cadastre as fichas dos fornecedores antes de preparar as bases.');
     const existingProducts = await tx.get(db.collection('products'));
     const refs = profiles.map(profile => {
       const canonicalId = garmentBaseId(profile.garmentModelId);
       const canonical = existingProducts.docs.find((doc: any) => doc.id === canonicalId);
-      if (canonical) return { profile, product: canonical.ref };
       const matching = existingProducts.docs.filter((doc: any) => {
         const product = doc.data();
         return product.productFinish === 'plain' && product.garmentModelId === profile.garmentModelId &&
           !product.mergedIntoProductId && !product.rangeArchived && !['archived', 'inactive'].includes(product.status);
       });
       if (matching.length > 1) throw new Error(`Há mais de uma base para ${profile.garmentModelName}. Confira os cadastros antes de preparar o inventário.`);
-      return { profile, product: matching[0]?.ref || db.collection('products').doc(canonicalId) };
+      if (!matching.length && canonical && scope === 'navy') throw new Error('A base ZIM-009 está arquivada ou sem classificação. Confira a ficha da oversized gola alta.');
+      return { profile, product: matching[0]?.ref || canonical?.ref || db.collection('products').doc(canonicalId) };
     });
     const productsWithSnapshots = await Promise.all(refs.map(async entry => ({ ...entry, productSnap: await tx.get(entry.product) })));
     const snapshots = await Promise.all(productsWithSnapshots.map(async entry => {
       const id = entry.productSnap.exists ? entry.productSnap.data().slug || entry.productSnap.id : entry.product.id;
-      const inventory = db.collection('inventory').doc(id);
-      return { ...entry, inventory, inventorySnap: await tx.get(inventory) };
+      const bySlug = db.collection('inventory').doc(id);
+      const slugSnap = await tx.get(bySlug);
+      if (entry.productSnap.exists && id !== entry.product.id) {
+        const byId = db.collection('inventory').doc(entry.product.id);
+        const idSnap = await tx.get(byId);
+        if (idSnap.exists && slugSnap.exists) throw new Error('Há dois estoques vinculados ao mesmo modelo. Confira os cadastros antes de preparar a grade.');
+        if (idSnap.exists) return { ...entry, inventory: byId, inventorySnap: idSnap };
+      }
+      return { ...entry, inventory: bySlug, inventorySnap: slugSnap };
     }));
     const now = new Date().toISOString(); let created = 0, variantsAdded = 0, prepared = 0;
     const oldCatalog = config.data()?.catalog;
     const nextCatalog = oldCatalog && { ...oldCatalog, entries: oldCatalog.entries.map((entry: any) => entry.kind === 'product' ? applyVerifiedGarmentSpecs(entry) : entry) };
-    if (nextCatalog && JSON.stringify(nextCatalog) !== JSON.stringify(oldCatalog)) {
+    if (scope === 'all' && nextCatalog && JSON.stringify(nextCatalog) !== JSON.stringify(oldCatalog)) {
       tx.set(db.collection('pricing_workbench').doc('catalog'), { ...config.data(), catalog: nextCatalog, version: (config.data()?.version || 0) + 1, updatedAt: now });
       tx.set(db.collection('pricing_workbench_events').doc(randomUUID()), { type: 'garment_technical_tables', catalog: nextCatalog, previousCatalog: oldCatalog, actor, createdAt: now, version: (config.data()?.version || 0) + 1 });
     }
-    for (const product of existingProducts.docs) if (garmentFamily(product.data()) && !product.data().modelSeparationRequired) tx.update(product.ref, { modelSeparationRequired: true, updatedAt: now });
+    for (const product of existingProducts.docs) if (scope === 'all' && garmentFamily(product.data()) && !product.data().modelSeparationRequired) tx.update(product.ref, { modelSeparationRequired: true, updatedAt: now });
     for (const entry of snapshots) {
       const p = entry.profile, id = entry.product.id;
       if (entry.productSnap.exists) {
@@ -116,13 +124,26 @@ export async function initializeGarmentModels(db: any, actor: string) {
         throw new Error(`O saldo agregado de ${p.garmentModelName} não corresponde às variações. Confira essa base antes de preparar o inventário.`);
       }
       let addedForModel = 0;
+      const existingPairs = new Set(Object.entries(variants).map(([key, raw]: [string, any]) => {
+        const split = key.lastIndexOf('_');
+        return inventoryColorLabel(raw?.color || key.slice(0, split)) + '_' + String(raw?.size || key.slice(split + 1)).trim().toUpperCase();
+      }));
       for (const colorName of p.sourceColors) for (const size of p.sizes) {
+        const pair = inventoryColorLabel(colorName) + '_' + size;
+        if ((scope === 'navy' && inventoryColorLabel(colorName) !== 'Azul-marinho') || existingPairs.has(pair)) continue;
         const variantKey = `${colorName}_${size}`;
-        if (variants[variantKey] || !isGarmentVariantAllowed({ sizes: p.sizes, colors: p.sourceColors.map((name: string) => ({ name })), sourceRestrictions: p.sourceRestrictions }, variantKey)) continue;
+        const requiredNavy = p.garmentModelId === 'ZIM-009' && inventoryColorLabel(colorName) === 'Azul-marinho';
+        if (variants[variantKey] || !requiredNavy && !isGarmentVariantAllowed({ sizes: p.sizes, colors: p.sourceColors.map((name: string) => ({ name })), sourceRestrictions: p.sourceRestrictions }, variantKey)) continue;
         variants[variantKey] = { color: colorName, size, physicalQuantity: 0, stock: 0, reservedQuantity: 0, availableQuantity: 0, active: true, available: false, physicalCountVerified: false };
+        existingPairs.add(pair);
         addedForModel++;
       }
-      if (!entry.inventorySnap.exists || addedForModel) {
+      if (entry.inventorySnap.exists && addedForModel) {
+        // Adding empty rows cannot change quantities, availability switches or legacy totals.
+        tx.update(entry.inventory, { variants, updatedAt: now });
+        variantsAdded += addedForModel;
+        prepared++;
+      } else if (!entry.inventorySnap.exists) {
         tx.set(entry.inventory, {
           ...currentInventory,
           productId: entry.productSnap.exists ? entry.productSnap.id : id,
