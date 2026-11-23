@@ -93,6 +93,12 @@ export function createInMemoryDb() {
   class MockDocRef {
     constructor(public colName: string, public id: string) {}
 
+    collection(name: string) { return new MockCollection(`${this.colName}/${this.id}/${name}`); }
+    async create(data: any) {
+      if (getCol(this.colName).has(this.id)) throw new Error('Document already exists');
+      await this.set(data);
+    }
+
     async get() {
       const col = getCol(this.colName);
       const data = col.get(this.id);
@@ -248,6 +254,7 @@ export function createInMemoryDb() {
         const txn = {
           get: async (ref: any) => ref.get(),
           set: async (ref: any, data: any, opt?: any) => ref.set(data, opt),
+          create: async (ref: any, data: any) => ref.create(data),
           update: async (ref: any, data: any) => ref.update(data),
           delete: async (ref: any) => ref.delete()
         };

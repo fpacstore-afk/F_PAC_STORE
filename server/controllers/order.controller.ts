@@ -9,6 +9,7 @@ import { recordAuditLog } from '../utils/auditLogger.js';
 import { ADMIN_EMAILS, isAdminIdentity } from '../../shared/adminIdentity.js';
 import { matchesSecret } from '../middleware/auth.middleware.js';
 import { isPaymentStatus } from '../services/stateMachine.service.js';
+import { reversePurchaseCashback, restoreRedeemedCashback } from '../services/cashback.service.js';
 
 export async function cancelOrderController(req: Request, res: Response) {
   try {
@@ -198,6 +199,8 @@ export async function cancelOrderController(req: Request, res: Response) {
     }
 
     await orderRef.update(updatePayload);
+    if (orderData.cashbackProgram) await reversePurchaseCashback({ ...orderData, id: orderId });
+    if (orderData.cashbackUsedCents) await restoreRedeemedCashback(orderId);
 
     await recordAuditLog({
       userId: isUserAdmin ? 'admin' : authUid,

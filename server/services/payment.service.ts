@@ -8,6 +8,8 @@ import { logger } from "../utils/logger.js";
 import { PaymentStatus } from "../types/order.types.js";
 import { mpService } from './mp.service.js';
 import { releaseRepurchaseCoupon } from './postPurchase.service.js';
+import { earnPurchaseCashback, releasePurchaseCashback, reversePurchaseCashback, settleCashbackHold, restoreRedeemedCashback } from './cashback.service.js';
+import { finishCheckoutLink } from './checkoutLinks.service.js';
 import {
   getOrderPaidAmount,
   getOrderPaymentStatus,
@@ -351,6 +353,21 @@ export async function processPaymentUpdate(orderId: string, paymentData: any) {
     // Mercado Pago webhook returns 500 and retries. A replay also reaches this path,
     // allowing an unacknowledged release to recover after a transient Firestore error.
     const finalOrder = await ensurePendingStockReversion(orderId);
+    if (finalOrder?.checkoutLinkId) await finishCheckoutLink(finalOrder.checkoutLinkId, orderId, finalOrder.paymentStatus);
+
+    if (finalOrder?.cashbackProgram) {
+      const current = { ...finalOrder, id: orderId };
+      if (['refunded', 'partially_refunded', 'cancelled', 'rejected'].includes(current.paymentStatus)) {
+        await reversePurchaseCashback(current);
+      } else if (current.paymentStatus === 'approved') {
+        await earnPurchaseCashback(current);
+        if (current.shippingStatus === 'delivered' || current.shipping?.status === 'delivered') await releasePurchaseCashback(current);
+      }
+    }
+    if (finalOrder?.cashbackUsedCents && ['approved', 'rejected', 'cancelled', 'refunded'].includes(finalOrder.paymentStatus)) {
+      await settleCashbackHold(orderId, finalOrder.paymentStatus === 'approved');
+      if (['cancelled', 'refunded'].includes(finalOrder.paymentStatus)) await restoreRedeemedCashback(orderId);
+    }
 
     if (finalOrder?.paymentStatus === 'approved' && finalOrder?.pricing?.couponCode) {
       await releaseRepurchaseCoupon(finalOrder.pricing.couponCode, orderId, true);

@@ -10,6 +10,10 @@ import { OrderCanonical } from '../types/order.types.js';
 import { hashTrackingToken } from '../services/tracking.service.js';
 import { checkoutAttempts, checkoutTrackingToken, validCheckoutKey } from '../services/checkoutAttempts.service.js';
 import { reserveRepurchaseCoupon, releaseRepurchaseCoupon } from '../services/postPurchase.service.js';
+import { verifyCheckoutLink, claimCheckoutLink, releaseCheckoutLink } from '../services/checkoutLinks.service.js';
+import { moneyCents, purchaseCashbackCents } from '../../shared/cashbackPolicy.js';
+import { ensureSignupBonus, holdCashback, settleCashbackHold } from '../services/cashback.service.js';
+import { getSiteFeatures } from '../services/siteFeatures.service.js';
 
 export function createCheckoutControllers(deps = { mpService, storeService, calculateOrderPricing, sendOrderReceivedEmail, checkoutAttempts }) {
 const { mpService, storeService, calculateOrderPricing, sendOrderReceivedEmail, checkoutAttempts } = deps;
@@ -30,6 +34,8 @@ async function processPayment(req: Request, res: Response) {
   let providerSubmitted = false;
   let providerRefused = false;
   let reservedRepurchaseCoupon = false;
+  let claimedLinkId = '';
+  let heldCashback = false;
   
   // 1. Inputs Normalization
   const payment_method_id = body.payment_method_id;
@@ -103,7 +109,18 @@ async function processPayment(req: Request, res: Response) {
       paymentMethodId: payment_method_id
     });
 
-    const finalTransactionAmount = pricing.total;
+    const linkId = String(body.checkoutLink?.id || '');
+    const linked = linkId && await verifyCheckoutLink(linkId, body.checkoutLink?.token, rawItems, verifiedItems);
+    if (linkId && !linked) throw new Error('Os itens do link foram alterados ou o link expirou. Abra o link novamente.');
+
+    const catalogueOnly = verifiedItems.every(item => !item.customization);
+    const requestedCashback = body.cashbackUseCents === undefined ? 0 : Number(body.cashbackUseCents);
+    if (!Number.isSafeInteger(requestedCashback) || requestedCashback < 0) throw new Error('Valor de cashback inválido.');
+    if (requestedCashback && (!linked || !userId || !catalogueOnly || payment_method_id !== 'pix')) throw new Error('O cashback só pode ser usado por clientes com conta em compras do catálogo por link pagas com Pix.');
+    const discountedProducts = Math.max(0, moneyCents(pricing.subtotal - pricing.couponDiscount - pricing.promotionalDiscount - pricing.pixDiscount));
+    if (requestedCashback > 0 && requestedCashback >= moneyCents(pricing.total)) throw new Error('O cashback não pode cobrir todo o pedido.');
+    const finalTransactionAmount = Math.round((moneyCents(pricing.total) - requestedCashback)) / 100;
+    if (requestedCashback) { pricing.total = finalTransactionAmount; pricing.cashbackDiscount = requestedCashback / 100; }
 
     if (finalTransactionAmount <= 0) {
       throw new Error('Valor total do pedido calculado é inválido.');
@@ -133,6 +150,13 @@ async function processPayment(req: Request, res: Response) {
 
     // 6. CREATE CANONICAL ORDER STRUCTURE
     const orderId = attempt.orderId;
+    if (linked) { await claimCheckoutLink(linkId, orderId); claimedLinkId = linkId; }
+    if (requestedCashback) {
+      const features = await getSiteFeatures();
+      if (features.signupBonusEnabled) await ensureSignupBonus(userId, features.signupBonusStartedAt);
+      await holdCashback(userId, orderId, requestedCashback, discountedProducts);
+      heldCashback = true;
+    }
     
     const shippingMethodName = (() => {
       const cleanCep = String(customerInfo.cep || '').replace(/\D/g, '');
@@ -204,6 +228,17 @@ async function processPayment(req: Request, res: Response) {
       postPurchaseEmailConsent: body.postPurchaseEmailConsent === true,
       postPurchaseEmailConsentAt: body.postPurchaseEmailConsent === true ? new Date().toISOString() : null,
     };
+
+    if (linked) {
+      (canonicalOrder as any).checkoutLinkId = linkId;
+      if (requestedCashback) (canonicalOrder as any).cashbackUsedCents = requestedCashback;
+      const paidProducts = Math.max(0, discountedProducts - requestedCashback);
+      (canonicalOrder as any).cashbackProgram = {
+        source: 'checkout_link', paymentMethod: payment_method_id, catalogueOnly: verifiedItems.every(item => !item.customization),
+        earnedCents: purchaseCashbackCents({ source: 'checkout_link', paymentMethod: payment_method_id, hasAccount: Boolean(userId),
+          catalogueOnly: verifiedItems.every(item => !item.customization), productSubtotalCents: moneyCents(pricing.subtotal), paidProductCents: paidProducts }),
+      };
+    }
 
     const trackingAccessToken = checkoutTrackingToken(key);
     const trackingAccessTokenHash = hashTrackingToken(trackingAccessToken);
@@ -296,6 +331,8 @@ async function processPayment(req: Request, res: Response) {
           await storeService.updateOrderPaymentSnapshot(orderId, 'rejected', { stockReverted: true, stockRevertedAcknowledged: true });
         }
         await checkoutAttempts.failBeforeSubmission(key);
+        if (heldCashback) await settleCashbackHold(attempt.orderId, false);
+        if (claimedLinkId) await releaseCheckoutLink(claimedLinkId, attempt.orderId);
         if (err.code === 'CHECKOUT_TOTAL_CHANGED') return res.status(409).json({
           safeToRetry: true, code: err.code, message: err.message, quote: err.quote,
         });

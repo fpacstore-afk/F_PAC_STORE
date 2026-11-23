@@ -9,6 +9,8 @@ import { uploadAdminArtwork, uploadAdminVideo } from '../../services/cloudinary'
 import { MediaSlotConfig, MediaType, MediaObjectFit } from '../../types/mediaSlot';
 import { MediaSlot } from '../MediaSlot';
 import { InstagramMediaLibrary } from './InstagramMediaLibrary';
+import { invalidateSiteFeatures } from '../../hooks/useSiteFeatures';
+import { AdminCheckoutLinkBuilder } from './AdminCheckoutLinkBuilder';
 
 interface InstagramItem { id: string; mediaUrl: string; permalink: string; caption?: string; }
 interface InstagramStatus { configured: boolean; stale: boolean; fetchedAt: string | null; items: InstagramItem[]; }
@@ -36,6 +38,29 @@ const mediaUrlError = (media: MediaSlotConfig) => {
 };
 
 export const AdminSiteMediaManager: React.FC = () => {
+  const [clubEnabled, setClubEnabled] = useState(false);
+  const [clubLoading, setClubLoading] = useState(true);
+  const [clubSaving, setClubSaving] = useState(false);
+  useEffect(() => { void (async () => {
+    try {
+      const response = await authenticatedFetch('/api/admin/site-features');
+      const data = await parseApiJson<{ clubEnabled?: boolean }>(response);
+      if (response.ok) setClubEnabled(data.clubEnabled === true);
+    } catch { toast.error('Não foi possível consultar o estado do Clube.'); }
+    finally { setClubLoading(false); }
+  })(); }, []);
+  const toggleClub = async () => {
+    setClubSaving(true);
+    try {
+      const response = await authenticatedFetch('/api/admin/site-features', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ clubEnabled: !clubEnabled }) });
+      const data = await parseApiJson<{ clubEnabled?: boolean; error?: string }>(response);
+      if (!response.ok) throw new Error(data.error || 'Falha ao salvar.');
+      setClubEnabled(data.clubEnabled === true);
+      invalidateSiteFeatures();
+      toast.success(data.clubEnabled ? 'Clube F PAC visível novamente.' : 'Clube F PAC oculto da loja.');
+    } catch (error: any) { toast.error(error.message || 'Não foi possível salvar.'); }
+    finally { setClubSaving(false); }
+  };
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [hero, setHero] = useState(DEFAULTS.hero);
@@ -196,6 +221,16 @@ export const AdminSiteMediaManager: React.FC = () => {
         <div><p className="flex items-center gap-2 text-[9px] font-black uppercase tracking-[0.2em] text-white/45"><Layers size={14} className="text-[#eab308]" /> Site & mídia</p><h1 className="mt-2 text-2xl font-black uppercase italic">Central de <span className="text-[#eab308]">mídias da loja</span></h1><p className="mt-1 text-xs text-white/55">Mídias da Home, biblioteca manual para Instagram e diagnóstico do feed oficial.</p></div>
         <button type="button" onClick={saveAll} disabled={saving} className="flex min-h-11 items-center justify-center gap-2 bg-[#eab308] px-5 text-[10px] font-black uppercase text-black disabled:opacity-50">{saving ? <RefreshCw size={14} className="animate-spin" /> : <Save size={14} />} Salvar alterações</button>
       </header>
+
+      <section className="border border-[#eab308] bg-white p-5" aria-labelledby="club-visibility-heading">
+        <h2 id="club-visibility-heading" className="text-lg font-black">Clube F PAC</h2>
+        <p className="mt-2 text-sm">{clubEnabled ? 'Visível para os clientes.' : 'Oculto para os clientes. Dados, níveis e histórico permanecem preservados.'}</p>
+        <button type="button" onClick={toggleClub} disabled={clubLoading || clubSaving} className="mt-4 min-h-11 bg-black px-5 py-3 text-sm font-bold text-white disabled:opacity-50">
+          {clubLoading ? 'Consultando…' : clubSaving ? 'Salvando…' : clubEnabled ? 'Desativar Clube' : 'Ativar Clube'}
+        </button>
+      </section>
+
+      <AdminCheckoutLinkBuilder />
 
       <section className="border border-black/10 bg-white p-4 md:p-5">
         <div className="mb-5 border-b border-black/10 pb-5">

@@ -4,8 +4,11 @@ import { useAuth, UserProfile } from '../context/AuthContext';
 import { ShieldCheck, Loader2, Save, LogOut, User, ChevronRight } from 'lucide-react';
 import { useNavigate, Link } from 'react-router-dom';
 import { cn } from '../lib/utils';
+import { useSearchParams } from 'react-router-dom';
+import { CashbackWallet } from '../components/CashbackWallet';
 
 export default function Account() {
+  const [searchParams] = useSearchParams();
   const { user, profile, loading, logout, updateProfile, loginWithGoogle, loginWithEmail, registerWithEmail, resetPassword } = useAuth();
   const navigate = useNavigate();
   const [formData, setFormData] = useState<UserProfile | null>(null);
@@ -13,7 +16,7 @@ export default function Account() {
   const [authEmail, setAuthEmail] = useState('');
   const [authPass, setAuthPass] = useState('');
   const [authName, setAuthName] = useState('');
-  const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
+  const [authMode, setAuthMode] = useState<'login' | 'register'>(searchParams.get('mode') === 'register' ? 'register' : 'login');
   const [isAuthLoading, setIsAuthLoading] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
 
@@ -240,6 +243,8 @@ export default function Account() {
         </div>
 
         {user && <AccountSecurity key={user.uid} user={user} />}
+
+        <CashbackWallet />
 
         <div className="bg-black/5 border border-black/10 p-8">
           <div className="flex items-center gap-3 mb-8 pb-4 border-b border-black/5">

@@ -32,6 +32,9 @@ dotenv.config();
 
 // 2. Imports from internal architecture
 import { getDb } from "./server/firebase.js";
+import { getSiteFeatures, setClubEnabled } from './server/services/siteFeatures.service.js';
+import { createCheckoutLink, openCheckoutLink } from './server/services/checkoutLinks.service.js';
+import { ensureSignupBonus, getCashbackWallet, releasePurchaseCashback, reversePurchaseCashback, restoreRedeemedCashback } from './server/services/cashback.service.js';
 import { logger } from "./server/utils/logger.js";
 import { isFirestoreQuotaExhausted } from "./server/utils/firestoreQuota.js";
 import { mpService } from "./server/services/mp.service.js";
@@ -431,6 +434,7 @@ apiRouter.post('/instagram/config', adminApiLimiter, authenticateAdmin, async (r
 
 apiRouter.get("/club/ranking", publicApiLimiter, async (req, res) => {
   try {
+    if (!(await getSiteFeatures()).clubEnabled) return res.status(404).json({ error: 'CLUB_DISABLED' });
     const requestedLimit = Number(req.query.limit || 10);
     const limit = Math.max(1, Math.min(10, Math.floor(requestedLimit) || 10));
     const payload = await getPublicClubRanking(limit);
@@ -442,6 +446,45 @@ apiRouter.get("/club/ranking", publicApiLimiter, async (req, res) => {
     });
     res.status(503).json({ ranking: [], topBuyer: null, updatedAt: null });
   }
+});
+
+apiRouter.get('/site-features', publicApiLimiter, async (_req, res) => {
+  try {
+    const { clubEnabled, signupBonusEnabled } = await getSiteFeatures();
+    res.setHeader('Cache-Control', 'public, max-age=10');
+    res.json({ clubEnabled, signupBonusEnabled });
+  } catch { res.status(503).json({ error: 'Configuração indisponível.' }); }
+});
+apiRouter.get('/admin/site-features', adminApiLimiter, authenticateAdmin, async (_req, res) => {
+  try { res.json(await getSiteFeatures()); }
+  catch { res.status(503).json({ error: 'Configuração indisponível.' }); }
+});
+apiRouter.post('/admin/site-features', adminApiLimiter, authenticateAdmin, async (req, res) => {
+  if (typeof req.body?.clubEnabled !== 'boolean') return res.status(400).json({ error: 'Informe o estado do Clube.' });
+  try { res.json(await setClubEnabled(req.body.clubEnabled, (req as any).user?.uid || 'admin')); }
+  catch { res.status(503).json({ error: 'Não foi possível alterar o Clube.' }); }
+});
+apiRouter.get('/cashback/wallet', publicApiLimiter, checkoutIdentity, async (_req, res) => {
+  res.setHeader('Cache-Control', 'private, no-store');
+  const uid = res.locals.checkoutUserId;
+  if (!uid) return res.status(401).json({ error: 'Entre na sua conta para consultar o cashback.' });
+  try {
+    const features = await getSiteFeatures();
+    if (features.signupBonusEnabled) await ensureSignupBonus(uid, features.signupBonusStartedAt);
+    res.json(await getCashbackWallet(uid));
+  } catch (error: any) {
+    logger.error('Cashback wallet unavailable', { message: error?.message });
+    res.status(503).json({ error: 'Não foi possível consultar seu cashback agora.' });
+  }
+});
+apiRouter.post('/admin/checkout-links', adminApiLimiter, authenticateAdmin, async (req, res) => {
+  try { res.status(201).json(await createCheckoutLink(req.body, (req as any).user?.uid || 'admin')); }
+  catch (error: any) { res.status(400).json({ error: error.message || 'Não foi possível preparar o link.' }); }
+});
+apiRouter.post('/checkout-links/open', publicApiLimiter, async (req, res) => {
+  res.setHeader('Cache-Control', 'private, no-store');
+  try { res.json(await openCheckoutLink(req.body?.id, req.body?.token)); }
+  catch (error: any) { res.status(404).json({ error: error.message || 'Link indisponível.' }); }
 });
 
 apiRouter.get("/checkout/config", publicApiLimiter, (req, res) => {
@@ -2130,6 +2173,12 @@ export async function shippingWebhookTrackingHandler(req: express.Request, res: 
     const idempRef = db.collection('idempotency_records').doc(eventKey);
     const idempSnap = await idempRef.get();
     if (idempSnap.exists) {
+      const previous = (await getDb().collection('orders').doc(orderId).get()).data();
+      if (previous?.cashbackProgram) {
+        if (previous.shippingStatus === 'delivered') await releasePurchaseCashback({ ...previous, id: orderId });
+        if (previous.shippingStatus === 'returned') await reversePurchaseCashback({ ...previous, id: orderId });
+      }
+      if (previous?.cashbackUsedCents && previous.shippingStatus === 'returned') await restoreRedeemedCashback(orderId);
       return res.json({ success: true, idempotent: true, message: 'Evento de rastreio já processado anteriormente.' });
     }
 
@@ -2202,6 +2251,13 @@ export async function shippingWebhookTrackingHandler(req: express.Request, res: 
       tx.set(idempRef, { status: 'completed', processedAt: new Date().toISOString(), orderId, eventId: cleanEventId });
       tx.update(orderRef, updatePayload);
     });
+
+    if (orderData.cashbackProgram && updateStatus && currentShippingStatus !== canonicalStatus) {
+      const current = { ...orderData, id: orderId, shippingStatus: canonicalStatus };
+      if (canonicalStatus === 'delivered') await releasePurchaseCashback(current);
+      if (canonicalStatus === 'returned') await reversePurchaseCashback(current);
+    }
+    if (orderData.cashbackUsedCents && updateStatus && canonicalStatus === 'returned') await restoreRedeemedCashback(orderId);
 
     res.json({ success: true, updatedStatus: updateStatus ? canonicalStatus : currentShippingStatus });
   } catch (err: any) {

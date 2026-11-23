@@ -78,6 +78,7 @@ export interface OrderItem {
 }
 
 export interface OrderPricingSnapshot {
+  cashbackDiscount?: number;
   subtotal: number;
   couponDiscount: number;
   promotionalDiscount: number;

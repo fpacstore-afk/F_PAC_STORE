@@ -22,9 +22,10 @@ interface PaymentFormProps {
   onSuccess: (result: any) => void;
   userId?: string;
   initialPaymentMethod?: 'credit_card' | 'pix';
+  cashbackUseCents?: number;
 }
 
-export function PaymentForm({ total, items, customerInfo, postPurchaseMarketingConsent = false, postPurchaseEmailConsent = false, onSuccess, userId, initialPaymentMethod }: PaymentFormProps) {
+export function PaymentForm({ total, items, customerInfo, postPurchaseMarketingConsent = false, postPurchaseEmailConsent = false, onSuccess, userId, initialPaymentMethod, cashbackUseCents = 0 }: PaymentFormProps) {
   const navigate = useNavigate();
   const { clearCart, coupon, customerCouponRate, refreshCheckoutPrices, checkout_session_id, shipping, subtotal, couponDiscount, pixDiscount, flashSaleDiscount, weeklyPromotionDiscount } = useCart();
   const cardInfoRef = useRef<any>(null);
@@ -37,6 +38,10 @@ export function PaymentForm({ total, items, customerInfo, postPurchaseMarketingC
   const [paymentMethod, setPaymentMethod] = useState<'credit_card' | 'pix'>(initialPaymentMethod || 'credit_card');
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<React.ReactNode | null>(null);
+  const linkProof = (() => { try {
+    const parsed = JSON.parse(sessionStorage.getItem('fpac_checkout_link') || 'null');
+    return parsed?.id === checkout_session_id ? parsed : null;
+  } catch { return null; } })();
 
   const submitAttempt = async (payload?: any) => {
     const key = readCheckoutAttempt() || beginCheckoutAttempt();
@@ -165,6 +170,7 @@ export function PaymentForm({ total, items, customerInfo, postPurchaseMarketingC
     try {
       const payload = {
         cardToken,
+        checkoutLink: linkProof,
         amount,
         items,
         payment_method_id: extras.payment_method_id,
@@ -229,6 +235,8 @@ export function PaymentForm({ total, items, customerInfo, postPurchaseMarketingC
     try {
       await submitAttempt({
           amount: Number(total.toFixed(2)),
+          checkoutLink: linkProof,
+          cashbackUseCents,
           items,
           payment_method_id: 'pix',
           checkout_session_id,
