@@ -142,6 +142,13 @@ service cloud.firestore {
       allow read, write: if isAdmin();
     }
 
+    // Balances and credit lots are written only by trusted backend transactions.
+    match /cashback_accounts/{userId} {
+      allow read, write: if false;
+      match /credits/{creditId} { allow read, write: if false; }
+    }
+    match /cashback_holds/{holdId} { allow read, write: if false; }
+
     // Metas são dados operacionais do painel. A ausência desta regra fazia o
     // formulário parecer salvar, mas o Firestore recusava a gravação.
     match /financial_goals/{goalId} {

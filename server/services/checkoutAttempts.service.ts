@@ -1,6 +1,8 @@
 import { preparationExpired } from '../../shared/checkoutPreparation.js';
 import * as storeService from './store.service.js';
 import { releaseRepurchaseCoupon } from './postPurchase.service.js';
+import { releaseCheckoutLink } from './checkoutLinks.service.js';
+import { settleCashbackHold } from './cashback.service.js';
 import crypto from 'node:crypto';
 import { getDb } from '../firebase.js';
 import { mpService } from './mp.service.js';
@@ -29,6 +31,8 @@ export function createCheckoutAttempts(deps: {
     if (order) {
       if (order.items?.length) await storeService.releaseStockReservation(orderId, order.items, `checkout_${orderId}_release_fail`);
       await storeService.updateOrderPaymentSnapshot(orderId, 'rejected', { stockReverted: true, stockRevertedAcknowledged: true });
+      if (order.cashbackUsedCents) await settleCashbackHold(orderId, false);
+      if (order.checkoutLinkId) await releaseCheckoutLink(order.checkoutLinkId, orderId);
     }
   });
   const refFor = (key: string) => deps.getDb().collection('checkout_attempts').doc(digest(key));

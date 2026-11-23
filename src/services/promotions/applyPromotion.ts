@@ -303,13 +303,10 @@ export function applyPromotion(
     }
 
   } else if (discountType === 'cashback') {
-    // Cashback earns cashback percentage for future orders
-    const pct = promotion.cashback_percentage === null
-      ? 0
-      : promotion.cashback_percentage ?? (promotion.discount_value === null ? 0 : discountVal || 10);
-    const activeSub = matchingItems.reduce((acc, item) => acc + item.price * item.quantity, 0);
-    cashbackEarned = activeSub * (pct / 100);
-    discountLabel = `Elegível para Cashback de ${pct}% (R$ ${cashbackEarned.toFixed(2)})`;
+    // Legacy visual-only promotion never created wallet credits. Preserve its
+    // configuration without promising a reward outside the verified Pix flow.
+    cashbackEarned = 0;
+    discountLabel = '';
 
   } else if (discountType === 'brinde') {
     // Earn gift with purchase

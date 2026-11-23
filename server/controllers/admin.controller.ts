@@ -23,6 +23,7 @@ import {
   previewOrderMaintenance
 } from '../services/orderMaintenance.service.js';
 import { dispatchStageNotification } from '../services/productionNotification.service.js';
+import { earnPurchaseCashback, releasePurchaseCashback, reversePurchaseCashback, restoreRedeemedCashback } from '../services/cashback.service.js';
 import { prepareManualOrderCosts } from '../services/orderCosts.service.js';
 
 /**
@@ -888,6 +889,16 @@ export async function updateOrderPaymentStatus(req: Request, res: Response) {
       });
     }
 
+    const paymentOrder = (await orderRef.get()).data();
+    if (paymentOrder?.cashbackProgram) {
+      const current = { ...paymentOrder, id: orderId };
+      if (['refunded', 'partially_refunded', 'cancelled', 'rejected'].includes(newStatus)) await reversePurchaseCashback(current);
+      else if (newStatus === 'approved') {
+        await earnPurchaseCashback(current);
+        if (current.shippingStatus === 'delivered') await releasePurchaseCashback(current);
+      }
+    }
+
     await recordAuditLog({
       userId: user?.uid,
       userEmail: user?.email,
@@ -1525,6 +1536,15 @@ export async function updateOrderShippingStatus(req: Request, res: Response) {
       return { currentShippingStatus, timestamp };
     });
 
+    if (newStatus === 'delivered' || newStatus === 'returned') {
+      const current = (await orderRef.get()).data();
+      if (current?.cashbackProgram) {
+        if (newStatus === 'returned') await reversePurchaseCashback({ ...current, id: orderId });
+        else await releasePurchaseCashback({ ...current, id: orderId });
+      }
+      if (newStatus === 'returned' && current?.cashbackUsedCents) await restoreRedeemedCashback(orderId);
+    }
+
     await recordAuditLog({
       userId: user?.uid,
       userEmail: user?.email,
@@ -2116,6 +2136,10 @@ export async function processOrderRefundController(req: Request, res: Response) 
       logger.info(`⏹️ [REFUND-REPLAY] Idempotent replay for key '${idempotencyKey}' on order ${orderId}`);
       return res.json(transactionResult);
     }
+
+    const refundOrder = (await orderRef.get()).data();
+    if (refundOrder?.cashbackProgram) await reversePurchaseCashback({ ...refundOrder, id: orderId });
+    if (refundOrder?.cashbackUsedCents && transactionResult.paymentStatus === 'refunded') await restoreRedeemedCashback(orderId);
 
     await recordAuditLog({
       userId: user?.uid,

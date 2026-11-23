@@ -16,11 +16,13 @@ import { getActivePromotion } from '../services/promotions/getActivePromotion';
 import { WeeklyPromotion } from '../types/promotions';
 import { CAMPAIGN_1111_URL } from '../../shared/campaign1111';
 import { useCampaign1111Active } from '../hooks/useCampaign1111Active';
+import { useSiteFeatures } from '../hooks/useSiteFeatures';
 
 import { db } from '../lib/firebase';
 import { collection, onSnapshot } from 'firebase/firestore';
 
 export function Navbar() {
+  const { clubEnabled } = useSiteFeatures();
   const [isScrolled, setIsScrolled] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [authMenuOpen, setAuthMenuOpen] = useState(false);
@@ -400,9 +402,9 @@ export function Navbar() {
                   >
                     <WandSparkles size={15} aria-hidden="true" /> Identidade
                   </button>
-                  <Link to="/clube" className="flex items-center gap-3 px-4 py-3 text-[10px] font-bold text-white hover:bg-white/10 hover:text-[#eab308] rounded-xl uppercase tracking-widest transition-all">
+                  {clubEnabled && <Link to="/clube" className="flex items-center gap-3 px-4 py-3 text-[10px] font-bold text-white hover:bg-white/10 hover:text-[#eab308] rounded-xl uppercase tracking-widest transition-all">
                     <UsersRound size={15} aria-hidden="true" /> Clube F PAC
-                  </Link>
+                  </Link>}
                   <Link to="/radio" className="flex items-center gap-3 px-4 py-3 text-[10px] font-bold text-white hover:bg-white/10 hover:text-[#eab308] rounded-xl uppercase tracking-widest transition-all">
                     <Headphones size={15} aria-hidden="true" /> Rádio F PAC
                   </Link>
@@ -800,9 +802,9 @@ export function Navbar() {
                   <button type="button" onClick={() => { setMobileMenuOpen(false); window.dispatchEvent(new Event('fpac_open_quiz')); }} className="flex min-h-20 flex-col items-center justify-center gap-2 rounded-xl border border-black/10 bg-transparent px-2 py-3 text-[10px] font-black uppercase tracking-wide text-black transition-colors hover:border-[#eab308]">
                     <WandSparkles size={19} aria-hidden="true" /> Identidade
                   </button>
-                  <Link to="/clube" onClick={() => setMobileMenuOpen(false)} className="flex min-h-20 flex-col items-center justify-center gap-2 rounded-xl border border-black/10 px-2 py-3 text-center text-[10px] font-black uppercase tracking-wide text-black transition-colors hover:border-[#eab308]">
+                  {clubEnabled && <Link to="/clube" onClick={() => setMobileMenuOpen(false)} className="flex min-h-20 flex-col items-center justify-center gap-2 rounded-xl border border-black/10 px-2 py-3 text-center text-[10px] font-black uppercase tracking-wide text-black transition-colors hover:border-[#eab308]">
                     <UsersRound size={19} aria-hidden="true" /> Clube
-                  </Link>
+                  </Link>}
                   <Link to="/radio" onClick={() => setMobileMenuOpen(false)} className="flex min-h-20 flex-col items-center justify-center gap-2 rounded-xl border border-black/10 px-2 py-3 text-center text-[10px] font-black uppercase tracking-wide text-black transition-colors hover:border-[#eab308]">
                     <Headphones size={19} aria-hidden="true" /> Rádio
                   </Link>

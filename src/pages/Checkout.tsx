@@ -13,15 +13,29 @@ import { PaymentForm } from '../components/PaymentForm';
 import { PixDisplay } from '../components/PixDisplay';
 import { analyticsTracker } from '../services/analyticsTracker';
 import { paymentOutcome } from '../../shared/paymentOutcome';
+import { redeemableCashbackCents } from '../../shared/cashbackPolicy';
+import { authenticatedFetch } from '../lib/api';
 
 export default function Checkout() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const {
-    items, subtotal, total, shipping, couponDiscount, pixDiscount, flashSaleDiscount, weeklyPromotionDiscount, weeklyPromotionLabel, customerInfo, clearCart, paymentMethod, postPurchaseMarketingConsent, postPurchaseEmailConsent
+    items, subtotal, total, shipping, couponDiscount, pixDiscount, flashSaleDiscount, weeklyPromotionDiscount, weeklyPromotionLabel, customerInfo, clearCart, paymentMethod, postPurchaseMarketingConsent, postPurchaseEmailConsent, checkout_session_id
   } = useCart();
 
   const [paymentResult, setPaymentResult] = useState<any | null>(null);
+  const [walletCents, setWalletCents] = useState(0);
+  const [applyCashback, setApplyCashback] = useState(false);
+  const linkProof = (() => { try { const parsed = JSON.parse(sessionStorage.getItem('fpac_checkout_link') || 'null'); return parsed?.id === checkout_session_id ? parsed : null; } catch { return null; } })();
+  const eligibleCashback = Boolean(user && linkProof && paymentMethod === 'PIX' && items.every(item => !item.printConfigs?.length));
+  useEffect(() => {
+    if (!eligibleCashback) { setWalletCents(0); setApplyCashback(false); return; }
+    let active = true;
+    void authenticatedFetch('/api/cashback/wallet').then(r => r.json()).then(data => { if (active) setWalletCents(Number(data.availableCents) || 0); }).catch(() => {});
+    return () => { active = false; };
+  }, [eligibleCashback]);
+  const cashbackLimit = eligibleCashback ? redeemableCashbackCents(walletCents, Math.max(0, Math.round((subtotal - couponDiscount - pixDiscount - flashSaleDiscount - (weeklyPromotionDiscount || 0)) * 100))) : 0;
+  const cashbackUseCents = applyCashback ? Math.min(cashbackLimit, Math.max(0, Math.round(total * 100) - 1)) : 0;
 
   useEffect(() => {
     if (items.length > 0) {
@@ -211,7 +225,9 @@ export default function Checkout() {
                 )}
                 <div className="pt-5 border-t border-white/10">
                   <p className="text-[8px] font-black uppercase tracking-[0.25em] text-white/30 mb-1">Total a pagar</p>
-                  <h2 className="text-3xl md:text-4xl font-black italic tracking-tighter leading-none text-white">{formatBRL(total)}</h2>
+                  <h2 className="text-3xl md:text-4xl font-black italic tracking-tighter leading-none text-white">{formatBRL(total - cashbackUseCents / 100)}</h2>
+                  {eligibleCashback && <label className="mt-4 flex cursor-pointer items-center gap-3 rounded-xl border border-[#eab308] bg-[#eab308]/10 p-3 text-sm"><input type="checkbox" checked={applyCashback} disabled={!cashbackLimit} onChange={e => setApplyCashback(e.target.checked)} className="h-5 w-5" /><span>Usar meu cashback disponível ({formatBRL(cashbackLimit / 100)}) neste pedido. {cashbackUseCents > 0 && `Desconto: ${formatBRL(cashbackUseCents / 100)}.`}</span></label>}
+                  {linkProof && <p className="mt-3 text-xs text-white/70">Cashback da compra: somente no Pix, com conta, para produtos do catálogo. O novo crédito será liberado quando a entrega for confirmada. Personalizados não participam.</p>}
                 </div>
               </div>
 
@@ -221,7 +237,8 @@ export default function Checkout() {
                   <PixDisplay pixResult={paymentResult} onApproved={handlePaymentSuccess} />
                 ) : (
                   <PaymentForm
-                    total={total}
+                    total={total - cashbackUseCents / 100}
+                    cashbackUseCents={cashbackUseCents}
                     items={items}
                     customerInfo={customerInfo}
                     postPurchaseMarketingConsent={postPurchaseMarketingConsent === true}

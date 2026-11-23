@@ -12,12 +12,19 @@ import {
   sendPasswordResetEmail,
   validatePassword,
   type MultiFactorResolver,
-  updateProfile as updateFirebaseProfile
+  updateProfile as updateFirebaseProfile,
+  sendEmailVerification
 } from 'firebase/auth';
 import { doc, getDoc, setDoc, onSnapshot } from 'firebase/firestore';
 import { auth, db } from '../lib/firebase';
 import toast from 'react-hot-toast';
 import { authErrorCode, authErrorMessage, requestPrivatePasswordReset, profileUpdateFields } from '../lib/authSecurity';
+import { getPublicApiUrl } from '../lib/api';
+
+const registerSignupCashback = async (user: User) => {
+  const token = await user.getIdToken();
+  await fetch(getPublicApiUrl('/api/cashback/wallet'), { headers: { Authorization: `Bearer ${token}` }, cache: 'no-store' });
+};
 
 export interface UserProfile {
   name: string;
@@ -42,6 +49,7 @@ interface AuthContextType {
   loginWithEmail: (email: string, pass: string) => Promise<void>;
   registerWithEmail: (email: string, pass: string, name: string) => Promise<void>;
   resetPassword: (email: string) => Promise<void>;
+  sendVerificationEmail: () => Promise<void>;
   logout: () => Promise<void>;
   updateProfile: (data: Partial<UserProfile>) => Promise<void>;
 }
@@ -187,7 +195,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       const provider = new GoogleAuthProvider();
       provider.setCustomParameters({ prompt: 'select_account' });
-      await signInWithPopup(auth, provider);
+      const result = await signInWithPopup(auth, provider);
+      void registerSignupCashback(result.user).catch(() => {});
     } catch (error: any) {
       if (!beginMfa(error)) handleAuthError(error);
     }
@@ -207,6 +216,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (!policy.isValid) throw { code: 'auth/password-does-not-meet-requirements' };
       const result = await createUserWithEmailAndPassword(auth, email, pass);
       await updateFirebaseProfile(result.user, { displayName: name });
+      try { await sendEmailVerification(result.user); }
+      catch { toast.error('Conta criada. Reenvie a confirmação do e-mail em Minha conta para liberar o bônus.'); }
+      void registerSignupCashback(result.user).catch(() => {});
       
       // The profile creation is handled in the useEffect onAuthStateChanged
     } catch (error: any) {
@@ -221,6 +233,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } catch (error: any) {
       handleAuthError(error);
     }
+  };
+
+  const sendVerificationEmail = async () => {
+    if (!auth.currentUser) throw new Error('Entre na sua conta.');
+    await sendEmailVerification(auth.currentUser);
   };
 
   const beginMfa = (error: unknown) => {
@@ -256,6 +273,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       loginWithEmail, 
       registerWithEmail, 
       resetPassword,
+      sendVerificationEmail,
       logout, 
       updateProfile 
     }}>
