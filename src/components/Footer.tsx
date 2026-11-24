@@ -195,7 +195,7 @@ export function Footer() {
         </div>
 
         <div className="border-t border-black/10 py-5 flex flex-col sm:flex-row justify-between sm:items-center gap-3 text-[9px] uppercase font-black tracking-[0.16em] text-black/35">
-          <p>Joinville/SC · <a href="mailto:atendimento@fpacstore.com.br" className="underline">atendimento@fpacstore.com.br</a></p>
+          <p>Joinville/SC · <a href="mailto:fpacstore@gmail.com" className="underline">fpacstore@gmail.com</a></p>
           <p translate="no">&copy; {new Date().getFullYear()} F PAC STORE</p>
           <span translate="no">Vista atitude. Vista F PAC STORE.</span>
         </div>

@@ -1,5 +1,5 @@
 /** Email is an administrative fallback only after the identity provider verifies it. */
-export const ADMIN_EMAILS = ['fpacstore@gmail.com', 'atendimento@fpacstore.com.br'] as const;
+export const ADMIN_EMAILS = ['fpacstore@gmail.com'] as const;
 
 export function isAdminIdentity(identity: {
   uid?: string; email?: string | null; email_verified?: boolean; emailVerified?: boolean;

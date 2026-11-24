@@ -21,12 +21,13 @@ try {
   const customer = environment.authenticatedContext('customer', { email: 'customer@example.invalid', email_verified: true }).firestore();
   const pendingCustomer = environment.authenticatedContext('pending-customer', { email: 'pending@example.invalid', email_verified: false }).firestore();
   const unverified = environment.authenticatedContext('unverified-admin-email', { email: 'fpacstore@gmail.com', email_verified: false }).firestore();
+  const retiredEmail = environment.authenticatedContext('retired-email', { email: 'atendimento@fpacstore.com.br', email_verified: true }).firestore();
   const claimed = environment.authenticatedContext('claimed-admin', { admin: true }).firestore();
   const manager = environment.authenticatedContext('manager', { email: 'fpacstore@gmail.com', email_verified: true }).firestore();
   await environment.withSecurityRulesDisabled(async context => {
     await setDoc(doc(context.firestore(), 'orders/customer-fixture'), { userId: 'customer', customerEmail: 'customer@example.invalid', total: 100, items: [{ unitCostSnapshot: 35 }], internalNotes: 'Private' });
   });
-  for (const reader of [guest, customer, unverified]) {
+  for (const reader of [guest, customer, unverified, retiredEmail]) {
     await assertFails(getDoc(doc(reader, 'orders/customer-fixture')));
     await assertFails(getDocs(collection(reader, 'orders')));
   }
@@ -87,7 +88,7 @@ try {
   assert.equal((await getDoc(customerProfile)).data()?.legacyField,'preserved');
   await assertFails(setDoc(customerProfile, { role:'admin' }, { merge:true }));
   console.log('Profile allowlist rejects credential/privilege injection while preserving existing profile metadata.');
-  for (const db of [guest, customer, unverified]) {
+  for (const db of [guest, customer, unverified, retiredEmail]) {
     await assertFails(getDoc(doc(db, 'products/shirt')));
     await assertFails(getDocs(collection(db, 'products')));
     await assertFails(getDoc(doc(db, 'inventory/shirt')));
@@ -142,7 +143,7 @@ try {
       await uploadBytes(ref(context.storage(), name), new Uint8Array([1, 2, 3]));
     }
   });
-  for (const context of [environment.unauthenticatedContext(), environment.authenticatedContext('customer'), environment.authenticatedContext('unverified', { email: 'fpacstore@gmail.com', email_verified: false })]) {
+  for (const context of [environment.unauthenticatedContext(), environment.authenticatedContext('customer'), environment.authenticatedContext('unverified', { email: 'fpacstore@gmail.com', email_verified: false }), environment.authenticatedContext('retired-email', { email: 'atendimento@fpacstore.com.br', email_verified: true })]) {
     const storage = context.storage();
     await assertSucceeds(getMetadata(ref(storage, 'catalog-media/images/public.png')));
     await assertSucceeds(getMetadata(ref(storage, 'Musicas do Site/audio/public.mp3')));

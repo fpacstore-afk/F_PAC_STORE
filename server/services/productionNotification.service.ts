@@ -490,7 +490,7 @@ export async function dispatchStageNotification(params: {
         try {
           const resend = new Resend(process.env.RESEND_API_KEY);
           const result = await resend.emails.send({
-            from: 'F PAC STORE <atendimento@fpacstore.com.br>', to: [email],
+            from: 'F PAC STORE <atendimento@fpacstore.com.br>', replyTo: 'fpacstore@gmail.com', to: [email],
             subject: 'Pedido #' + orderId + ' — ' + (STAGE_LABELS[newStageId] || newStageId),
             text: message,
             html: params.emailHtml ? await params.emailHtml(message, order) : '<div style="font-family:Arial;white-space:pre-line;line-height:1.6;padding:24px">' + escapeHtml(message.replace(/\*/g, '')) + '</div>'
