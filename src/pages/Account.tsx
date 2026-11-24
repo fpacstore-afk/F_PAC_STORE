@@ -265,7 +265,7 @@ export default function Account() {
             <button type="button" disabled={verificationBusy} onClick={checkVerification} className="min-h-11 rounded border border-black px-4 py-2 text-sm font-bold disabled:opacity-50">Já confirmei; verificar agora</button>
           </div>
         </section>}
-        {emailVerified && ['fpacstore@gmail.com', 'atendimento@fpacstore.com.br'].includes((user.email || '').toLowerCase()) && <section className="mb-6 rounded-lg border border-black/15 p-4 text-sm">
+        {emailVerified && (user.email || '').toLowerCase() === 'fpacstore@gmail.com' && <section className="mb-6 rounded-lg border border-black/15 p-4 text-sm">
           <h2 className="font-bold">Auditoria do e-mail de cadastro</h2>
           <p className="mt-1">Envie uma única mensagem de verificação para o endereço desta conta e confira o recebimento na caixa de entrada. Não será criada outra conta nem concedido cashback de teste.</p>
           <button type="button" disabled={verificationBusy} onClick={async () => { setVerificationBusy(true); try { await sendVerificationEmail(true); setMessage({ type: 'success', text: 'Solicitação aceita pelo serviço de autenticação. Confira a caixa de entrada e o spam para confirmar a entrega.' }); } catch (error) { setMessage({ type: 'error', text: authErrorMessage(error) }); } finally { setVerificationBusy(false); } }} className="mt-3 min-h-11 rounded border border-black px-4 font-bold disabled:opacity-50">Enviar e-mail de verificação de teste</button>

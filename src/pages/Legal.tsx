@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom';
 
-const contact = <p>F PAC STORE · Joinville/SC · <a href="mailto:atendimento@fpacstore.com.br" className="underline">atendimento@fpacstore.com.br</a> · <a href="https://wa.me/5547997465602" className="underline" target="_blank" rel="noopener noreferrer">(47) 99746-5602</a>.</p>;
+const contact = <p>F PAC STORE · Joinville/SC · <a href="mailto:fpacstore@gmail.com" className="underline">fpacstore@gmail.com</a> · <a href="https://wa.me/5547997465602" className="underline" target="_blank" rel="noopener noreferrer">(47) 99746-5602</a>.</p>;
 const sectionClass = 'space-y-3';
 
 export default function Legal({ kind }: { kind: 'privacy' | 'terms' }) {

@@ -382,7 +382,7 @@ export function ProductionNotificationsAdmin() {
           <div className="flex items-center justify-between pt-2 border-t border-black/5 text-[10px]">
             <span className="text-gray-500 font-bold uppercase">Provedor:</span>
             <span className="font-black text-blue-700 bg-blue-100 px-2 py-0.5 uppercase tracking-wider">
-              Resend (atendimento@fpacstore.com.br)
+              Resend · remetente técnico; respostas para fpacstore@gmail.com
             </span>
           </div>
         </div>

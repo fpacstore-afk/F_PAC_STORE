@@ -498,6 +498,7 @@ export async function sendAbandonedEmail(checkout: CheckoutLead) {
 
     const result = await resend.emails.send({
       from: 'F PAC STORE <atendimento@fpacstore.com.br>',
+      replyTo: 'fpacstore@gmail.com',
       to: [checkout.email],
       subject: 'Seu lembrete da sacola F PAC STORE',
       html: htmlContent

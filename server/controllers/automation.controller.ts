@@ -340,7 +340,7 @@ export async function testProductionNotification(req: Request, res: Response) {
     if (!process.env.RESEND_API_KEY) return res.status(503).json({ error: 'O serviço de e-mail não está configurado.', emailSent: false });
     const escape = (value: string) => value.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!));
     const delivery = await new Resend(process.env.RESEND_API_KEY).emails.send({
-      from: 'F PAC STORE <atendimento@fpacstore.com.br>', to: [recipient],
+      from: 'F PAC STORE <atendimento@fpacstore.com.br>', replyTo: 'fpacstore@gmail.com', to: [recipient],
       subject: `[TESTE] F PAC — ${stageId}`, text: testMessage,
       html: '<div style="font-family:Arial;padding:24px;line-height:1.6;white-space:pre-line">' + escape(testMessage.replace(/\*/g, '')) + '</div>'
     });

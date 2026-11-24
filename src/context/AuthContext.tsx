@@ -242,7 +242,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (!auth.currentUser) throw new Error('Entre na sua conta.');
     await reload(auth.currentUser);
     if (auth.currentUser.emailVerified && !auditVerifiedAccount) return;
-    if (auditVerifiedAccount && (!auth.currentUser.emailVerified || !['fpacstore@gmail.com', 'atendimento@fpacstore.com.br'].includes((auth.currentUser.email || '').toLowerCase()))) throw new Error('Auditoria disponível apenas para a conta da loja já validada.');
+    if (auditVerifiedAccount && (!auth.currentUser.emailVerified || (auth.currentUser.email || '').toLowerCase() !== 'fpacstore@gmail.com')) throw new Error('Auditoria disponível apenas para a conta da loja já validada.');
     auth.languageCode = 'pt-BR';
     await sendEmailVerification(auth.currentUser);
   };

@@ -227,10 +227,10 @@ async function sendPostPurchaseEmail(order: any, kind: 'survey' | 'repurchase') 
   const contentId = `fpac-${kind}-${createHash('sha1').update(order.id).digest('hex').slice(0, 16)}`;
   const imageAlt = kind === 'survey' ? 'Pesquisa de satisfação F PAC STORE: produto, atendimento e facilidade da compra.' : 'Bônus F PAC STORE: +5% adicional, cupom de recompra válido por 7 dias.';
   const imageLink = kind === 'survey'
-    ? `mailto:atendimento@fpacstore.com.br?subject=${encodeURIComponent(`Pesquisa F PAC STORE — pedido ${order.id}`)}&body=${encodeURIComponent('Produto: %0AAtendimento: %0ACompra foi fácil? (sim/não): ')}`
+    ? `mailto:fpacstore@gmail.com?subject=${encodeURIComponent(`Pesquisa F PAC STORE — pedido ${order.id}`)}&body=${encodeURIComponent('Produto: %0AAtendimento: %0ACompra foi fácil? (sim/não): ')}`
     : '';
   const result = await new Resend(key).emails.send({
-    from: 'F PAC STORE <atendimento@fpacstore.com.br>', to: [email], subject, text: message,
+    from: 'F PAC STORE <atendimento@fpacstore.com.br>', replyTo: 'fpacstore@gmail.com', to: [email], subject, text: message,
     html: `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:8px;background:#f4f2ec;text-align:center">${imageLink ? `<a href="${imageLink.replace(/&/g, '&amp;')}" aria-label="Responder pesquisa F PAC STORE">` : ''}<img src="cid:${contentId}" alt="${imageAlt}" width="600" style="display:block;width:100%;max-width:600px;height:auto;border:0;margin:0 auto"/>${imageLink ? '</a>' : ''}${kind === 'repurchase' ? `<p style="font-family:Arial,sans-serif;font-size:16px;line-height:1.5;margin:12px 0 4px;color:#111"><a href="https://www.fpacstore.com.br/" style="color:#111;text-decoration:underline">https://www.fpacstore.com.br/</a></p>` : ''}</div>`,
     attachments: [{ filename: `fpac-${kind}-pedido-${order.id}.png`, content: image.toString('base64'), contentType: 'image/png', contentId }],
   }, { idempotencyKey: `postpurchase/${order.id}/${kind}` });
