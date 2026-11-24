@@ -79,7 +79,7 @@ export function InventoryAuditCenter({ operator = 'Administrador' }: { operator?
       const response = await authenticatedFetch('/api/admin/garment-models/pending-zimm', { method: 'POST' });
       const data = await parseApiJson<any>(response);
       if (!response.ok) throw new Error(data.error || 'Não foi possível concluir a contagem.');
-      setPendingZimm({ ...pendingZimm, alreadyApplied: true });
+      setPendingZimm({ ...pendingZimm, ...data, alreadyApplied: true });
       toast.success(`${data.countedTotal} peças vinculadas em ${data.changedVariants} variações; movimentos registrados.`);
     } catch (error: any) { toast.error(error.message || 'Revise as bases e tente novamente.'); }
     finally { setApplyingZimm(false); }
@@ -333,6 +333,8 @@ export function InventoryAuditCenter({ operator = 'Administrador' }: { operator?
         {pendingZimm && <>
           <p className="mt-2 font-bold">Prévia: {pendingZimm.previousTotal} no sistema → {pendingZimm.countedTotal} contadas; {pendingZimm.lines.filter((line: any) => line.difference !== 0).length} variações com diferença.</p>
           {pendingZimm.conflicts.length > 0 && <ul className="mt-2 list-disc pl-5 text-red-700">{pendingZimm.conflicts.map((item: string) => <li key={item}>{item}</li>)}</ul>}
+          {pendingZimm.advisories?.length > 0 && <ul className="mt-2 list-disc pl-5 text-amber-800">{pendingZimm.advisories.map((item: string) => <li key={item}>{item}</li>)}</ul>}
+          {pendingZimm.alreadyApplied && pendingZimm.differences && <p className="mt-2 font-bold text-green-800" role="status">Concluído: {pendingZimm.changedVariants} variações ajustadas, 14 peças físicas finais. Histórico preservado.</p>}
           <details className="mt-2"><summary className="cursor-pointer font-bold">Ver quantidades por SKU</summary><ul className="mt-2 max-h-44 overflow-auto text-xs">{pendingZimm.lines.map((line: any) => <li key={line.sku}>{line.sku}: {line.previousPhysical} → {line.counted} {line.reserved ? `(${line.reserved} reservado)` : ''}</li>)}</ul></details>
           <button type="button" disabled={applyingZimm || pendingZimm.alreadyApplied || pendingZimm.conflicts.length > 0 || pendingZimm.countedTotal !== 14} onClick={applyZimmCount} className="mt-3 min-h-11 bg-black px-4 font-bold text-[#eab308] disabled:opacity-50">{pendingZimm.alreadyApplied ? 'Contagem já aplicada' : applyingZimm ? 'Conferindo...' : 'Confirmar saldos finais das 14 peças'}</button>
         </>}

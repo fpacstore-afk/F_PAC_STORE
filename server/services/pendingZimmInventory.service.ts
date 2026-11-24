@@ -3,8 +3,8 @@ import { getVariantStats } from './store.service.js';
 /** Owner's physical count, 23/11/2026. These are final balances, not receipts. */
 const SHEETS = [
   {
-    id: 'garment-zim-comfort-160', modelId: 'ZIM-COMFORT-160', sku: 'FPAC-ZIM-COMFORT-160',
-    baseModel: 'Camiseta Básica Tradicional', name: 'Camiseta Básica Tradicional F PAC — Zimm Comfort',
+    id: 'garment-zim-comfort-160', modelId: 'ZIM-COMFORT-160', sku: 'FPAC-ZIN-BAS-001',
+    baseModel: 'Camiseta Básica Tradicional', name: 'Camiseta Básica Tradicional — Zin',
     fabric: '100% algodão 30.1', gsm: '160 g/m²', collar: 'Gola tradicional · ribana 1,5 cm',
     sizes: ['P','M','G','GG','XG'], colors: ['Preto','Verde Militar'],
     // The owner's counted XG is distinct, but the supplier picture lists only P–GG.
@@ -13,8 +13,8 @@ const SHEETS = [
       'Verde Militar_P': 0, 'Verde Militar_M': 0, 'Verde Militar_G': 0, 'Verde Militar_GG': 0, 'Verde Militar_XG': 1 },
   },
   {
-    id: 'garment-zim-dryfit-140', modelId: 'ZIM-DRYFIT-140', sku: 'FPAC-ZIM-DRYFIT-140',
-    baseModel: 'Tradicional Dry Fit', name: 'Camiseta Tradicional Dry Fit F PAC — Zimm',
+    id: 'garment-zim-dryfit-140', modelId: 'ZIM-DRYFIT-140', sku: 'FPAC-ZIN-DRY-001',
+    baseModel: 'Tradicional Dry Fit', name: 'Camiseta Tradicional Dry Fit — Zin',
     fabric: '100% poliéster · tecido grão de arroz', gsm: '140 g/m²', collar: 'Não informado na ficha',
     sizes: ['P','M','G','GG'], colors: ['Preto'], supplierSizeUnverified: [],
     balances: { Preto_P: 1, Preto_M: 2, Preto_G: 3, Preto_GG: 2 },
@@ -36,13 +36,16 @@ async function inspect(db: any, tx?: any) {
   const productsRef = db.collection('products');
   const eventRef = db.collection('pending_inventory_imports').doc(EVENT_ID);
   const get = (ref: any) => tx ? tx.get(ref) : ref.get();
-  const [products, event, ...inventories] = await Promise.all([
-    get(productsRef), get(eventRef), ...SHEETS.map(sheet => get(db.collection('inventory').doc(sheet.id))),
-  ]);
-  const conflicts: string[] = [], lines: any[] = [];
+  const [products, event] = await Promise.all([get(productsRef), get(eventRef)]);
+  const conflicts: string[] = [], advisories: string[] = [], lines: any[] = [];
   const existing = products.docs.map((doc: any) => ({ id: doc.id, ...doc.data() }));
+  const targets = SHEETS.map(sheet => existing.filter((item: any) => item.sku === sheet.sku));
+  const inventories = await Promise.all(targets.map((matches, index) =>
+    get(db.collection('inventory').doc(matches[0]?.id || SHEETS[index].id))));
   SHEETS.forEach((sheet, index) => {
-    const base = existing.find((item: any) => item.id === sheet.id) as any;
+    const matches = targets[index];
+    const base = matches[0] as any;
+    if (matches.length !== 1) conflicts.push(`${sheet.sku}: cadastro existente não encontrado de forma única. Nenhum novo produto será criado.`);
     // A physical base with the same family under another ID must be inspected,
     // never silently duplicated or merged with stock from another fabric.
     const candidates = existing.filter((item: any) => item.productFinish === 'plain' &&
@@ -51,26 +54,30 @@ async function inspect(db: any, tx?: any) {
         (String(item.supplierName || item.supplier || '').toLowerCase().includes('zim') &&
           String([item.name, item.fabric, item.garmentModelName].join(' ')).toLowerCase().includes(sheet.modelId === 'ZIM-DRYFIT-140' ? 'dry fit' : '30.1') &&
           (sheet.modelId === 'ZIM-DRYFIT-140' || /tradicional/i.test(String(item.name || item.baseModel || ''))))));
-    if (candidates.some((item: any) => item.id !== sheet.id)) conflicts.push(`${sheet.baseModel}: já existe uma base física com outra referência. Confira SKU, fornecedor, reservas e histórico antes de cadastrar.`);
-    if (base && (base.productFinish !== 'plain' || base.baseModel !== sheet.baseModel || base.garmentModelId !== sheet.modelId || base.sku !== sheet.sku)) conflicts.push(`${sheet.sku}: o identificador já pertence a outro cadastro.`);
+    if (candidates.some((item: any) => item.id !== base?.id && item.baseModel === sheet.baseModel)) conflicts.push(`${sheet.baseModel}: já existe outra base física desta família; confira antes de continuar.`);
+    if (candidates.some((item: any) => item.id !== base?.id && item.baseModel !== sheet.baseModel)) advisories.push(`${sheet.baseModel}: ficha antiga 30.1 com identificação de gola/tecido contraditória preservada para revisão; nenhum saldo dela será alterado.`);
+    if (base && (base.productFinish !== 'plain' || base.baseModel !== sheet.baseModel || (base.garmentModelId && base.garmentModelId !== sheet.modelId))) conflicts.push(`${sheet.sku}: o cadastro existente não corresponde à base física esperada.`);
     const inventory = inventories[index].data() || {};
     if (!base && inventories[index].exists) conflicts.push(`${sheet.sku}: há saldo sem produto correspondente; confira o cadastro.`);
     for (const [variantKey, counted] of Object.entries(sheet.balances)) {
       const old = inventory.variants?.[variantKey];
       const before = physical(old), held = reserved(old);
       if (before !== 0 || held !== 0) conflicts.push(`${sheet.sku} ${variantKey}: já existe saldo ou reserva; não substitua sem uma nova conferência.`);
-      lines.push({ productId: sheet.id, sku: `${sheet.sku}-${variantKey.replace(/\s+/g, '-').replace('_', '-')}`, variantKey,
+      lines.push({ productId: base?.id || sheet.id, sku: `${sheet.sku}-${variantKey.replace(/\s+/g, '-').replace('_', '-')}`, variantKey,
         previousPhysical: before, reserved: held, counted, difference: counted - before });
     }
   });
-  return { event: event.exists ? event.data() : null, existing, inventories, conflicts,
+  return { event: event.exists ? event.data() : null, existing, targets, inventories, conflicts, advisories,
     lines, countedTotal: sum(lines.map(line => line.counted)), previousTotal: sum(lines.map(line => line.previousPhysical)) };
 }
 
 export async function previewPendingZimmInventory(db: any) {
   const result = await inspect(db);
+  if (result.event) return { countReference: '2026-11', countedTotal: result.countedTotal,
+    previousTotal: result.previousTotal, lines: result.lines, conflicts: [],
+    advisories: result.event.result?.advisories || [], alreadyApplied: true, ...result.event.result };
   return { countReference: '2026-11', countedTotal: result.countedTotal, previousTotal: result.previousTotal,
-    lines: result.lines, conflicts: result.conflicts, alreadyApplied: Boolean(result.event) };
+    lines: result.lines, conflicts: result.conflicts, advisories: result.advisories, alreadyApplied: Boolean(result.event) };
 }
 
 export async function applyPendingZimmInventory(db: any, actor: string) {
@@ -84,7 +91,8 @@ export async function applyPendingZimmInventory(db: any, actor: string) {
     const differences: any[] = [];
     for (let index = 0; index < SHEETS.length; index++) {
       const sheet = SHEETS[index];
-      const currentProduct = report.existing.find((item: any) => item.id === sheet.id) as any;
+      const currentProduct = report.targets[index][0] as any;
+      const productId = currentProduct.id;
       const inventory = report.inventories[index].data() || {};
       const variants = { ...(inventory.variants || {}) };
       for (const [variantKey, counted] of Object.entries(sheet.balances)) {
@@ -95,17 +103,17 @@ export async function applyPendingZimmInventory(db: any, actor: string) {
           physicalQuantity: counted, stock: counted, reservedQuantity: 0, availableQuantity: counted,
           physicalCountVerified: true, available: counted > 0, active: true, updatedAt: now };
         if (counted > 0) {
-          const movement = { productSlug: sheet.id, productId: sheet.id, variantKey, type: 'adjust',
+          const movement = { productSlug: productId, productId, variantKey, type: 'adjust',
             quantity: counted, previousPhysicalQuantity: 0, newPhysicalQuantity: counted,
             previousReservedQuantity: 0, newReservedQuantity: 0, previousAvailableQuantity: 0,
             newAvailableQuantity: counted, reason: 'Contagem física final de 23/11/2026 · Zimm · sem entrada de mercadoria',
             operator: actor, relatedTransferId: EVENT_ID, createdAt: now, timestamp: now };
-          tx.create(db.collection('stock_movements').doc(`${EVENT_ID}_${sheet.id}_${variantKey.replace(/\s+/g, '-')}`), movement);
-          differences.push({ productId: sheet.id, variantKey, previous: 0, final: counted, difference: counted });
+          tx.create(db.collection('stock_movements').doc(`${EVENT_ID}_${productId}_${variantKey.replace(/\s+/g, '-')}`), movement);
+          differences.push({ productId, variantKey, previous: 0, final: counted, difference: counted });
         }
       }
-      const product = { id: sheet.id, slug: sheet.id, sku: sheet.sku, name: sheet.name,
-        supplierName: 'Zimm', garmentModelId: sheet.modelId, garmentModelName: sheet.name,
+      const product = { id: productId, sku: sheet.sku, name: sheet.name,
+        supplierName: currentProduct.supplierName || 'Zin', supplierCatalogName: 'ZIMM', garmentModelId: sheet.modelId, garmentModelName: sheet.name,
         baseModel: sheet.baseModel, stockFamily: 'tradicional', productFinish: 'plain', productType: 'tshirt',
         status: 'draft', primeBaseEnabled: false, modelSeparationRequired: true,
         fabric: sheet.fabric, gsm: sheet.gsm, collar: sheet.collar,
@@ -113,17 +121,16 @@ export async function applyPendingZimmInventory(db: any, actor: string) {
         supplierSizeUnverified: sheet.supplierSizeUnverified, price: 0,
         variants: Object.entries(sheet.balances).map(([key]) => { const split = key.lastIndexOf('_'); return { sku: `${sheet.sku}-${key.slice(0, split).replace(/\s+/g, '-')}-${key.slice(split + 1)}`, colorName: key.slice(0, split), size: key.slice(split + 1), active: true }; }),
         updatedAt: now };
-      const ref = db.collection('products').doc(sheet.id);
-      if (!currentProduct) tx.create(ref, { ...product, createdAt: now, images: [] });
-      else tx.update(ref, { ...product, status: currentProduct.status, primeBaseEnabled: currentProduct.primeBaseEnabled,
+      const ref = db.collection('products').doc(productId);
+      tx.update(ref, { ...product, status: currentProduct.status, primeBaseEnabled: currentProduct.primeBaseEnabled || false,
         price: currentProduct.price, images: currentProduct.images || [],
         sizes: [...new Set([...(currentProduct.sizes || []), ...sheet.sizes])],
         colors: [...(currentProduct.colors || []).filter((color: any) => !sheet.colors.includes(color.name)), ...product.colors],
         variants: [...(currentProduct.variants || []).filter((variant: any) => !Object.hasOwn(sheet.balances, `${variant.colorName || variant.color}_${variant.size}`)), ...product.variants] });
-      tx.set(db.collection('inventory').doc(sheet.id), { ...inventory, productId: sheet.id, productSlug: sheet.id, name: sheet.name,
+      tx.set(db.collection('inventory').doc(productId), { ...inventory, productId, productSlug: productId, name: sheet.name,
         variants, ...stats(variants), createdAt: inventory.createdAt || now, updatedAt: now });
     }
-    const result = { countedTotal: 14, changedVariants: differences.length, differences, preservedOtherProducts: true };
+    const result = { countedTotal: 14, changedVariants: differences.length, differences, preservedOtherProducts: true, advisories: report.advisories };
     tx.create(db.collection('pending_inventory_imports').doc(EVENT_ID), { actor, createdAt: now, result });
     return { ...result, alreadyApplied: false };
   });
