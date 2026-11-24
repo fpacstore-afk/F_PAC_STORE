@@ -62,7 +62,8 @@ try {
       { id: 'old-product', variants: { P: { stock: 16 }, M: { stock: 0 } } },
     ]);
     assert.equal(result.linkedPhysical, 3); assert.equal(result.unlinkedPhysical, 16); assert.equal(result.lowStockVariants, 1);
-    assert.equal(catalogIntegrity([{ id: 'zero' }], [{ id: 'zero', available: false, variants: { G: { stock: 0, available: false } } }]).lowStockVariants, 1);
+    assert.equal(catalogIntegrity([{ id: 'zero' }], [{ id: 'zero', available: false, variants: { G: { stock: 0, available: false } } }]).lowStockVariants, 0, 'uncounted zero without a minimum is not an urgent replenishment');
+    assert.equal(catalogIntegrity([{ id: 'zero' }], [{ id: 'zero', variants: { G: { stock: 0, minStock: 2, physicalCountVerified: true } } }]).lowStockVariants, 1);
     assert.equal(catalogIntegrity([], [{ id: 'old', stock: 16 }]).lowStockVariants, 0);
   });
   await check('missing or short retry keys never start a payment', async () => {

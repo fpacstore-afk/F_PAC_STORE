@@ -43,7 +43,9 @@ export async function requestPrivatePasswordReset(email: string, send: (email: s
 
 /** Passwords, tokens and privilege flags cannot accidentally become profile fields. */
 export function profileUpdateFields(data: Record<string, unknown>): Record<string, string> {
-  const fields = ['name', 'email', 'phone', 'phone2', 'cpf', 'address', 'number', 'complement', 'neighborhood', 'city', 'state', 'cep'];
+  // The verified Firebase Auth identity owns the e-mail address. A profile write
+  // must never make a different address appear to be the account owner.
+  const fields = ['name', 'phone', 'phone2', 'cpf', 'address', 'number', 'complement', 'neighborhood', 'city', 'state', 'cep'];
   return Object.fromEntries(fields.filter(field => Object.hasOwn(data, field) && typeof data[field] === 'string')
     .map(field => [field, data[field] as string]));
 }

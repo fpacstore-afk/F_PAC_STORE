@@ -10,7 +10,7 @@ const amount = (value: unknown) => Number.isSafeInteger(value) && Number(value) 
 const accountData = (value: any): Account => ({ availableCents: amount(value?.availableCents), pendingCents: amount(value?.pendingCents), heldCents: amount(value?.heldCents), debtCents: amount(value?.debtCents) });
 const eligibleUser = (uid: string) => typeof uid === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(uid);
 
-/** A newly created account receives one permanent, spendable credit. */
+/** One permanent welcome credit per eligible account; spendable only after e-mail verification. */
 export async function ensureSignupBonus(uid: string, startedAt: string) {
   if (!eligibleUser(uid) || !startedAt) return;
   getDb();
@@ -19,15 +19,25 @@ export async function ensureSignupBonus(uid: string, startedAt: string) {
   // The campaign configuration can be initialized by the same first signup.
   // Allow its immediate account creation without granting credits to old accounts.
   if (!Number.isFinite(created) || created < Date.parse(startedAt) - 5 * 60_000) return;
-  const ref = accountRef(uid), creditRef = ref.collection('credits').doc('signup');
-  await getDb().runTransaction(async tx => {
+  await applySignupBonus(getDb(), uid, user.emailVerified === true);
+}
+
+/** Transactional stage transition, also exercised against the isolated test database. */
+export async function applySignupBonus(db: any, uid: string, verified: boolean) {
+  if (!eligibleUser(uid)) throw new Error('Conta inválida.');
+  const ref = db.collection('cashback_accounts').doc(uid), creditRef = ref.collection('credits').doc('signup');
+  await db.runTransaction(async (tx: any) => {
     const [accountSnap, creditSnap] = await Promise.all([tx.get(ref), tx.get(creditRef)]);
     const account = accountData(accountSnap.data());
     if (!creditSnap.exists) {
       tx.set(creditRef, { source: 'signup', originalCents: SIGNUP_BONUS_CENTS, remainingCents: SIGNUP_BONUS_CENTS,
-        spentCents: 0, status: 'available', expiresAt: null, createdAt: iso() });
-      account.availableCents += SIGNUP_BONUS_CENTS;
+        spentCents: 0, status: verified ? 'available' : 'pending_verification', expiresAt: null, createdAt: iso() });
+      if (verified) account.availableCents += SIGNUP_BONUS_CENTS;
       tx.set(ref, { ...account, createdAt: accountSnap.data()?.createdAt || iso(), updatedAt: iso() }, { merge: true });
+    } else if (verified && creditSnap.data()?.status === 'pending_verification') {
+      const remaining = amount(creditSnap.data()?.remainingCents);
+      tx.update(creditRef, { status: 'available', verifiedAt: iso() });
+      tx.set(ref, { ...account, availableCents: account.availableCents + remaining, updatedAt: iso() }, { merge: true });
     }
   });
 }

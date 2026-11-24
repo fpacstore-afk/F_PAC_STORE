@@ -58,8 +58,11 @@ service cloud.firestore {
       // Administrative authorization fields are server/admin controlled and can
       // never be created, changed or removed by the profile owner.
       allow create: if (isSignedIn() && request.auth.uid == userId &&
-                        request.resource.data.keys().hasOnly(profileFields()));
+                        request.resource.data.keys().hasOnly(profileFields()) &&
+                        request.resource.data.get('email', '') == request.auth.token.get('email', ''));
       allow update: if (isSignedIn() && request.auth.uid == userId &&
+                        request.auth.token.get('email_verified', false) == true &&
+                        request.resource.data.get('email', '') == resource.data.get('email', '') &&
                         request.resource.data.diff(resource.data).affectedKeys()
                           .hasOnly(profileFields()));
       allow delete: if (isSignedIn() && request.auth.uid == userId) || isAdmin();

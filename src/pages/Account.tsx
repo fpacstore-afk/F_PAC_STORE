@@ -1,6 +1,7 @@
 import { AccountSecurity } from '../components/AccountSecurity';
 import React, { useState, useEffect } from 'react';
 import { useAuth, UserProfile } from '../context/AuthContext';
+import { authErrorMessage } from '../lib/authSecurity';
 import { ShieldCheck, Loader2, Save, LogOut, User, ChevronRight } from 'lucide-react';
 import { useNavigate, Link } from 'react-router-dom';
 import { cn } from '../lib/utils';
@@ -9,7 +10,7 @@ import { CashbackWallet } from '../components/CashbackWallet';
 
 export default function Account() {
   const [searchParams] = useSearchParams();
-  const { user, profile, loading, logout, updateProfile, loginWithGoogle, loginWithEmail, registerWithEmail, resetPassword } = useAuth();
+  const { user, profile, loading, logout, updateProfile, loginWithGoogle, loginWithEmail, registerWithEmail, resetPassword, sendVerificationEmail, refreshEmailVerification } = useAuth();
   const navigate = useNavigate();
   const [formData, setFormData] = useState<UserProfile | null>(null);
   const [isSaving, setIsSaving] = useState(false);
@@ -19,6 +20,20 @@ export default function Account() {
   const [authMode, setAuthMode] = useState<'login' | 'register'>(searchParams.get('mode') === 'register' ? 'register' : 'login');
   const [isAuthLoading, setIsAuthLoading] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
+  const [verificationBusy, setVerificationBusy] = useState(false);
+  const [emailVerified, setEmailVerified] = useState(Boolean(user?.emailVerified));
+
+  useEffect(() => { setEmailVerified(Boolean(user?.emailVerified)); }, [user?.uid, user?.emailVerified]);
+
+  const checkVerification = async () => {
+    setVerificationBusy(true);
+    try {
+      const verified = await refreshEmailVerification();
+      setEmailVerified(verified);
+      setMessage({ type: verified ? 'success' : 'error', text: verified ? 'E-mail confirmado. Agora você pode atualizar seus dados e usar o bônus.' : 'Ainda não encontramos a confirmação. Abra o link recebido no e-mail e tente novamente.' });
+    } catch { setMessage({ type: 'error', text: 'Não foi possível consultar a confirmação agora.' }); }
+    finally { setVerificationBusy(false); }
+  };
 
   useEffect(() => {
     if (profile) {
@@ -214,7 +229,7 @@ export default function Account() {
       setMessage({ type: 'success', text: 'Dados atualizados com sucesso!' });
     } catch (error) {
       console.error(error);
-      setMessage({ type: 'error', text: 'Erro ao atualizar dados. Tente novamente.' });
+      setMessage({ type: 'error', text: error instanceof Error ? error.message : 'Erro ao atualizar dados. Tente novamente.' });
     } finally {
       setIsSaving(false);
     }
@@ -242,9 +257,24 @@ export default function Account() {
           </button>
         </div>
 
+        {!emailVerified && <section className="mb-6 rounded-lg border-2 border-[#eab308] bg-amber-50 p-5" aria-label="Confirmação de e-mail">
+          <h2 className="text-lg font-black">Confirme seu e-mail</h2>
+          <p className="mt-2 text-sm">Enviamos um link para {user.email}. Confirme o endereço antes de alterar seus dados ou usar o cashback de boas-vindas. Você pode continuar navegando pela loja.</p>
+          <div className="mt-4 flex flex-wrap gap-3">
+            <button type="button" disabled={verificationBusy} onClick={async () => { setVerificationBusy(true); try { await sendVerificationEmail(); setMessage({ type: 'success', text: 'Enviamos novamente o link de confirmação.' }); } catch (error) { setMessage({ type: 'error', text: authErrorMessage(error) }); } finally { setVerificationBusy(false); } }} className="min-h-11 rounded bg-black px-4 py-2 text-sm font-bold text-white disabled:opacity-50">Reenviar e-mail</button>
+            <button type="button" disabled={verificationBusy} onClick={checkVerification} className="min-h-11 rounded border border-black px-4 py-2 text-sm font-bold disabled:opacity-50">Já confirmei; verificar agora</button>
+          </div>
+        </section>}
+        {emailVerified && ['fpacstore@gmail.com', 'atendimento@fpacstore.com.br'].includes((user.email || '').toLowerCase()) && <section className="mb-6 rounded-lg border border-black/15 p-4 text-sm">
+          <h2 className="font-bold">Auditoria do e-mail de cadastro</h2>
+          <p className="mt-1">Envie uma única mensagem de verificação para o endereço desta conta e confira o recebimento na caixa de entrada. Não será criada outra conta nem concedido cashback de teste.</p>
+          <button type="button" disabled={verificationBusy} onClick={async () => { setVerificationBusy(true); try { await sendVerificationEmail(true); setMessage({ type: 'success', text: 'Solicitação aceita pelo serviço de autenticação. Confira a caixa de entrada e o spam para confirmar a entrega.' }); } catch (error) { setMessage({ type: 'error', text: authErrorMessage(error) }); } finally { setVerificationBusy(false); } }} className="mt-3 min-h-11 rounded border border-black px-4 font-bold disabled:opacity-50">Enviar e-mail de verificação de teste</button>
+        </section>}
+        {message && <p role={message.type === 'error' ? 'alert' : 'status'} className={`mb-5 rounded p-3 text-sm font-bold ${message.type === 'success' ? 'bg-green-100 text-green-900' : 'bg-red-100 text-red-900'}`}>{message.text}</p>}
+
         {user && <AccountSecurity key={user.uid} user={user} />}
 
-        <CashbackWallet />
+        <CashbackWallet key={emailVerified ? 'verified' : 'pending'} />
 
         <div className="bg-black/5 border border-black/10 p-8">
           <div className="flex items-center gap-3 mb-8 pb-4 border-b border-black/5">
@@ -253,6 +283,7 @@ export default function Account() {
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-6">
+            {!emailVerified && <p className="rounded bg-amber-50 p-3 text-sm" role="status">Você pode conferir os dados. Para salvar alterações, confirme seu e-mail acima.</p>}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="md:col-span-2">
                 <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-2">Nome Completo</label>
@@ -300,15 +331,9 @@ export default function Account() {
               </div>
             </div>
 
-            {message && (
-              <div className={`p-4 text-[10px] font-bold uppercase tracking-widest ${message.type === 'success' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
-                {message.text}
-              </div>
-            )}
-
             <button
               type="submit"
-              disabled={isSaving}
+              disabled={isSaving || !emailVerified}
               className="w-full bg-[#eab308] text-black font-black py-5 text-sm uppercase tracking-[0.2em] hover:bg-black hover:text-[#eab308] transition-all flex items-center justify-center gap-2"
             >
               {isSaving ? <Loader2 className="animate-spin" size={18} /> : <><Save size={18} /> Salvar Dados</>}
@@ -316,7 +341,7 @@ export default function Account() {
           </form>
 
           <p className="text-center text-[10px] text-gray-400 mt-8 flex items-center justify-center gap-2">
-            <ShieldCheck size={14} /> Seus dados estão protegidos por criptografia de ponta a ponta.
+            <ShieldCheck size={14} /> Seus dados são protegidos por conexão segura e controle de acesso.
           </p>
         </div>
       </div>

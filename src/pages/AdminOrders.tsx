@@ -109,6 +109,7 @@ const AdminLoyaltyManager = lazyWithRetry(() => import('../components/AdminLoyal
 const AdminMusic = lazyWithRetry(() => import('../components/AdminMusic').then(m => ({ default: m.AdminMusic })));
 const AdminCustomerIdentity = lazyWithRetry(() => import('../components/AdminCustomerIdentity').then(m => ({ default: m.AdminCustomerIdentity })));
 const AdminSiteMediaManager = lazyWithRetry(() => import('../components/admin/AdminSiteMediaManager').then(m => ({ default: m.AdminSiteMediaManager })));
+const AdminCheckoutLinkBuilder = lazyWithRetry(() => import('../components/admin/AdminCheckoutLinkBuilder').then(m => ({ default: m.AdminCheckoutLinkBuilder })));
 const ProductionNotificationsAdmin = lazyWithRetry(() => import('../components/ProductionNotificationsAdmin').then(m => ({ default: m.ProductionNotificationsAdmin })));
 const AdminProductionCenter = lazyWithRetry(() => import('../components/admin/production/AdminProductionCenter').then(m => ({ default: m.AdminProductionCenter })));
 const AdminShippingCenter = lazyWithRetry(() => import('../components/admin/shipping/AdminShippingCenter').then(m => ({ default: m.AdminShippingCenter })));
@@ -289,6 +290,8 @@ function AdminOrdersInner({ defaultTab }: { defaultTab: ManagementTab }) {
   const [orderSubView, setOrderSubView] = useState<'list' | 'reports' | 'logs'>('list');
   const [orderListView, setOrderListView] = useState<'active' | 'completed' | 'all'>('active');
   const [isManualModalOpen, setIsManualModalOpen] = useState(false);
+  const [showQuickLinkBuilder, setShowQuickLinkBuilder] = useState(false);
+  const [manualAdvanced, setManualAdvanced] = useState(false);
   const [historicalSale, setHistoricalSale] = useState(false);
   const [saleDate, setSaleDate] = useState('');
   const [garmentHistory, setGarmentHistory] = useState('');
@@ -403,6 +406,24 @@ function AdminOrdersInner({ defaultTab }: { defaultTab: ManagementTab }) {
   const [custPhone, setCustPhone] = useState('');
   const [custPhone2, setCustPhone2] = useState('');
   const [custEmail, setCustEmail] = useState('');
+  const knownCustomer = useMemo(() => {
+    const digits = custPhone.replace(/\D/g, '');
+    if (digits.length < 10) return null;
+    return orders.find(order => String(order.customerPhone || '').replace(/\D/g, '') === digits && order.customerName);
+  }, [custPhone, orders]);
+  const useKnownCustomer = () => {
+    if (!knownCustomer) return;
+    setCustName(knownCustomer.customerName || '');
+    setCustEmail(knownCustomer.customerEmail || '');
+    setCustPhone2(knownCustomer.customerPhone2 || '');
+    setCustCep(knownCustomer.cep || '');
+    setCustAddress(knownCustomer.address === 'Retirada na Loja' ? '' : knownCustomer.address || '');
+    setCustNumber(knownCustomer.number || '');
+    setCustComplement(knownCustomer.complement || '');
+    setCustNeighborhood(knownCustomer.neighborhood || '');
+    setCustCity(knownCustomer.city === 'Retirada' ? '' : knownCustomer.city || '');
+    setCustState(knownCustomer.state === 'RET' ? '' : knownCustomer.state || '');
+  };
   const [custCep, setCustCep] = useState('');
   const [isRetirada, setIsRetirada] = useState(false);
   const [custAddress, setCustAddress] = useState('');
@@ -2268,6 +2289,7 @@ Total: R$ ${totalSum.toFixed(2)}`;
               </div>
 
               <div className="flex flex-wrap gap-2">
+                <button type="button" onClick={() => setShowQuickLinkBuilder(open => !open)} className="bg-white text-black border border-[#eab308] px-4 py-2 text-[10px] font-black uppercase">{showQuickLinkBuilder ? 'Fechar link' : 'Gerar link rápido'}</button>
                 <button
                   onClick={openOrderMaintenance}
                   className="bg-white text-black border border-black/15 hover:border-[#eab308] transition-all px-4 py-2 text-[9px] font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer"
@@ -2289,6 +2311,8 @@ Total: R$ ${totalSum.toFixed(2)}`;
               </div>
             </div>
           </div>
+
+          {showQuickLinkBuilder && <React.Suspense fallback={<p className="p-4 text-sm">Preparando produtos do catálogo…</p>}><AdminCheckoutLinkBuilder /></React.Suspense>}
 
           <AnimatePresence>
             {isOrderMaintenanceOpen && (
@@ -4014,6 +4038,7 @@ Total: R$ ${totalSum.toFixed(2)}`;
                     <button type="button" onClick={() => setManualOrderKind('sale')} className={`px-3 py-2 ${manualOrderKind === 'sale' ? 'bg-black text-[#eab308]' : 'text-gray-500'}`}>Pedido</button>
                     <button type="button" onClick={() => { setManualOrderKind('gift'); setManualOrderDiscount(''); setManualOrderShipping(''); setManualOrderPaid(false); setManualOrderPaidAmount(0); }} className={`px-3 py-2 ${manualOrderKind === 'gift' ? 'bg-[#eab308] text-black' : 'text-gray-500'}`}>🎁 Brinde</button>
                   </div>
+                  {manualOrderKind === 'sale' && <button type="button" aria-expanded={manualAdvanced} onClick={() => setManualAdvanced(value => !value)} className="ml-3 mt-3 min-h-10 border border-black/20 px-3 text-xs font-bold">{manualAdvanced ? 'Mostrar só o essencial' : 'Mostrar opções avançadas'}</button>}
                 </div>
                 <div className="flex shrink-0 flex-col gap-2 sm:flex-row">
                 <button type="button" aria-pressed={manualShowAmounts} onClick={() => setManualShowAmounts(value => !value)} className="min-h-11 rounded-lg border border-black/15 px-3 text-xs font-bold">{manualShowAmounts ? 'Ocultar valores' : 'Mostrar valores'}</button>
@@ -4054,9 +4079,10 @@ Total: R$ ${totalSum.toFixed(2)}`;
                           placeholder="Ex: 47999887766"
                           className="py-2.5 px-3 border border-black/10 text-xs focus:outline-none focus:border-black rounded-none"
                         />
+                        {knownCustomer && <button type="button" onClick={useKnownCustomer} className="min-h-11 border border-[#eab308] bg-amber-50 px-3 text-left text-xs font-bold">Usar dados do cliente {knownCustomer.customerName}</button>}
                       </div>
 
-                      <div className="flex flex-col gap-1">
+                      <div className={`flex flex-col gap-1 ${manualAdvanced ? '' : 'hidden'}`}>
                         <label className="text-[9px] font-black uppercase tracking-wider">Telefone 2 / Contato 2 (Opcional)</label>
                         <input 
                           type="text" 
@@ -4538,14 +4564,14 @@ Total: R$ ${totalSum.toFixed(2)}`;
                 </div>
 
                 {/* ORIGEM / METODO PAGAMENTO / STATUS */}
-                <OrderCostSummary items={costedManualItems} formatAmount={formatManualMoney} showSources={manualShowAmounts} />
+                {(manualAdvanced || hasCustomManualItems) && <OrderCostSummary items={costedManualItems} formatAmount={formatManualMoney} showSources={manualShowAmounts} />}
                 {hasCustomManualItems && <button type="button" onClick={() => void orderCostCatalog.refresh()} disabled={orderCostCatalog.loading} className="min-h-11 border border-black/15 px-3 text-xs font-bold">{orderCostCatalog.loading ? 'Atualizando custos...' : 'Atualizar base de custos e conferir resumo'}</button>}
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4 bg-gray-50 border border-black/5 p-4 text-xs font-black uppercase tracking-wider">
                   <ManualChoiceWithOther label="Canal de Origem" value={orderOrigin} onChange={setOrderOrigin} options={['WhatsApp', 'Instagram', 'Facebook', 'Loja Física', 'Indicação', 'Venda Direta', 'Marketplace']} required />
 
                   {manualOrderKind === 'sale' && <ManualChoiceWithOther label="Forma de Pagamento" value={paymentMethodForm} onChange={setPaymentMethodForm} options={['PIX', 'Cartão de Crédito', 'Dinheiro', 'Boleto', 'Transferência']} required />}
 
-                  <div className="flex flex-col gap-1.5">
+                  <div className={`flex flex-col gap-1.5 ${manualAdvanced ? '' : 'hidden'}`}>
                     <label className="text-[8px] font-black text-gray-400">Etapa operacional do pedido</label>
                     <select 
                       value={manualOrderStatus} 
@@ -4567,10 +4593,10 @@ Total: R$ ${totalSum.toFixed(2)}`;
                     </select>
                   </div>
 
-                  <p className="self-end text-[10px] text-gray-500">Ao movimentar estoque, o saldo é conferido por modelo, cor e tamanho. Para registros antigos já baixados, use “Registrar venda antiga”.</p>
+                  <p className="self-end text-[10px] text-gray-500">{manualAdvanced ? 'Ao movimentar estoque, o saldo é conferido por modelo, cor e tamanho.' : 'Padrão: pedido recebido, pagamento pendente e estoque reservado após conferência.'}</p>
                 </div>
 
-                {manualOrderKind === 'sale' && <div className="border border-black/10 bg-white p-4 space-y-3">
+                {manualOrderKind === 'sale' && manualAdvanced && <div className="border border-black/10 bg-white p-4 space-y-3">
                   <label className="flex items-center gap-2 text-sm font-bold">
                     <input type="checkbox" checked={historicalSale} onChange={event => setHistoricalSale(event.target.checked)} />
                     Registrar venda antiga
@@ -4598,7 +4624,7 @@ Total: R$ ${totalSum.toFixed(2)}`;
                     </label>
                   </>}
                 </div>}
-                {manualOrderKind === 'sale' && <div className="border border-emerald-200 bg-emerald-50/60 p-4 space-y-4">
+                {manualOrderKind === 'sale' && manualAdvanced && <div className="border border-emerald-200 bg-emerald-50/60 p-4 space-y-4">
                   <div>
                     <h4 className="text-[10px] font-black uppercase tracking-widest text-emerald-800">Controle financeiro independente</h4>
                     <p className="mt-1 text-[9px] text-emerald-900/70">O pedido pode ser entregue com saldo pendente. O caixa usa as datas dos recebimentos.</p>
@@ -4658,7 +4684,7 @@ Total: R$ ${totalSum.toFixed(2)}`;
                 </div>}
 
                 {/* CONTROLE DE ESTOQUE */}
-                {!(manualOrderKind === 'sale' && historicalSale) && <div className="bg-gray-100 p-5 border border-black/10">
+                {manualAdvanced && !(manualOrderKind === 'sale' && historicalSale) && <div className="bg-gray-100 p-5 border border-black/10">
                   <h4 className="text-[10px] font-black uppercase text-black tracking-widest mb-3 flex items-center gap-1.5">
                     ⚙️ CONTROLE DE ESTOQUE DESTE PEDIDO *
                   </h4>
@@ -4700,7 +4726,7 @@ Total: R$ ${totalSum.toFixed(2)}`;
 
                 </div>}
 
-                <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
+                {manualAdvanced && <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
                   <div className="flex flex-col gap-1 md:col-span-8">
                     <label className="text-[9px] font-black uppercase text-gray-400 tracking-wider">Observações do Pedido</label>
                     <textarea 
@@ -4721,7 +4747,7 @@ Total: R$ ${totalSum.toFixed(2)}`;
                       className="py-2 px-3 border border-black/10 text-xs focus:outline-none focus:border-black rounded-none w-full bg-white font-medium"
                     />
                   </div>
-                </div>
+                </div>}
 
                 <div className="flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-end gap-3 border-t border-black/10 pt-4 w-full">
                   <button 

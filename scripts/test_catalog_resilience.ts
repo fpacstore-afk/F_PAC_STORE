@@ -127,6 +127,14 @@ await check('storefront search distinguishes shared names by reference and accep
   assert.equal(matchesStorefrontSearch(products[0], 'camisetas'), true);
   assert.equal(matchesStorefrontSearch(products[0], '   '), false);
   assert.equal(matchesStorefrontSearch({}, 'camiseta'), false);
+  const colored = { name: 'Camisa Oversized', baseModel: 'Oversized Premium', fabric: 'Suedine',
+    colors: [{ name: 'Marrom Café' }, { name: 'Preto' }], sizes: ['M', 'XG'],
+    variants: [{ colorName: 'Verde Militar', size: 'GG' }] };
+  assert.equal(matchesStorefrontSearch(colored, 'camiseta preta'), true);
+  assert.equal(matchesStorefrontSearch(colored, 'oversized verde militar GG'), true);
+  assert.equal(matchesStorefrontSearch(colored, 'camiseta marrom cafe XG'), true);
+  assert.equal(matchesStorefrontSearch(colored, 'camiseta azul'), false);
+  assert.equal(matchesStorefrontSearch(colored, 'G1'), false, 'XG must not be folded into G1');
 });
 
 console.log(`${checks} catalog resilience regressions passed.`);

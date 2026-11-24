@@ -14,5 +14,5 @@ for (const code of ['auth/invalid-api-key', 'auth/unauthorized-domain', 'auth/un
   assert.doesNotMatch(authErrorMessage(error), /private|Bearer|fixture@|API|Firebase/);
 }
 assert.equal(authErrorCode({code:'private-token'}),'auth/unknown');
-assert.deepEqual(profileUpdateFields({name:'Fixture',phone:'',password:'private',token:'private',role:'admin',isAdmin:true,address:{secret:'private'}}),{name:'Fixture',phone:''});
+assert.deepEqual(profileUpdateFields({name:'Fixture',phone:'',email:'other@example.invalid',password:'private',token:'private',role:'admin',isAdmin:true,address:{secret:'private'}}),{name:'Fixture',phone:''});
 console.log('PASS password recovery does not reveal account existence, provider errors stay private, and profile updates exclude credentials and privilege fields.');

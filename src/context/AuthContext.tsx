@@ -13,7 +13,8 @@ import {
   validatePassword,
   type MultiFactorResolver,
   updateProfile as updateFirebaseProfile,
-  sendEmailVerification
+  sendEmailVerification,
+  reload
 } from 'firebase/auth';
 import { doc, getDoc, setDoc, onSnapshot } from 'firebase/firestore';
 import { auth, db } from '../lib/firebase';
@@ -49,7 +50,8 @@ interface AuthContextType {
   loginWithEmail: (email: string, pass: string) => Promise<void>;
   registerWithEmail: (email: string, pass: string, name: string) => Promise<void>;
   resetPassword: (email: string) => Promise<void>;
-  sendVerificationEmail: () => Promise<void>;
+  sendVerificationEmail: (auditVerifiedAccount?: boolean) => Promise<void>;
+  refreshEmailVerification: () => Promise<boolean>;
   logout: () => Promise<void>;
   updateProfile: (data: Partial<UserProfile>) => Promise<void>;
 }
@@ -102,7 +104,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             const data = profileSnap.data();
             const fullProfile: UserProfile = {
               name: data.name || currentUser.displayName || '',
-              email: data.email || currentUser.email || '',
+              email: currentUser.email || data.email || '',
               phone: data.phone || '',
               cpf: data.cpf || '',
               address: data.address || '',
@@ -139,7 +141,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               const data = doc.data();
               setProfile({
                 name: data.name || currentUser.displayName || '',
-                email: data.email || currentUser.email || '',
+                email: currentUser.email || data.email || '',
                 phone: data.phone || '',
                 cpf: data.cpf || '',
                 address: data.address || '',
@@ -216,6 +218,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (!policy.isValid) throw { code: 'auth/password-does-not-meet-requirements' };
       const result = await createUserWithEmailAndPassword(auth, email, pass);
       await updateFirebaseProfile(result.user, { displayName: name });
+      auth.languageCode = 'pt-BR';
       try { await sendEmailVerification(result.user); }
       catch { toast.error('Conta criada. Reenvie a confirmação do e-mail em Minha conta para liberar o bônus.'); }
       void registerSignupCashback(result.user).catch(() => {});
@@ -235,9 +238,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const sendVerificationEmail = async () => {
+  const sendVerificationEmail = async (auditVerifiedAccount = false) => {
     if (!auth.currentUser) throw new Error('Entre na sua conta.');
+    await reload(auth.currentUser);
+    if (auth.currentUser.emailVerified && !auditVerifiedAccount) return;
+    if (auditVerifiedAccount && (!auth.currentUser.emailVerified || !['fpacstore@gmail.com', 'atendimento@fpacstore.com.br'].includes((auth.currentUser.email || '').toLowerCase()))) throw new Error('Auditoria disponível apenas para a conta da loja já validada.');
+    auth.languageCode = 'pt-BR';
     await sendEmailVerification(auth.currentUser);
+  };
+
+  const refreshEmailVerification = async () => {
+    if (!auth.currentUser) return false;
+    await reload(auth.currentUser);
+    await auth.currentUser.getIdToken(true);
+    setUser(auth.currentUser);
+    return auth.currentUser.emailVerified;
   };
 
   const beginMfa = (error: unknown) => {
@@ -259,8 +274,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const updateProfile = async (data: Partial<UserProfile>) => {
-    if (!user) return;
-    const profileRef = doc(db, 'users', user.uid);
+    if (!auth.currentUser) throw new Error('Entre na sua conta.');
+    if (!await refreshEmailVerification()) throw new Error('Confirme seu e-mail antes de alterar seus dados.');
+    const profileRef = doc(db, 'users', auth.currentUser.uid);
     await setDoc(profileRef, { ...profileUpdateFields(data), updatedAt: new Date().toISOString() }, { merge: true });
   };
 
@@ -274,6 +290,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       registerWithEmail, 
       resetPassword,
       sendVerificationEmail,
+    refreshEmailVerification,
       logout, 
       updateProfile 
     }}>
