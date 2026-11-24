@@ -58,6 +58,32 @@ export function InventoryAuditCenter({ operator = 'Administrador' }: { operator?
   const [gradeError, setGradeError] = useState('');
   const [gradeAttempt, setGradeAttempt] = useState(0);
   const [preparingModels, setPreparingModels] = useState(false);
+  const [pendingZimm, setPendingZimm] = useState<any>(null);
+  const [pendingZimmError, setPendingZimmError] = useState('');
+  const [applyingZimm, setApplyingZimm] = useState(false);
+  useEffect(() => {
+    let active = true;
+    authenticatedFetch('/api/admin/garment-models/pending-zimm').then(async response => {
+      const data = await parseApiJson<any>(response);
+      if (!response.ok) throw new Error(data.error || 'Prévia indisponível.');
+      if (active) { setPendingZimm(data); setPendingZimmError(''); }
+    }).catch(error => { if (active) setPendingZimmError(error.message || 'Prévia indisponível.'); });
+    return () => { active = false; };
+  }, [inventory]);
+
+  const applyZimmCount = async () => {
+    if (!pendingZimm || pendingZimm.conflicts.length || pendingZimm.alreadyApplied || applyingZimm) return;
+    if (!window.confirm('Confirmar 14 peças como saldos físicos FINAIS nas bases Básica Comfort e Dry Fit Zimm? Histórico e outros produtos serão preservados.')) return;
+    setApplyingZimm(true);
+    try {
+      const response = await authenticatedFetch('/api/admin/garment-models/pending-zimm', { method: 'POST' });
+      const data = await parseApiJson<any>(response);
+      if (!response.ok) throw new Error(data.error || 'Não foi possível concluir a contagem.');
+      setPendingZimm({ ...pendingZimm, alreadyApplied: true });
+      toast.success(`${data.countedTotal} peças vinculadas em ${data.changedVariants} variações; movimentos registrados.`);
+    } catch (error: any) { toast.error(error.message || 'Revise as bases e tente novamente.'); }
+    finally { setApplyingZimm(false); }
+  };
   const [movements, setMovements] = useState<StockMovement[]>([]);
 
   useEffect(() => onSnapshot(collection(db, 'stock_movements'), snapshot => {
@@ -300,6 +326,17 @@ export function InventoryAuditCenter({ operator = 'Administrador' }: { operator?
       </header>
 
       <div className="border border-amber-200 bg-amber-50 p-4 text-xs text-amber-950">Conte as lisas uma única vez por modelo, cor e tamanho. A capacidade compartilhada dos desenhos não entra na soma física. Peças enviadas à estamparia aparecem em produção, separadamente. Quantidades antigas de estampadas ficam fora do saldo físico confirmado até a contagem; informe zero quando não existir peça pronta.</div>
+      <section className="border border-[#eab308] bg-white p-4 text-sm" aria-label="Pendências Zimm da contagem">
+        <h2 className="font-black">Concluir 14 peças da contagem · Zimm</h2>
+        <p className="mt-1 text-xs">Básica Comfort (algodão 30.1): 6; Dry Fit (poliéster 140 g/m²): 8. XG da Básica permanece XG, separado de G1; a ficha fotografada só informa medidas até GG. Esta operação substitui apenas os saldos dessas variações, sem entrada adicional.</p>
+        {pendingZimmError && <p role="alert" className="mt-2 text-red-700">{pendingZimmError}</p>}
+        {pendingZimm && <>
+          <p className="mt-2 font-bold">Prévia: {pendingZimm.previousTotal} no sistema → {pendingZimm.countedTotal} contadas; {pendingZimm.lines.filter((line: any) => line.difference !== 0).length} variações com diferença.</p>
+          {pendingZimm.conflicts.length > 0 && <ul className="mt-2 list-disc pl-5 text-red-700">{pendingZimm.conflicts.map((item: string) => <li key={item}>{item}</li>)}</ul>}
+          <details className="mt-2"><summary className="cursor-pointer font-bold">Ver quantidades por SKU</summary><ul className="mt-2 max-h-44 overflow-auto text-xs">{pendingZimm.lines.map((line: any) => <li key={line.sku}>{line.sku}: {line.previousPhysical} → {line.counted} {line.reserved ? `(${line.reserved} reservado)` : ''}</li>)}</ul></details>
+          <button type="button" disabled={applyingZimm || pendingZimm.alreadyApplied || pendingZimm.conflicts.length > 0 || pendingZimm.countedTotal !== 14} onClick={applyZimmCount} className="mt-3 min-h-11 bg-black px-4 font-bold text-[#eab308] disabled:opacity-50">{pendingZimm.alreadyApplied ? 'Contagem já aplicada' : applyingZimm ? 'Conferindo...' : 'Confirmar saldos finais das 14 peças'}</button>
+        </>}
+      </section>
       <section className="border border-black/10 bg-white p-4 space-y-2">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div><h2 className="text-sm font-black uppercase">Modelos e golas no inventário</h2><p className="mt-1 text-xs text-gray-600">Prepara as grades separadas por fornecedor, modelagem e gola, incluindo as variações zeradas para a contagem. Os saldos atuais não são copiados.</p></div>

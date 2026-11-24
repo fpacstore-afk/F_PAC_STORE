@@ -19,6 +19,7 @@ try {
   });
   const guest = environment.unauthenticatedContext().firestore();
   const customer = environment.authenticatedContext('customer', { email: 'customer@example.invalid', email_verified: true }).firestore();
+  const pendingCustomer = environment.authenticatedContext('pending-customer', { email: 'pending@example.invalid', email_verified: false }).firestore();
   const unverified = environment.authenticatedContext('unverified-admin-email', { email: 'fpacstore@gmail.com', email_verified: false }).firestore();
   const claimed = environment.authenticatedContext('claimed-admin', { admin: true }).firestore();
   const manager = environment.authenticatedContext('manager', { email: 'fpacstore@gmail.com', email_verified: true }).firestore();
@@ -66,10 +67,15 @@ try {
   await assertFails(updateDoc(doc(unverified, 'reviews/owned-review'), { comment: 'Not mine' }));
   console.log('Owner review edits revalidate content and preserve product, verification, author and timestamps.');
   const customerProfile = doc(customer, 'users/customer');
+  const pendingProfile = doc(pendingCustomer, 'users/pending-customer');
+  await assertSucceeds(setDoc(pendingProfile, { name:'Pending', email:'pending@example.invalid' }));
+  await assertFails(setDoc(pendingProfile, { name:'Changed before verification' }, { merge:true }));
+  await assertFails(setDoc(doc(pendingCustomer, 'users/other'), { email:'pending@example.invalid' }));
   for (const field of ['password', 'token', 'role', 'isAdmin', 'admin']) {
     await assertFails(setDoc(customerProfile, { name:'Fixture', [field]:'forged' }));
   }
   await assertSucceeds(setDoc(customerProfile, { name:'Fixture', email:'customer@example.invalid' }));
+  await assertFails(setDoc(customerProfile, { email:'impostor@example.invalid' }, { merge:true }));
   for (const field of ['password', 'token', 'role', 'isAdmin', 'admin']) {
     await assertFails(setDoc(customerProfile, { [field]:'forged' }, { merge:true }));
   }

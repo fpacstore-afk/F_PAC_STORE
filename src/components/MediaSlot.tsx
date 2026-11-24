@@ -32,9 +32,10 @@ export const MediaSlot: React.FC<MediaSlotProps> = ({
 
   const [hasVideoError, setHasVideoError] = useState<boolean>(false);
   const [autoplayBlocked, setAutoplayBlocked] = useState(false);
+  const [videoNearViewport, setVideoNearViewport] = useState(false);
   const [hasImageError, setHasImageError] = useState<boolean>(false);
   const [imageAttempt, setImageAttempt] = useState(0);
-  useEffect(() => { setHasVideoError(false); setAutoplayBlocked(false); setHasImageError(false); setImageAttempt(0); }, [src, poster, type, fallbackSrc]);
+  useEffect(() => { setHasVideoError(false); setAutoplayBlocked(false); setVideoNearViewport(false); setHasImageError(false); setImageAttempt(0); }, [src, poster, type, fallbackSrc]);
 
   const mediaUrl = (src && src.trim()) || '';
   const posterUrl = (poster && poster.trim()) || '';
@@ -52,13 +53,15 @@ export const MediaSlot: React.FC<MediaSlotProps> = ({
   // IntersectionObserver for autoplay / pause on viewport entry / exit
   useEffect(() => {
     if (!showVideo || !containerRef.current) return;
-    if (reduceMotion) { videoRef.current?.pause(); return; }
+    if (reduceMotion) { setVideoNearViewport(true); videoRef.current?.pause(); return; }
 
     const observer = new IntersectionObserver(
       (entries) => {
         entries.forEach((entry) => {
           if (videoRef.current) {
             if (entry.isIntersecting) {
+              setVideoNearViewport(true);
+              if (!videoNearViewport) return;
               const playPromise = videoRef.current.play();
               if (playPromise !== undefined) {
                 playPromise.catch(() => setAutoplayBlocked(true));
@@ -81,7 +84,7 @@ export const MediaSlot: React.FC<MediaSlotProps> = ({
     return () => {
       observer.disconnect();
     };
-  }, [showVideo, mediaUrl, reduceMotion]);
+  }, [showVideo, mediaUrl, reduceMotion, videoNearViewport]);
 
   const fitClass = objectFit === 'contain' ? 'object-contain' : 'object-cover';
 
@@ -90,15 +93,15 @@ export const MediaSlot: React.FC<MediaSlotProps> = ({
       {showVideo ? (
         <video
           ref={videoRef}
-          src={mediaUrl}
+          src={videoNearViewport ? mediaUrl : undefined}
           poster={posterUrl || undefined}
-          autoPlay={!reduceMotion}
+          autoPlay={false}
           loop
           muted
           playsInline
           controls={!!reduceMotion || autoplayBlocked}
           aria-label={alt}
-          preload={priority ? 'auto' : 'metadata'}
+          preload="none"
           onError={() => setHasVideoError(true)}
           className={`w-full h-full ${fitClass} block ${reduceMotion || autoplayBlocked ? '' : 'pointer-events-none'} select-none`}
         />

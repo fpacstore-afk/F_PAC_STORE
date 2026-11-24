@@ -90,6 +90,8 @@
     "test:ranking-gifts": "NODE_ENV=test node --import tsx scripts/test_ranking_gifts.ts",
     "test:mei-revenue-preview": "node --import tsx scripts/test_mei_revenue_preview.ts",
     "test:garment-models": "NODE_ENV=test node --import tsx scripts/test_garment_models.ts",
+    "test:pending-zimm-inventory": "NODE_ENV=test node --import tsx scripts/test_pending_zimm_inventory.ts",
+    "report:build-weight": "node --import tsx scripts/report_build_weight.ts",
     "test:security-hardening": "NODE_ENV=test node --import tsx scripts/test_security_hardening.ts",
     "security:audit": "npm audit --omit=dev --audit-level=high",
     "test:stock-range": "NODE_ENV=test node --import tsx scripts/test_stock_range.ts",

@@ -140,7 +140,7 @@ function AppContent() {
       {isPdvApp && <PdvMobileInstall />}
       {/* The header is fixed. Keeping this banner inside the page flow makes it
           start below the menu instead of being hidden behind it on the home. */}
-      {!location.pathname.startsWith('/gestao') && <div className={isHome ? 'pt-[var(--site-header-height)]' : ''}><SignupCashbackBanner /></div>}
+      {!location.pathname.startsWith('/gestao') && <div className={isHome ? 'pt-[var(--site-header-height)]' : ''}><SignupCashbackBanner compact={!isHome} /></div>}
 
       <ErrorBoundary><Suspense fallback={<PageLoader />}><Routes>
         <Route path="/sobre" element={<About />} />

@@ -13,12 +13,12 @@ export function catalogIntegrity(products: Row[], inventory: Row[]) {
     if (item.active === false) return count;
     const variants = Object.values(item.variants || {}) as Row[];
     return count + (variants.length ? variants : [item]).filter(variant => {
-      if (variant.active === false) return false;
+      if (variant.active === false || variant.physicalCountVerified === false) return false;
       if (!['physicalQuantity', 'stock', 'quantity', 'availableQuantity'].some(key => variant[key] !== undefined)) return false;
       const physical = quantity(variant.physicalQuantity ?? variant.stock ?? variant.quantity);
       const available = Math.max(0, physical - quantity(variant.reservedQuantity ?? variant.reserved));
       const minimum = variant.minimumStock ?? variant.minStock ?? item.minimumStock ?? item.minStock;
-      return available <= 0 || (minimum !== undefined && available <= quantity(minimum));
+      return minimum !== undefined ? available <= quantity(minimum) : physical > 0 && available <= 0;
     }).length;
   }, 0);
   return { linked, unlinked, lowStockVariants, linkedPhysical: linked.reduce((n, item) => n + physical(item), 0), unlinkedPhysical: unlinked.reduce((n, item) => n + physical(item), 0) };

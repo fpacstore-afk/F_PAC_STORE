@@ -9,6 +9,9 @@ const norm = (value: unknown) => String(value || '').normalize('NFD').replace(/[
 export function isDryFitGarment(entry: any) {
   return /\bdry[\s-]*fit\b/.test(norm([entry?.name, entry?.sourceProductName, entry?.baseModel, entry?.garmentModelName].filter(Boolean).join(' ')));
 }
+export function isBasicComfortGarment(entry: any) {
+  return !isDryFitGarment(entry) && /\b(basica|basico|comfort)\b/.test(norm([entry?.name, entry?.sourceProductName, entry?.baseModel, entry?.garmentModelName].filter(Boolean).join(' ')));
+}
 
 /** Technical fields transcribed from the owner's ZIMM catalogue images (27/10).
  * Prices, quantities and historic quotes are intentionally not changed here. */
@@ -18,8 +21,10 @@ export function applyVerifiedGarmentSpecs(entry: any) {
     'ZIM-004': { measurements: 'P 65×50 M16 | M 68×52 M18 | G 70×56 M18 | GG 72×58 M19', composition: 'Algodão e poliéster 30.1', weight: '250 g/m²', sizes: ['P','M','G','GG'], colors: ['Branco','Areia','Preto','Marrom','Off White','Verde'], shrinkage: '0%', collar: 'Gola de ribana canelada com largura de 3 cm' },
     'ZIM-009': { measurements: 'P 71×52 M24 | M 73×55 M25 | G 75×58 M26 | GG 77×61 M27', composition: 'Algodão e poliéster 30.1', weight: '250 g/m²', sizes: ['P','M','G','GG'], colors: ['Branco','Off White','Marinho','Preto','Marrom','Verde'], shrinkage: '0%', collar: 'Gola de ribana canelada com largura de 3 cm' },
     'ZIM-010': { measurements: 'P 65×53 | M 67×55 | G 69×57 | GG 71×59', composition: '100% algodão 30.1', weight: '160 g/m²', sizes: ['P','M','G','GG'], colors: ['Mescla','Areia','Marinho','Branco','Preto'] },
+    'ZIM-COMFORT-160': { measurements: 'P 65×50 M16 | M 68×52 M18 | G 70×56 M18 | GG 72×58 M19', composition: '100% algodão 30.1', weight: '160 g/m²', collar: 'Gola de ribana com largura de 1,5 cm', shoulderReinforcement: true },
+    'ZIM-DRYFIT-140': { measurements: 'P 67×48 M20 | M 68×52 M20 | G 71×55 M20 | GG 73×57 M22', composition: '100% poliéster; tecido grão de arroz', weight: '140 g/m²' },
   };
-  return specs[entry.id] ? { ...entry, ...specs[entry.id], technicalSource: 'Catálogo ZIMM enviado pelo proprietário em 27/10/2026' } : entry;
+  return specs[entry.id] ? { ...entry, ...specs[entry.id], technicalSource: ['ZIM-COMFORT-160','ZIM-DRYFIT-140'].includes(entry.id) ? 'Catálogo ZIMM enviado pelo proprietário em 24/11/2026' : 'Catálogo ZIMM enviado pelo proprietário em 27/10/2026' } : entry;
 }
 
 export function garmentFamily(product: any): GarmentFamily | null {
@@ -49,10 +54,10 @@ export function garmentProfile(entry: any) {
   entry = applyVerifiedGarmentSpecs(entry);
   const family = garmentFamily(entry), supplier = norm(entry?.supplier);
   if (!family || !['zimm', 'tiggas'].includes(supplier) || !entry?.id) return null;
-  const dryFit = isDryFitGarment(entry);
-  const neckline = family === 'regata' ? 'tank' : dryFit ? '' : supplier === 'zimm' ? 'high_closed' : 'classic_open';
-  const collar = family === 'regata' ? 'Decote de regata · sem mangas' : dryFit ? String(entry.collar || '') : (supplier === 'zimm' ? 'Gola mais alta e fechada' : 'Gola mais baixa e aberta') + (entry.collar ? ` · ${entry.collar}` : '');
-  const shortName = family === 'regata' ? 'Regata' : dryFit ? 'Dry Fit' : supplier === 'zimm' ? 'Gola alta' : 'Gola tradicional';
+  const dryFit = isDryFitGarment(entry), basicComfort = isBasicComfortGarment(entry);
+  const neckline = family === 'regata' ? 'tank' : dryFit ? '' : basicComfort ? 'classic_open' : supplier === 'zimm' ? 'high_closed' : 'classic_open';
+  const collar = family === 'regata' ? 'Decote de regata · sem mangas' : dryFit ? String(entry.collar || '') : basicComfort ? String(entry.collar || 'Gola tradicional') : (supplier === 'zimm' ? 'Gola mais alta e fechada' : 'Gola mais baixa e aberta') + (entry.collar ? ` · ${entry.collar}` : '');
+  const shortName = family === 'regata' ? 'Regata' : dryFit ? 'Dry Fit' : basicComfort ? 'Gola tradicional · Comfort' : supplier === 'zimm' ? 'Gola alta' : 'Gola tradicional';
   const material = String(family === 'regata' || dryFit ? entry.composition || '' : entry.name || '').replace(/camiseta|camisa|oversized|tradicional/gi, '').trim();
   return {
     garmentModelId: String(entry.id), garmentModelName: [shortName, material].filter(Boolean).join(' · '),
