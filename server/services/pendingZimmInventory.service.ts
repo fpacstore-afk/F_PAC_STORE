@@ -47,7 +47,10 @@ async function inspect(db: any, tx?: any) {
     // never silently duplicated or merged with stock from another fabric.
     const candidates = existing.filter((item: any) => item.productFinish === 'plain' &&
       !item.mergedIntoProductId && !['archived','inactive'].includes(item.status) &&
-      (item.baseModel === sheet.baseModel || item.garmentModelId === sheet.modelId || item.sku === sheet.sku));
+      (item.baseModel === sheet.baseModel || item.garmentModelId === sheet.modelId || item.sku === sheet.sku ||
+        (String(item.supplierName || item.supplier || '').toLowerCase().includes('zim') &&
+          String([item.name, item.fabric, item.garmentModelName].join(' ')).toLowerCase().includes(sheet.modelId === 'ZIM-DRYFIT-140' ? 'dry fit' : '30.1') &&
+          (sheet.modelId === 'ZIM-DRYFIT-140' || /tradicional/i.test(String(item.name || item.baseModel || ''))))));
     if (candidates.some((item: any) => item.id !== sheet.id)) conflicts.push(`${sheet.baseModel}: já existe uma base física com outra referência. Confira SKU, fornecedor, reservas e histórico antes de cadastrar.`);
     if (base && (base.productFinish !== 'plain' || base.baseModel !== sheet.baseModel || base.garmentModelId !== sheet.modelId || base.sku !== sheet.sku)) conflicts.push(`${sheet.sku}: o identificador já pertence a outro cadastro.`);
     const inventory = inventories[index].data() || {};

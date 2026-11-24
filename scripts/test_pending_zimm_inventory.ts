@@ -36,4 +36,10 @@ await duplicateDb.collection('products').doc('legacy-basic').set({ name:'Camiset
 assert.equal((await previewPendingZimmInventory(duplicateDb)).conflicts.length > 0, true);
 await assert.rejects(applyPendingZimmInventory(duplicateDb, 'isolated'), /já existe uma base física/);
 assert.equal((await duplicateDb.collection('inventory').get()).docs.length, 0);
+const legacyDb: any = createInMemoryDb();
+await legacyDb.collection('products').doc('garment-zim-001').set({ name:'Camiseta Tradicional F PAC — Gola Tradicional · 30.1',
+  baseModel:'Tradicional Suedine', supplierName:'Zimm', productFinish:'plain', status:'active' });
+assert.equal((await previewPendingZimmInventory(legacyDb)).conflicts.length > 0, true,
+  'a mislabeled legacy cotton base must be reconciled before creating another SKU');
+await assert.rejects(applyPendingZimmInventory(legacyDb, 'isolated'), /já existe uma base física/);
 console.log('PASS Zimm final count: 14 physical pieces, 9 differences, XG distinct, supplier families, history, reservations, duplicate refusal and idempotent replay.');
