@@ -14,12 +14,12 @@ export function SignupCashbackBanner() {
   const dialogRef = useRef<HTMLDialogElement>(null);
 
   useEffect(() => {
-    if (authLoading || featuresLoading || !signupBonusEnabled || user) return;
+    if (authLoading || featuresLoading || !signupBonusEnabled) return;
     try {
       if (sessionStorage.getItem(SESSION_KEY) || localStorage.getItem(OPT_OUT_KEY)) return;
     } catch { /* Keep the invitation available when storage is blocked. */ }
     setOpen(true);
-  }, [authLoading, featuresLoading, signupBonusEnabled, user]);
+  }, [authLoading, featuresLoading, signupBonusEnabled]);
 
   useEffect(() => {
     const dialog = dialogRef.current;
@@ -41,7 +41,7 @@ export function SignupCashbackBanner() {
     setOpen(false);
   };
 
-  if (!open || user || !signupBonusEnabled) return null;
+  if (!open || !signupBonusEnabled) return null;
   return <dialog ref={dialogRef} aria-labelledby="cashback-welcome-title" aria-describedby="cashback-welcome-description"
     onCancel={event => { event.preventDefault(); close(); }}
     onClick={event => { if (event.target === event.currentTarget) close(); }}
@@ -52,11 +52,11 @@ export function SignupCashbackBanner() {
         <X size={22} aria-hidden="true" />
       </button>
       <p className="text-sm font-bold uppercase tracking-widest text-[#eab308]">Seu primeiro benefício F PAC</p>
-      <h2 id="cashback-welcome-title" className="mt-3 text-3xl font-black leading-tight sm:text-4xl">Crie sua conta. Ganhe <span className="text-[#eab308]">R$ 5 de cashback.</span></h2>
-      <p id="cashback-welcome-description" className="mt-4 text-base leading-relaxed text-white/85">Bônus único, sem prazo para usar. Confirme seu e-mail para liberar o saldo.</p>
+      <h2 id="cashback-welcome-title" className="mt-3 text-3xl font-black leading-tight sm:text-4xl">{user ? <>Seu cashback está na <span className="text-[#eab308]">sua conta.</span></> : <>Crie sua conta. Ganhe <span className="text-[#eab308]">R$ 5 de cashback.</span></>}</h2>
+      <p id="cashback-welcome-description" className="mt-4 text-base leading-relaxed text-white/85">{user ? 'Veja seu saldo e os benefícios disponíveis. O bônus de abertura de conta não tem prazo para usar.' : 'Bônus único, sem prazo para usar. Confirme seu e-mail para liberar o saldo.'}</p>
       <p className="mt-3 text-sm leading-relaxed text-white/70">Nas compras por link, o cashback vale para produtos do catálogo pagos por Pix e fica disponível após a entrega confirmada. Consulte as regras na sua conta.</p>
-      <Link to="/account?mode=register" onClick={() => close()}
-        className="mt-6 flex min-h-12 w-full items-center justify-center rounded-lg bg-[#eab308] px-5 py-3 text-center text-base font-black text-black focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white">Criar conta e ganhar R$ 5</Link>
+      <Link to={user ? '/account' : '/account?mode=register'} onClick={() => close()}
+        className="mt-6 flex min-h-12 w-full items-center justify-center rounded-lg bg-[#eab308] px-5 py-3 text-center text-base font-black text-black focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white">{user ? 'Ver meu cashback' : 'Criar conta e ganhar R$ 5'}</Link>
       <button type="button" onClick={() => close(true)}
         className="mt-3 min-h-11 w-full rounded-lg px-4 py-2 text-sm font-semibold text-white/80 underline underline-offset-4 hover:text-white focus-visible:outline-2 focus-visible:outline-[#eab308]">Não mostrar novamente</button>
     </div>
