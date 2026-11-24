@@ -138,9 +138,7 @@ function AppContent() {
     <main data-site-main ref={mainRef} id="main-content" tabIndex={-1} className={cn("flex-1", !isHome && !isPdvApp && "pt-[var(--site-header-height)]")}>
       <RouteMetadata />
       {isPdvApp && <PdvMobileInstall />}
-      {/* The header is fixed. Keeping this banner inside the page flow makes it
-          start below the menu instead of being hidden behind it on the home. */}
-      {!location.pathname.startsWith('/gestao') && <div className={isHome ? 'pt-[var(--site-header-height)]' : ''}><SignupCashbackBanner compact={!isHome} /></div>}
+      {isHome && <SignupCashbackBanner />}
 
       <ErrorBoundary><Suspense fallback={<PageLoader />}><Routes>
         <Route path="/sobre" element={<About />} />
