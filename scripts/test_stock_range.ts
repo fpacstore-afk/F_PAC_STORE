@@ -13,6 +13,9 @@ for(const name of ['Camiseta infantil','Camisa Polo','Calça','Kit F PAC','Chine
 for(const item of [{baseModel:'Bermuda Moletom',stockFamily:'bermudas'},{name:'Boné Snapback'},{name:'Casaco Corta-Vento'},{name:'Cropped Baby Look'}]) assert.equal(stockFamily(item),null,'Explicitly different fabrics/styles must not be renamed into the approved range');
 assert.equal(stockCollar({baseModel:'Oversized Premium 240GSM',supplierName:'Tiggas'}),'unclassified','Supplier text alone must not classify mixed physical stock');
 assert.equal(stockCollar({baseModel:'Oversized Premium 240GSM',neckline:'classic_open'}),'classic_open');
+assert.equal(stockCollar({baseModel:'Camiseta Básica Tradicional',garmentModelName:'Camiseta Básica Tradicional — Zin',collar:'Gola tradicional · ribana 1,5 cm'}),'classic_open');
+assert.equal(stockCollar({baseModel:'Tradicional Dry Fit',garmentModelName:'Camiseta Tradicional Dry Fit — Zin',collar:'Não se aplica'}),'none');
+assert.equal(stockCollar({baseModel:'Camiseta Básica Tradicional',garmentModelName:'Gola alta',collar:'Gola tradicional'}),'high_closed');
 const grouped=summarizeStockFamilies([
   {id:'mixed',slug:'mixed',baseModel:'Oversized Premium 240GSM',totalStock:39,stockGroup:'plain'},
   {id:'alias',slug:'mixed',baseModel:'Oversized Premium 240GSM',totalStock:39,stockGroup:'plain'},

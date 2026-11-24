@@ -49,10 +49,15 @@ export function stockFamily(product: any): StockFamilyId | null {
 export function stockCollar(product: any): 'classic_open' | 'high_closed' | 'unclassified' | 'none' {
   const family = stockFamilyDefinition(stockFamily(product));
   if (!family?.collars) return 'none';
+  // Dry Fit was counted without a collar distinction; keep it outside the
+  // traditional/high collar buckets even though its fit is traditional.
+  if (/dry\s*fit/.test(normalized(product.baseModel))) return 'none';
   if (product.neckline === 'classic_open' || product.neckline === 'high_closed') return product.neckline;
-  const text = normalized(product.garmentModelName || product.collar);
-  if (/gola alta|alta e fechada/.test(text)) return 'high_closed';
-  if (/gola tradicional|gola classica|baixa e aberta/.test(text)) return 'classic_open';
+  for (const value of [product.garmentModelName, product.collar]) {
+    const text = normalized(value);
+    if (/gola alta|alta e fechada/.test(text)) return 'high_closed';
+    if (/gola tradicional|gola classica|baixa e aberta/.test(text)) return 'classic_open';
+  }
   return 'unclassified';
 }
 export const stockCollarLabel = (product: any) => ({ classic_open: 'Gola tradicional', high_closed: 'Gola alta', unclassified: 'Gola a conferir', none: '' })[stockCollar(product)];
